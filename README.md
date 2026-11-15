@@ -1,5 +1,7 @@
 # Gioco tattico multiplayer (nome di lavoro: Tactica)
 
+![Battaglia](docs/img/battaglia.png)
+
 Gioco tattico fantasy originale, ispirato ai classici tattici a turni per console portatili. Contiene:
 
 - battaglie su griglia con altezze;
@@ -36,6 +38,7 @@ Gioco tattico fantasy originale, ispirato ai classici tattici a turni per consol
 
   Dettagli in [docs/SERVER.md](docs/SERVER.md).
 - `deploy/`: unit systemd isolata e Caddyfile per TLS.
+- `tools/pixelart/`: generatore della pixel-art originale del client (personaggi chibi, caselle isometriche, cornici).
 - `client-ext/` e `client/`: client Godot 4.7 con estensione Rust sul core. Comprende:
   - accesso;
   - roster, negozio e statistiche;
@@ -70,4 +73,4 @@ cargo build -p tactica-godot && godot --path client
 ## Prossimi passi
 
 1. **Clan e stagioni**, status alterati, matchmaking per ELO; rate limiting prima dell'apertura su Internet.
-2. **Grafica e audio originali** per il client: sprite, tileset, effetti, musiche.
+2. **Audio ed effetti** originali (musiche, suoni, effetti delle abilità); font in pixel-art.

@@ -2,7 +2,16 @@
 
 Il progetto Godot 4.7 è in `client/`; l'estensione Rust (GDExtension) che porta `tactica-core` dentro Godot è in `client-ext/`.
 
-Per ora la grafica è segnaposto, originale e disegnata da codice: caselle isometriche con altezza e terreno, unità come gettoni colorati con la lettera della classe. Gli asset definitivi verranno dopo.
+La grafica è pixel-art originale in stile tattico portatile, generata da `tools/pixelart` (vedi il suo README):
+
+- **Personaggi:** chibi animati nelle 4 direzioni, con posa d'azione, KO, colori di squadra e aspetto variabile.
+- **Mappe:** caselle isometriche con fianchi stratificati, acqua e lava animate, vegetazione in rilievo.
+- **Interfaccia:** cornici dorate.
+
+La mappa si disegna in coordinate native e si ingrandisce per un fattore intero con filtro "nearest", così i pixel restano nitidi. La rotella cambia lo zoom e il tasto centrale trascinato sposta la mappa.
+
+![Battaglia](img/battaglia.png)
+![Roster](img/roster.png)
 
 ## Avvio
 
@@ -37,7 +46,7 @@ godot --path client --editor
   - **Registro degli eventi** in italiano, con numeri fluttuanti per danni, cure, mancati, sanzioni e livelli.
   - **Fine partita:** risultato, ELO, monete, bottino, esperienza e punti risonanza per unità.
 
-Comandi: clic sinistro per scegliere la casella, clic destro per annullare la modalità corrente.
+Comandi: clic sinistro per scegliere la casella, clic destro per annullare la modalità corrente, rotella per lo zoom, tasto centrale per spostare la mappa.
 
 ## Divisione dei compiti
 

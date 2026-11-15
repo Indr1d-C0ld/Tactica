@@ -91,25 +91,29 @@ func _build_ui() -> void:
 	_card = RichTextLabel.new()
 	_card.bbcode_enabled = true
 	_card.fit_content = true
-	_card.custom_minimum_size = Vector2(250, 0)
+	_card.custom_minimum_size = Vector2(220, 0)
 	left.add_child(_card)
 	_actions = UI.vbox(4)
 	left.add_child(_actions)
 	var lp := UI.panel(left)
 	lp.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
 	lp.offset_top = 48
-	lp.offset_right = 280
+	lp.offset_right = 250
+	lp.offset_bottom = -8
+	lp.self_modulate = Color(1, 1, 1, 0.9)
 	add_child(lp)
 
 	_log = RichTextLabel.new()
 	_log.bbcode_enabled = true
 	_log.scroll_following = true
-	_log.custom_minimum_size = Vector2(290, 0)
+	_log.custom_minimum_size = Vector2(250, 0)
 	_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var rp := UI.panel(_log)
 	rp.set_anchors_and_offsets_preset(Control.PRESET_RIGHT_WIDE)
 	rp.offset_top = 48
-	rp.offset_left = -310
+	rp.offset_left = -270
+	rp.offset_bottom = -8
+	rp.self_modulate = Color(1, 1, 1, 0.9)
 	add_child(rp)
 
 	_hint = RichTextLabel.new()
@@ -126,15 +130,21 @@ func _build_ui() -> void:
 	add_child(hp)
 
 
+var zoom := 0
+var pan := Vector2.ZERO
+var _dragging := false
+
+
 func _fit_board() -> void:
 	if board == null or board.w == 0:
 		return
-	var avail := Rect2(Vector2(290, 56), size - Vector2(290 + 320, 56 + 80))
+	# Scala intera (pixel nitidi) adattata allo spazio tra i pannelli; rotella per lo zoom.
+	var avail := Rect2(Vector2(150, 44), size - Vector2(300, 44 + 40))
 	var ext := board.extent()
-	var s := minf(avail.size.x / ext.size.x, avail.size.y / ext.size.y)
-	s = clampf(s, 0.5, 1.8)
+	var fit := floori(minf(avail.size.x / ext.size.x, avail.size.y / ext.size.y))
+	var s := clampi(fit + zoom, 1, 6)
 	board.scale = Vector2(s, s)
-	board.position = avail.get_center() - ext.get_center() * s
+	board.position = (avail.get_center() - ext.get_center() * s + pan).round()
 
 
 func refresh() -> void:
@@ -227,12 +237,12 @@ func _set_mode(m: String, ability := "") -> void:
 		"move":
 			for p in engine.reachable(a):
 				reach[p] = true
-				board.highlight[p] = Color(0.3, 0.6, 1.0, 0.45)
+				board.highlight[p] = Color(0.4, 0.7, 1.0, 0.85)
 			_hint.text = "Scegli dove muovere (clic destro per annullare)"
 		"ability":
 			for p in engine.targets(a, ability):
 				targets[p] = true
-				board.highlight[p] = Color(1.0, 0.3, 0.3, 0.35)
+				board.highlight[p] = Color(1.0, 0.35, 0.3, 0.8)
 			_hint.text = "Scegli il bersaglio"
 		"facing":
 			_hint.text = "Scegli la direzione: gli attacchi alle spalle colpiscono più facilmente"
@@ -265,6 +275,18 @@ func _preview(t: Vector2i) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if ended:
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		zoom += 1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else -1
+		zoom = clampi(zoom, -3, 3)
+		_fit_board()
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_MIDDLE:
+		_dragging = event.pressed
+		return
+	if event is InputEventMouseMotion and _dragging:
+		pan += event.relative
+		_fit_board()
 		return
 	if event is InputEventMouseMotion:
 		var t := board.pick(board.get_local_mouse_position())
@@ -343,6 +365,10 @@ func _announce(msg: Dictionary, raw: String) -> void:
 			continue
 		var u: Dictionary = units[int(v["unit"])]
 		var at := Vector2i(int(u["x"]), int(u["y"]))
+		if kind == "AbilityUsed":
+			board.play(int(v["unit"]), "act")
+		elif kind == "Damaged" or kind == "TerrainDamage":
+			board.play(int(v["unit"]), "hurt", 0.3)
 		if ANNOUNCE.has(kind):
 			board.add_float(at, ANNOUNCE[kind][1] % int(v["amount"]), ANNOUNCE[kind][0])
 		elif kind == "Missed":

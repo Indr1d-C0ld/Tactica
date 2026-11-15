@@ -2,6 +2,7 @@ extends Control
 ## Menu principale: partite, roster (equipaggiamento, classi), negozio, statistiche.
 
 const UI := preload("res://scripts/ui.gd")
+const Sprites := preload("res://scripts/sprites.gd")
 const MAX_PARTY := 4
 
 var main: Node
@@ -198,7 +199,11 @@ func _build_roster() -> void:
 
 func _unit_panel(u: Dictionary) -> Control:
 	var id := int(u["id"])
+	var outer := UI.hbox(14)
+	outer.add_child(Sprites.portrait(str(u["class"]), 0, str(u["name"])))
 	var box := UI.vbox(4)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer.add_child(box)
 	box.add_child(UI.label("%s — %s  Lv %d  (EXP %d/100)" % [u["name"], u["class_name"], int(u["level"]), int(u["xp"])], 17, UI.ACCENT))
 	var eq: Array[String] = []
 	for k in u["equipment"]:
@@ -264,8 +269,10 @@ func _unit_panel(u: Dictionary) -> Control:
 			locked.append("%s (%s)" % [c["name"], c["requirement"]])
 	box.add_child(row2)
 	if not locked.is_empty():
-		box.add_child(UI.label("Da sbloccare: " + "; ".join(locked), 12, UI.MUTED))
-	return UI.panel(box, 10)
+		var lk := UI.label("Da sbloccare: " + "; ".join(locked), 12, UI.MUTED)
+		lk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(lk)
+	return UI.panel(outer, 10)
 
 
 func _result(r: Dictionary, ok_text: String) -> bool:

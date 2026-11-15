@@ -1,0 +1,34 @@
+{
+  "cell": 32,
+  "frames": [
+    "front_idle0",
+    "front_idle1",
+    "back_idle0",
+    "back_idle1",
+    "front_act",
+    "back_act",
+    "ko"
+  ],
+  "classes": [
+    "vanguard",
+    "scout",
+    "arcanist",
+    "mender",
+    "runeblade",
+    "warden"
+  ],
+  "teams": 2,
+  "hair": [
+    "castani",
+    "biondi",
+    "neri",
+    "rossi",
+    "argento"
+  ],
+  "skin": [
+    "chiara",
+    "olivastra",
+    "scura"
+  ],
+  "row_formula": "((class * teams + team) * len(hair) + hair) * len(skin) + skin"
+}

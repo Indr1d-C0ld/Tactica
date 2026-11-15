@@ -20,9 +20,7 @@ var current: Control = null
 
 func _ready() -> void:
 	_parse_args()
-	var t := Theme.new()
-	t.default_font_size = 15
-	theme = t
+	theme = _make_theme()
 	if opts.has("server"):
 		Net.base_url = str(opts["server"])
 	if opts.get("offline", false):
@@ -31,6 +29,41 @@ func _ready() -> void:
 		_autoplay_login()
 	else:
 		show_login()
+
+
+## Tema dell'interfaccia: cornici in pixel-art generate da tools/pixelart.
+func _make_theme() -> Theme:
+	var t := Theme.new()
+	t.default_font_size = 15
+	var win := _frame("ui_window", 4, 10)
+	t.set_stylebox("panel", "PanelContainer", win)
+	t.set_stylebox("panel", "TabContainer", win)
+	var states := {"normal": "ui_button", "hover": "ui_button_hover", "pressed": "ui_button_pressed",
+		"disabled": "ui_button_disabled", "hover_pressed": "ui_button_pressed"}
+	for st in states:
+		t.set_stylebox(st, "Button", _frame(states[st], 3, 7))
+		t.set_stylebox(st, "OptionButton", _frame(states[st], 3, 7))
+	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
+	t.set_stylebox("focus", "OptionButton", StyleBoxEmpty.new())
+	t.set_stylebox("tab_selected", "TabContainer", _frame("ui_button_hover", 3, 8))
+	t.set_stylebox("tab_unselected", "TabContainer", _frame("ui_button", 3, 8))
+	t.set_stylebox("tab_hovered", "TabContainer", _frame("ui_button_hover", 3, 8))
+	t.set_stylebox("normal", "LineEdit", _frame("ui_field", 3, 7))
+	t.set_stylebox("focus", "LineEdit", _frame("ui_button_hover", 3, 7))
+	for type in ["Button", "OptionButton"]:
+		t.set_color("font_color", type, Color(0.98, 0.94, 0.84))
+		t.set_color("font_hover_color", type, Color(1, 1, 0.9))
+		t.set_color("font_disabled_color", type, Color(0.55, 0.55, 0.55))
+	return t
+
+
+func _frame(name: String, margin: int, content: int) -> StyleBoxTexture:
+	var s := StyleBoxTexture.new()
+	s.texture = load("res://assets/%s.png" % name)
+	for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+		s.set_texture_margin(side, margin)
+		s.set_content_margin(side, content)
+	return s
 
 
 func _parse_args() -> void:
