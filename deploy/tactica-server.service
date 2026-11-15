@@ -1,0 +1,42 @@
+# Servizio di sistema per il server di gioco (Debian).
+# Installazione: vedi docs/SERVER.md, sezione "Deploy".
+[Unit]
+Description=Tactica - server di gioco
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tactica-server
+Environment=TACTICA_ADDR=127.0.0.1:7777
+Environment=TACTICA_DB=sqlite:///var/lib/tactica/tactica.db
+Environment=TACTICA_BACKUP_DIR=/var/lib/tactica/backup
+Environment=TACTICA_BACKUP_EVERY_HOURS=24
+Environment=TACTICA_BACKUP_KEEP=14
+Environment=TACTICA_TURN_SECS=60
+Environment=RUST_LOG=info,sqlx=warn
+Restart=on-failure
+RestartSec=3
+
+# Utente effimero e dati in /var/lib/tactica
+DynamicUser=yes
+StateDirectory=tactica
+WorkingDirectory=/var/lib/tactica
+
+# Isolamento
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

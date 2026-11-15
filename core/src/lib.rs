@@ -11,6 +11,6 @@ pub mod rng;
 pub mod statute;
 pub mod unit;
 
-pub use battle::{Action, ActionError, Battle, BattleSetup, Event};
+pub use battle::{Action, ActionError, Battle, BattleSetup, Event, Snapshot};
 pub use map::{Biome, Dir, Map, MapParams, Pos, Terrain};
 pub use unit::{Unit, UnitSetup};

@@ -17,6 +17,7 @@ use crate::unit::{Condition, Unit, UnitId, UnitSetup};
 pub const MAX_TURNS: u32 = 400;
 pub const CT_READY: i32 = 100;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BattleSetup {
     pub seed: u64,
@@ -27,13 +28,21 @@ pub struct BattleSetup {
     pub statutes: usize,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Action {
     Move(Pos),
-    Act { ability: AbilityId, target: Pos },
+    Act {
+        ability: AbilityId,
+        target: Pos,
+    },
     EndTurn(Dir),
+    /// La squadra indicata si arrende (valida in qualsiasi momento; il server
+    /// accetta solo la resa della squadra di chi la invia).
+    Concede(u8),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Event {
     TurnStarted {
@@ -150,7 +159,59 @@ pub struct Battle {
     winner: Option<Option<u8>>,
 }
 
+/// Stato pubblico della battaglia, senza il generatore casuale: è ciò che il
+/// server invia ai client. Ricostruendo una `Battle` da qui si ottengono
+/// anteprime e IA, ma non la risoluzione (i tiri restano segreti al server).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Snapshot {
+    pub map: Map,
+    pub units: Vec<Unit>,
+    pub statutes: Vec<Statute>,
+    pub turn: u32,
+    pub active: Option<usize>,
+    pub moved: bool,
+    pub acted: bool,
+    pub last_ability: Option<AbilityId>,
+    pub finished: bool,
+    /// Significativo solo se `finished`: `None` = pareggio.
+    pub winner: Option<u8>,
+}
+
 impl Battle {
+    pub fn snapshot(&self) -> Snapshot {
+        Snapshot {
+            map: self.map.clone(),
+            units: self.units.clone(),
+            statutes: self.statutes.clone(),
+            turn: self.turn,
+            active: self.active,
+            moved: self.moved,
+            acted: self.acted,
+            last_ability: self.last_ability,
+            finished: self.winner.is_some(),
+            winner: self.winner.flatten(),
+        }
+    }
+
+    /// Battaglia "di sola consultazione" da uno snapshot: generatore casuale
+    /// fittizio, quindi da usare per anteprime e IA lato client, non per giocare.
+    pub fn from_snapshot(s: Snapshot) -> Battle {
+        Battle {
+            seed: 0,
+            map: s.map,
+            units: s.units,
+            statutes: s.statutes,
+            rng: Rng::new(0),
+            turn: s.turn,
+            active: s.active,
+            moved: s.moved,
+            acted: s.acted,
+            last_ability: s.last_ability,
+            winner: s.finished.then_some(s.winner),
+        }
+    }
+
     pub fn new(setup: &BattleSetup) -> (Self, Vec<Event>) {
         let mut rng = Rng::new(setup.seed);
         let mut map_rng = rng.fork();
@@ -375,9 +436,22 @@ impl Battle {
         if self.winner.is_some() {
             return Err(ActionError::BattleOver);
         }
-        let idx = self.active.ok_or(ActionError::BattleOver)?;
         let mut ev = Vec::new();
+        if let Action::Concede(team) = action {
+            for u in self
+                .units
+                .iter_mut()
+                .filter(|u| u.team == team && u.is_active())
+            {
+                u.condition = Condition::Expelled;
+                ev.push(Event::Expelled { unit: u.id });
+            }
+            self.check_victory(&mut ev);
+            return Ok(ev);
+        }
+        let idx = self.active.ok_or(ActionError::BattleOver)?;
         match action {
+            Action::Concede(_) => unreachable!(),
             Action::Move(dest) => {
                 if self.moved {
                     return Err(ActionError::AlreadyMoved);

@@ -23,6 +23,17 @@ Gioco tattico fantasy originale, ispirato ai classici tattici a turni per consol
   - IA golosa che rispetta gli statuti;
   - replay (seed più azioni).
 - `cli/`: demo da terminale con una battaglia tra IA e la verifica del replay.
+- `server/`: server autoritativo (axum, WebSocket, SQLite WAL). Comprende:
+  - account Argon2id;
+  - roster persistente con esperienza e livelli;
+  - partite PvE contro l'IA e PvP con ELO;
+  - IA che subentra a chi si disconnette o va oltre il tempo;
+  - replay verificabili;
+  - statistiche personali e globali;
+  - backup automatici.
+
+  Dettagli in [docs/SERVER.md](docs/SERVER.md).
+- `deploy/`: unit systemd isolata e Caddyfile per TLS.
 
 ## Comandi
 
@@ -38,8 +49,11 @@ cargo run --release -p tactica-cli -- 12345
 cargo run --release -p tactica-core --example balance 1000
 ```
 
+```bash
+cargo run --release -p tactica-server
+```
+
 ## Prossimi passi
 
-1. **Server.** Rust con tokio e axum, WebSocket e PostgreSQL; account, lobby e partite autoritative.
-2. **Progressione persistente.** Abilità apprese dall'equipaggiamento, classi sbloccabili, profilo e statistiche globali.
-3. **Client Godot 4** con godot-rust, che riusa `core/`.
+1. **Progressione persistente.** Abilità apprese dall'equipaggiamento, classi sbloccabili, clan e stagioni; matchmaking per ELO e rate limiting prima dell'apertura su Internet.
+2. **Client Godot 4** con godot-rust, che riusa `core/`.

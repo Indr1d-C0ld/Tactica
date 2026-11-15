@@ -7,6 +7,7 @@ pub type UnitId = u32;
 
 pub const XP_PER_LEVEL: i32 = 100;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Condition {
     Active,
@@ -15,6 +16,7 @@ pub enum Condition {
 }
 
 /// Contatori per unità: alimentano le statistiche personali e globali sul server.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Tally {
     pub damage_dealt: i32,
@@ -27,14 +29,19 @@ pub struct Tally {
     pub xp_gained: i32,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnitSetup {
     pub name: String,
     pub team: u8,
     pub class: Class,
     pub level: i32,
+    /// Esperienza accumulata verso il prossimo livello (progressione persistente).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub xp: i32,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Unit {
     pub id: UnitId,
@@ -65,7 +72,7 @@ impl Unit {
             team: setup.team,
             class: setup.class,
             level,
-            xp: 0,
+            xp: setup.xp.clamp(0, XP_PER_LEVEL - 1),
             stats,
             hp: stats.max_hp,
             mp: stats.max_mp,

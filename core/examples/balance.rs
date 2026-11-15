@@ -25,6 +25,7 @@ fn main() {
                     team,
                     class,
                     level: 3,
+                    xp: 0,
                 })
             })
             .collect();

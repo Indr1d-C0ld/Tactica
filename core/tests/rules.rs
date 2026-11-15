@@ -14,6 +14,7 @@ fn setup(seed: u64) -> BattleSetup {
                 team,
                 class,
                 level: 3,
+                xp: 0,
             })
         })
         .collect();
@@ -117,12 +118,14 @@ fn violating_a_statute_suspends_then_expels() {
             team: 0,
             class: Class::Mender,
             level: 1,
+            xp: 0,
         },
         UnitSetup {
             name: "X".into(),
             team: 1,
             class: Class::Vanguard,
             level: 1,
+            xp: 0,
         },
     ];
     // Cerca un seed in cui lo statuto estratto è NoHealing e tocca al Guaritore.
@@ -188,4 +191,32 @@ fn ai_respects_statutes() {
         violations += b.units.iter().map(|u| u.tally.violations).sum::<i32>();
     }
     assert_eq!(violations, 0);
+}
+
+#[test]
+fn snapshot_roundtrip_keeps_previews() {
+    let (mut b, _) = Battle::new(&setup(11));
+    ai::autoplay(&mut b, 30);
+    let view = Battle::from_snapshot(b.snapshot());
+    assert_eq!(view.snapshot(), b.snapshot());
+    if let Some(idx) = b.active_index() {
+        assert_eq!(view.reachable(idx), b.reachable(idx));
+        assert_eq!(ai::plan_turn(&view), ai::plan_turn(&b));
+    }
+}
+
+#[test]
+fn concede_ends_battle_and_replays() {
+    let s = setup(5);
+    let (mut b, _) = Battle::new(&s);
+    let (mut actions, _) = ai::autoplay(&mut b, 12);
+    let team = b.active_unit().map_or(0, |u| 1 - u.team);
+    b.apply(Action::Concede(team)).unwrap();
+    actions.push(Action::Concede(team));
+    assert_eq!(b.winner(), Some(Some(1 - team)));
+    let (mut r, _) = Battle::new(&s);
+    for a in actions {
+        r.apply(a).unwrap();
+    }
+    assert_eq!(r.state_hash(), b.state_hash());
 }

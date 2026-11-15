@@ -110,6 +110,7 @@ fn demo_setup(seed: u64) -> BattleSetup {
                     team,
                     class,
                     level: 3,
+                    xp: 0,
                 })
         })
         .collect();

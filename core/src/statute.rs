@@ -7,6 +7,7 @@ use crate::rng::Rng;
 pub const SUSPEND_TURNS: i32 = 2;
 pub const EXPEL_AT: i32 = 2;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Statute {
     NoHealing,

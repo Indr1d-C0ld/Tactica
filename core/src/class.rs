@@ -2,6 +2,7 @@
 
 use crate::ability::AbilityId;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Stats {
     pub max_hp: i32,
@@ -16,6 +17,7 @@ pub struct Stats {
     pub evade: i32,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Class {
     Vanguard,
@@ -33,6 +35,20 @@ impl Class {
         Class::Arcanist,
         Class::Mender,
     ];
+
+    /// Chiave stabile per database e protocollo.
+    pub fn key(self) -> &'static str {
+        match self {
+            Class::Vanguard => "vanguard",
+            Class::Scout => "scout",
+            Class::Arcanist => "arcanist",
+            Class::Mender => "mender",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<Class> {
+        Class::ALL.into_iter().find(|c| c.key() == key)
+    }
 
     pub fn name(self) -> &'static str {
         match self {

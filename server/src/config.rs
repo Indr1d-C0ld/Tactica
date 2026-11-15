@@ -1,0 +1,37 @@
+use std::env;
+
+#[derive(Clone, Debug)]
+pub struct Config {
+    /// Indirizzo di ascolto, es. `127.0.0.1:7777` (dietro reverse proxy TLS).
+    pub addr: String,
+    /// URL SQLite, es. `sqlite:///var/lib/tactica/tactica.db` o `sqlite::memory:`.
+    pub db_url: String,
+    /// Secondi a disposizione per turno prima che l'IA giochi al posto del giocatore.
+    pub turn_secs: u64,
+    /// Pausa tra le azioni dell'IA, per renderle seguibili dal client.
+    pub ai_delay_ms: u64,
+    /// Durata delle sessioni di accesso.
+    pub session_days: i64,
+    /// Cartella dei backup periodici del database (`None` = disattivati).
+    pub backup_dir: Option<String>,
+    pub backup_every_hours: u64,
+    pub backup_keep: usize,
+}
+
+impl Config {
+    pub fn from_env() -> Self {
+        let num = |k: &str, d: u64| env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d);
+        Config {
+            addr: env::var("TACTICA_ADDR").unwrap_or_else(|_| "127.0.0.1:7777".into()),
+            db_url: env::var("TACTICA_DB").unwrap_or_else(|_| "sqlite://tactica.db".into()),
+            turn_secs: num("TACTICA_TURN_SECS", 60),
+            ai_delay_ms: num("TACTICA_AI_DELAY_MS", 400),
+            session_days: num("TACTICA_SESSION_DAYS", 30) as i64,
+            backup_dir: env::var("TACTICA_BACKUP_DIR")
+                .ok()
+                .filter(|s| !s.is_empty()),
+            backup_every_hours: num("TACTICA_BACKUP_EVERY_HOURS", 24).max(1),
+            backup_keep: num("TACTICA_BACKUP_KEEP", 14) as usize,
+        }
+    }
+}
