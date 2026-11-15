@@ -379,6 +379,18 @@ func _rebuild_actions() -> void:
 			var b := UI.button(txt, func() -> void: _set_mode("ability", key))
 			b.disabled = not bool(ab["usable"])
 			_actions.add_child(b)
+		# Consumabili della borsa: usarne uno è l'azione del turno.
+		var bag: Array = units[a].get("bag", [])
+		for slot in bag.size():
+			var it: Variant = bag[slot]
+			if it == null:
+				continue
+			var item_key := str(it["key"])
+			var sl: int = slot
+			var ib := UI.button("◈ " + str(it["name"]), func() -> void: _set_mode("item", str(sl)))
+			ib.tooltip_text = Items.plain(Items.describe(item_key))
+			ib.add_theme_color_override("font_color", Items.color_of(item_key))
+			_actions.add_child(ib)
 	_actions.add_child(UI.button("Fine turno", func() -> void:
 		_set_mode("facing")
 		_rebuild_actions()))
@@ -414,6 +426,11 @@ func _set_mode(m: String, ability := "") -> void:
 				targets[p] = true
 				board.highlight[p] = Color(1.0, 0.35, 0.3, 0.8)
 			_hint.text = "Scegli il bersaglio"
+		"item":
+			for p in engine.item_targets(a, int(ability)):
+				targets[p] = true
+				board.highlight[p] = Color(0.45, 0.95, 0.55, 0.8)
+			_hint.text = "Scegli su chi usare l'oggetto"
 		"facing":
 			_hint.text = "Scegli la direzione: gli attacchi alle spalle colpiscono più facilmente"
 		_:
@@ -422,7 +439,9 @@ func _set_mode(m: String, ability := "") -> void:
 
 
 func _preview(t: Vector2i) -> void:
-	var p: Dictionary = JSON.parse_string(engine.preview_json(_active(), sel_ability, t))
+	var raw: String = engine.item_preview_json(_active(), int(sel_ability), t) if mode == "item" \
+		else engine.preview_json(_active(), sel_ability, t)
+	var p: Dictionary = JSON.parse_string(raw)
 	board.area = {}
 	for c in p.get("area", []):
 		board.area[Vector2i(int(c[0]), int(c[1]))] = true
@@ -486,7 +505,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				_show_card(under)
 			else:
 				_show_card(_active())
-			if mode == "ability" and targets.has(t):
+			if mode in ["ability", "item"] and targets.has(t):
 				_preview(t)
 			else:
 				_show_tile(t)
@@ -502,6 +521,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_send(TacticaEngine.make_move(t.x, t.y))
 		elif mode == "ability" and targets.has(t):
 			_send(TacticaEngine.make_act(sel_ability, t.x, t.y))
+		elif mode == "item" and targets.has(t):
+			_send(TacticaEngine.make_use_item(int(sel_ability), t.x, t.y))
 
 
 ## Terreno, altezza ed effetti della casella sotto il cursore, nella barra in basso.
@@ -613,6 +634,16 @@ func _announce(msg: Dictionary, raw: String) -> void:
 		elif kind == "Defeated":
 			board.add_float(at, "KO", UI.BAD)
 			Sfx.play("ko")
+		elif kind == "ItemUsed":
+			board.play(int(v["unit"]), "act")
+			Sfx.play("buff")
+		elif kind == "Revived":
+			board.effect("heal", at)
+			board.add_float(at, "In piedi!", UI.GOOD)
+			Sfx.play("levelup")
+		elif kind == "MpRestored":
+			board.effect("buff", at)
+			board.add_float(at, "+%d MP" % int(v["amount"]), Color(0.5, 0.75, 1.0))
 		elif kind == "LootDropped":
 			var rar := str(v["rarity"]).to_lower()
 			board.add_float(at, "Bottino!", Items.color(rar))

@@ -65,6 +65,7 @@ struct RosterRow {
     level: i64,
     xp: i64,
     equipment: String,
+    bag: String,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -89,6 +90,8 @@ pub struct RosterUnit {
     pub xp: i64,
     /// Chiavi degli oggetti equipaggiati.
     pub equipment: Vec<String>,
+    /// Chiavi dei consumabili nella borsa di battaglia.
+    pub bag: Vec<String>,
     /// Abilità usabili in battaglia con la configurazione attuale.
     pub usable: Vec<&'static str>,
     /// Abilità con progressi (in addestramento o padroneggiate), di ogni scuola.
@@ -104,6 +107,13 @@ impl RosterUnit {
 
     pub fn items(&self) -> Vec<ItemRef> {
         self.equipment
+            .iter()
+            .filter_map(|k| ItemRef::from_key(k))
+            .collect()
+    }
+
+    pub fn bag_items(&self) -> Vec<ItemRef> {
+        self.bag
             .iter()
             .filter_map(|k| ItemRef::from_key(k))
             .collect()
@@ -126,6 +136,7 @@ impl RosterUnit {
             xp: self.xp as i32,
             equipment: self.items(),
             mastered: self.mastered(),
+            bag: self.bag_items(),
         }
     }
 }
@@ -181,6 +192,7 @@ fn build_unit(row: RosterRow, progress: &[(i64, String, i64, bool)]) -> RosterUn
         xp: 0,
         equipment: equipment.clone(),
         mastered: mastered.clone(),
+        bag: Vec::new(),
     };
     let usable = Unit::new(0, &setup, Pos::new(0, 0), Dir::E)
         .abilities()
@@ -195,6 +207,7 @@ fn build_unit(row: RosterRow, progress: &[(i64, String, i64, bool)]) -> RosterUn
         level: row.level,
         xp: row.xp,
         equipment: equipment.iter().map(|i| i.key().to_string()).collect(),
+        bag: parse_items(&row.bag).iter().map(|i| i.key()).collect(),
         usable,
         abilities,
         unlocked_classes: Class::ALL
@@ -207,7 +220,7 @@ fn build_unit(row: RosterRow, progress: &[(i64, String, i64, bool)]) -> RosterUn
 
 pub async fn roster(db: &SqlitePool, account: i64) -> sqlx::Result<Vec<RosterUnit>> {
     let rows: Vec<RosterRow> = sqlx::query_as(
-        "SELECT id, name, class, level, xp, equipment FROM roster WHERE account_id = ? ORDER BY id",
+        "SELECT id, name, class, level, xp, equipment, bag FROM roster WHERE account_id = ? ORDER BY id",
     )
     .bind(account)
     .fetch_all(db)

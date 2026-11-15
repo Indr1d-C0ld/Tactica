@@ -9,6 +9,7 @@ use std::collections::VecDeque;
 use std::fmt;
 
 use crate::ability::{AbilityId, Element, Kind};
+use crate::consumable::Cast;
 use crate::gear::{self, ItemRef, Rarity};
 use crate::map::{Dir, Map, MapParams, Pos, Terrain};
 use crate::rng::Rng;
@@ -80,6 +81,11 @@ pub enum Action {
         target: Pos,
     },
     EndTurn(Dir),
+    /// Usa il consumabile nella posizione `slot` della borsa (è l'azione del turno).
+    UseItem {
+        slot: u8,
+        target: Pos,
+    },
     /// La squadra indicata si arrende (valida in qualsiasi momento; il server
     /// accetta solo la resa della squadra di chi la invia).
     Concede(u8),
@@ -123,6 +129,25 @@ pub enum Event {
     },
     Defeated {
         unit: UnitId,
+    },
+    /// Un'unità usa un consumabile della borsa.
+    ItemUsed {
+        unit: UnitId,
+        item: ItemRef,
+        target: Pos,
+    },
+    /// Un alleato sconfitto torna in campo.
+    Revived {
+        unit: UnitId,
+        by: UnitId,
+        hp: i32,
+    },
+    /// MP ripristinati (Etere).
+    MpRestored {
+        unit: UnitId,
+        by: UnitId,
+        amount: i32,
+        mp: i32,
     },
     /// Un'unità sconfitta lascia un oggetto sulla sua casella.
     LootDropped {
@@ -198,6 +223,7 @@ pub enum ActionError {
     NotEnoughMp,
     OutOfRange,
     Silenced,
+    NoItem,
 }
 
 impl fmt::Display for ActionError {
@@ -210,6 +236,7 @@ impl fmt::Display for ActionError {
             ActionError::UnknownAbility => "abilità non disponibile per questa classe",
             ActionError::NotEnoughMp => "MP insufficienti",
             ActionError::OutOfRange => "bersaglio fuori portata",
+            ActionError::NoItem => "nessun consumabile in quella posizione della borsa",
             ActionError::Silenced => "l'unità è ridotta al silenzio",
         };
         f.write_str(s)
@@ -252,6 +279,8 @@ pub struct Battle {
     pub picked: Vec<(UnitId, ItemRef)>,
     /// Unità sconfitte per cui il bottino è già stato estratto.
     loot_rolled: Vec<UnitId>,
+    /// Consumabili usati, con chi li ha usati (il server li toglie dalla borsa).
+    pub consumed: Vec<(UnitId, ItemRef)>,
 }
 
 /// Stato pubblico della battaglia, senza il generatore casuale: è ciò che il
@@ -324,6 +353,7 @@ impl Battle {
             loot_rolled,
             loot: s.loot,
             picked: s.picked,
+            consumed: Vec::new(),
         }
     }
 
@@ -379,6 +409,7 @@ impl Battle {
             loot: Vec::new(),
             picked: Vec::new(),
             loot_rolled: Vec::new(),
+            consumed: Vec::new(),
         };
         let mut ev = Vec::new();
         b.check_victory(&mut ev);
@@ -499,15 +530,33 @@ impl Battle {
         ability: AbilityId,
         target: Pos,
     ) -> Result<(), ActionError> {
+        self.check_cast(idx, from, ability.into(), target, false)
+    }
+
+    /// Come `check_target`; `item`: lanciata da un consumabile (niente MP e
+    /// nessun bisogno di conoscerla).
+    pub fn check_cast(
+        &self,
+        idx: usize,
+        from: Pos,
+        cast: Cast,
+        target: Pos,
+        item: bool,
+    ) -> Result<(), ActionError> {
         let u = &self.units[idx];
-        if !u.can_use(ability) {
-            return Err(ActionError::UnknownAbility);
+        let ab = cast.ability.def();
+        if !item {
+            if !u.can_use(cast.ability) {
+                return Err(ActionError::UnknownAbility);
+            }
+            if u.mp < ab.mp_cost {
+                return Err(ActionError::NotEnoughMp);
+            }
         }
-        let ab = ability.def();
-        if u.mp < ab.mp_cost {
-            return Err(ActionError::NotEnoughMp);
-        }
-        if u.has(Status::Silence) && matches!(ab.kind, Kind::Magic | Kind::Heal | Kind::Support) {
+        if cast.silenceable
+            && u.has(Status::Silence)
+            && matches!(ab.kind, Kind::Magic | Kind::Heal | Kind::Support)
+        {
             return Err(ActionError::Silenced);
         }
         let (Some(tt), Some(ft)) = (self.map.tile(target), self.map.tile(from)) else {
@@ -537,8 +586,15 @@ impl Battle {
 
     /// Effetti previsti (deterministici, senza variazione) dell'abilità.
     pub fn outcomes(&self, idx: usize, from: Pos, ability: AbilityId, target: Pos) -> Vec<Outcome> {
-        let ab = ability.def();
+        self.outcomes_cast(idx, from, ability.into(), target)
+    }
+
+    /// Effetti previsti di un'abilità lanciata anche da un consumabile.
+    pub fn outcomes_cast(&self, idx: usize, from: Pos, cast: Cast, target: Pos) -> Vec<Outcome> {
+        let ab = cast.ability.def();
         let u = &self.units[idx];
+        let mag = u.stats.mag.max(cast.min_mag);
+        let fixed = ab.power * cast.power_pct / 100;
         let from_h = self.map.tile(from).map_or(0, |t| t.height);
         let gear = u.gear_effects();
         // Gli attacchi fisici senza elemento prendono quello dell'arma.
@@ -549,6 +605,25 @@ impl Battle {
         });
         let mut out = Vec::new();
         for (ti, t) in self.units.iter().enumerate() {
+            // La rianimazione cerca solo alleati sconfitti, su caselle libere.
+            if ab.revive {
+                if t.condition != Condition::Defeated
+                    || t.team != u.team
+                    || t.pos.dist(target) > ab.aoe
+                    || self.unit_at(t.pos).is_some()
+                {
+                    continue;
+                }
+                out.push(Outcome {
+                    target: ti,
+                    hit_pct: 100,
+                    amount: (t.stats.max_hp * ab.power / 100).max(1),
+                    heal: true,
+                    status: None,
+                    cleanse: false,
+                });
+                continue;
+            }
             if !t.is_active() {
                 continue;
             }
@@ -576,7 +651,8 @@ impl Battle {
                     }
                     (100, 0, false)
                 }
-                Kind::Heal => (100, u.stats.mag * ab.power / 100 * 2, true),
+                Kind::Heal if ab.fixed => (100, fixed, true),
+                Kind::Heal => (100, mag * ab.power / 100 * 2, true),
                 Kind::Physical => {
                     let raw = u.stats.atk * ab.power / 100 * 2;
                     let def = t.stats.def + tile.terrain.def_bonus();
@@ -596,8 +672,9 @@ impl Battle {
                     };
                     (hit, dmg, false)
                 }
+                Kind::Magic if ab.fixed => (100, fixed, false),
                 Kind::Magic => {
-                    let raw = u.stats.mag * ab.power / 100 * 2;
+                    let raw = mag * ab.power / 100 * 2;
                     (100, raw * 100 / (100 + 5 * t.stats.res), false)
                 }
             };
@@ -687,6 +764,16 @@ impl Battle {
                 self.units[idx].facing = dir;
                 self.finish_turn(idx, &mut ev);
             }
+            Action::UseItem { slot, target } => {
+                if self.acted {
+                    return Err(ActionError::AlreadyActed);
+                }
+                self.use_item(idx, slot, target, &mut ev)?;
+                self.check_victory(&mut ev);
+                if self.winner.is_none() && !self.units[idx].is_active() {
+                    self.finish_turn(idx, &mut ev);
+                }
+            }
         }
         self.roll_drops(&mut ev);
         Ok(ev)
@@ -699,17 +786,59 @@ impl Battle {
         target: Pos,
         ev: &mut Vec<Event>,
     ) -> Result<(), ActionError> {
+        self.act_cast(idx, ability.into(), target, false, ev)
+    }
+
+    /// Usa il consumabile in `slot` della borsa dell'unità attiva.
+    fn use_item(
+        &mut self,
+        idx: usize,
+        slot: u8,
+        target: Pos,
+        ev: &mut Vec<Event>,
+    ) -> Result<(), ActionError> {
+        let item = self.units[idx]
+            .bag
+            .get(slot as usize)
+            .copied()
+            .flatten()
+            .ok_or(ActionError::NoItem)?;
+        let cast = item.consumable().ok_or(ActionError::NoItem)?.cast();
         let from = self.units[idx].pos;
-        self.check_target(idx, from, ability, target)?;
+        self.check_cast(idx, from, cast, target, true)?;
+        let uid = self.units[idx].id;
+        self.units[idx].bag[slot as usize] = None;
+        self.consumed.push((uid, item));
+        ev.push(Event::ItemUsed {
+            unit: uid,
+            item,
+            target,
+        });
+        self.act_cast(idx, cast, target, true, ev)
+    }
+
+    fn act_cast(
+        &mut self,
+        idx: usize,
+        cast: Cast,
+        target: Pos,
+        item: bool,
+        ev: &mut Vec<Event>,
+    ) -> Result<(), ActionError> {
+        let ability = cast.ability;
+        let from = self.units[idx].pos;
+        self.check_cast(idx, from, cast, target, item)?;
         let ab = ability.def();
         let violated = self.violations(from, ability, target);
-        let outcomes = self.outcomes(idx, from, ability, target);
+        let outcomes = self.outcomes_cast(idx, from, cast, target);
 
         self.acted = true;
         self.last_ability = Some(ability);
         let (uid, uteam, ulevel) = {
             let u = &mut self.units[idx];
-            u.mp -= ab.mp_cost;
+            if !item {
+                u.mp -= ab.mp_cost;
+            }
             if target != u.pos {
                 u.facing = Dir::toward(u.pos, target);
             }
@@ -724,7 +853,35 @@ impl Battle {
 
         let mut xp = 0;
         for o in outcomes {
+            if ab.revive {
+                let t = &mut self.units[o.target];
+                if t.condition == Condition::Defeated {
+                    t.condition = Condition::Active;
+                    t.hp = o.amount.min(t.stats.max_hp);
+                    t.statuses.clear();
+                    t.ct = 0;
+                    ev.push(Event::Revived {
+                        unit: t.id,
+                        by: uid,
+                        hp: t.hp,
+                    });
+                    xp += 20;
+                }
+                continue;
+            }
             if !self.units[o.target].is_active() {
+                continue;
+            }
+            if ab.restore_mp {
+                let t = &mut self.units[o.target];
+                let amount = o.amount.min(t.stats.max_mp - t.mp).max(0);
+                t.mp += amount;
+                ev.push(Event::MpRestored {
+                    unit: t.id,
+                    by: uid,
+                    amount,
+                    mp: t.mp,
+                });
                 continue;
             }
             if ab.kind == Kind::Support {

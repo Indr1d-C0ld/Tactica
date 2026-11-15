@@ -320,6 +320,36 @@ func _unit_panel(u: Dictionary) -> Control:
 		_equip(id, keys)))
 	box.add_child(row)
 
+	# Borsa di battaglia: due consumabili scelti dall'inventario.
+	var bag_row := UI.hbox()
+	bag_row.add_child(UI.label("Borsa:", 0, UI.MUTED))
+	var bag_pickers: Array[OptionButton] = []
+	var current_bag: Array = u.get("bag", [])
+	var stock := {}
+	for it in inventory.get("items", []):
+		if str(Items.info(str(it["key"])).get("slot_key", "")) == "bag":
+			stock[str(it["key"])] = int(it["qty"])
+	for k in current_bag:
+		stock[str(k)] = int(stock.get(str(k), 0)) + 1
+	for slot in 2:
+		var opts := [["(vuoto)", ""]]
+		var sel := 0
+		for k in stock:
+			opts.append([Items.name_of(k), k])
+			if slot < current_bag.size() and str(current_bag[slot]) == k:
+				sel = opts.size() - 1
+		var ob := UI.option(opts, sel)
+		bag_pickers.append(ob)
+		bag_row.add_child(ob)
+	bag_row.add_child(UI.button("Prepara borsa", func() -> void:
+		var keys: Array = []
+		for ob in bag_pickers:
+			var k := str(ob.get_selected_metadata())
+			if k != "":
+				keys.append(k)
+		_set_bag(id, keys)))
+	box.add_child(bag_row)
+
 	var row2 := UI.hbox()
 	var cls_opts := []
 	var cur := 0
@@ -358,6 +388,10 @@ func _recruit(name: String, cls: String) -> void:
 
 func _equip(id: int, keys: Array) -> void:
 	await _result(await Net.put_json("/api/roster/%d/equipment" % id, {"items": keys}), "Equipaggiamento aggiornato")
+
+
+func _set_bag(id: int, keys: Array) -> void:
+	await _result(await Net.put_json("/api/roster/%d/bag" % id, {"items": keys}), "Borsa preparata")
 
 
 func _change_class(id: int, cls: String) -> void:
@@ -498,6 +532,13 @@ func _autoplay() -> void:
 			await Net.put_json("/api/roster/%d/equipment" % int(u["id"]), {"items": ["frost_rod", "leather"]})
 			await reload()
 			break
+	# Borsa: una pozione e una bomba per la prima unità, se c'è da spendere.
+	var first: Dictionary = me["roster"][0]
+	if (first.get("bag", []) as Array).is_empty() and int(inventory.get("coins", 0)) >= 130:
+		await Net.post_json("/api/shop/buy", {"item": "c.pozione.0"})
+		await Net.post_json("/api/shop/buy", {"item": "c.bomba.0"})
+		await Net.put_json("/api/roster/%d/bag" % int(first["id"]), {"items": ["c.pozione.0", "c.bomba.0"]})
+		await reload()
 	for tab in [[1, "menu_roster"], [2, "menu_negozio"], [3, "menu_clan"], [4, "menu_stagione"], [5, "menu_tornei"], [6, "menu_statistiche"]]:
 		_tabs.current_tab = tab[0]
 		await get_tree().create_timer(0.3).timeout

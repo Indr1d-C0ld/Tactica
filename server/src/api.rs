@@ -32,6 +32,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/roster/{id}", delete(dismiss))
         .route("/api/roster/{id}/equipment", put(armory::equip))
         .route("/api/roster/{id}/class", put(armory::change_class))
+        .route("/api/roster/{id}/bag", put(armory::set_bag))
         .route("/api/players/{name}", get(player))
         .route("/api/leaderboard", get(leaderboard))
         .route("/api/stats", get(global))
@@ -183,7 +184,7 @@ async fn dismiss(State(s): State<AppState>, user: AuthUser, Path(id): Path<i64>)
         .ok_or_else(|| ApiError::not_found("unità non trovata"))?;
     // L'equipaggiamento torna nell'inventario.
     let mut tx = s.db.begin().await?;
-    for item in unit.items() {
+    for item in unit.items().into_iter().chain(unit.bag_items()) {
         db::add_item(&mut tx, user.id, item, 1).await?;
     }
     sqlx::query("DELETE FROM roster WHERE id = ? AND account_id = ?")

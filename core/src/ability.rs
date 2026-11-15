@@ -67,6 +67,16 @@ pub enum AbilityId {
     Purify,
     Rally,
     Chains,
+    // Effetti degli oggetti consumabili (non si imparano).
+    Potion,
+    Ether,
+    Remedy,
+    Revive,
+    Elixir,
+    FireBomb,
+    FrostVial,
+    ToxinVial,
+    SleepPowder,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -94,6 +104,12 @@ pub struct Ability {
     pub effect: Option<StatusEffect>,
     /// Rimuove gli status negativi dagli alleati colpiti.
     pub cleanse: bool,
+    /// Valore fisso (`power`), indipendente dalle statistiche di chi agisce.
+    pub fixed: bool,
+    /// La cura ripristina MP invece di HP.
+    pub restore_mp: bool,
+    /// Rianima un alleato sconfitto con `power`% degli HP.
+    pub revive: bool,
 }
 
 const BASE: Ability = Ability {
@@ -113,6 +129,9 @@ const BASE: Ability = Ability {
     master_rp: 0,
     effect: None,
     cleanse: false,
+    fixed: false,
+    restore_mp: false,
+    revive: false,
 };
 
 const fn fx(status: Status, chance: i32, duration: i32) -> Option<StatusEffect> {
@@ -143,7 +162,7 @@ macro_rules! ab {
 use Element::*;
 
 /// Indicizzata per `AbilityId as usize`: l'ordine deve coincidere con l'enum.
-static TABLE: [Ability; 27] = [
+static TABLE: [Ability; 36] = [
     ab!(Strike, "strike", "Colpo", Physical, 100, 0, (1, 1)),
     ab!(
         HeavyBlow,
@@ -189,13 +208,27 @@ static TABLE: [Ability; 27] = [
         effect: fx(Status::Haste, 100, 3)),
     ab!(Chains, "chains", "Catene", Magic, 50, 8, (1, 3), vertical: 4, master_rp: 100,
         effect: fx(Status::Root, 75, 2)),
+    // Consumabili: valori fissi, portata corta (le bombe si lanciano).
+    ab!(Potion, "potion", "Pozione", Heal, 50, 0, (0, 1), vertical: 3, fixed: true),
+    ab!(Ether, "ether", "Etere", Heal, 25, 0, (0, 1), vertical: 3, fixed: true, restore_mp: true),
+    ab!(Remedy, "remedy", "Rimedio", Support, 0, 0, (0, 1), vertical: 3, cleanse: true),
+    ab!(Revive, "revive", "Essenza vitale", Heal, 30, 0, (1, 1), vertical: 3, revive: true),
+    ab!(Elixir, "elixir", "Elisir", Heal, 999, 0, (0, 1), vertical: 3, fixed: true),
+    ab!(FireBomb, "fire_bomb", "Bomba di brace", Magic, 45, 0, (1, 4), aoe: 1, vertical: 4,
+        element: Some(Fire), ranged: true, fixed: true),
+    ab!(FrostVial, "frost_vial", "Fiala di gelo", Magic, 35, 0, (1, 4), vertical: 4,
+        element: Some(Ice), ranged: true, fixed: true, effect: fx(Status::Slow, 70, 3)),
+    ab!(ToxinVial, "toxin_vial", "Fiala tossica", Support, 0, 0, (1, 4), aoe: 1, vertical: 4,
+        ranged: true, effect: fx(Status::Poison, 85, 4)),
+    ab!(SleepPowder, "sleep_powder", "Polvere del sonno", Support, 0, 0, (1, 3), aoe: 1, vertical: 4,
+        ranged: true, effect: fx(Status::Sleep, 55, 2)),
 ];
 
 impl AbilityId {
-    pub const ALL: [AbilityId; 27] = {
-        let mut out = [AbilityId::Strike; 27];
+    pub const ALL: [AbilityId; 36] = {
+        let mut out = [AbilityId::Strike; 36];
         let mut i = 0;
-        while i < 27 {
+        while i < 36 {
             out[i] = TABLE[i].id;
             i += 1;
         }

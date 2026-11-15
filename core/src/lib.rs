@@ -6,6 +6,7 @@ pub mod ability;
 pub mod ai;
 pub mod battle;
 pub mod class;
+pub mod consumable;
 pub mod gear;
 pub mod item;
 pub mod map;

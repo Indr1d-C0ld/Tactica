@@ -11,6 +11,8 @@ pub enum Slot {
     Armor,
     Accessory,
     Head,
+    /// Borsa di battaglia: consumabili.
+    Bag,
 }
 
 impl Slot {
@@ -22,6 +24,7 @@ impl Slot {
             Slot::Armor => "armatura",
             Slot::Accessory => "accessorio",
             Slot::Head => "copricapo",
+            Slot::Bag => "borsa",
         }
     }
 
@@ -31,6 +34,7 @@ impl Slot {
             Slot::Armor => "armor",
             Slot::Accessory => "accessory",
             Slot::Head => "head",
+            Slot::Bag => "bag",
         }
     }
 }
@@ -520,7 +524,7 @@ impl std::fmt::Display for LoadoutError {
 /// Al massimo un oggetto per slot, tutti utilizzabili dalla classe.
 pub fn validate_loadout(class: Class, equipment: &[ItemRef]) -> Result<(), LoadoutError> {
     for (i, it) in equipment.iter().enumerate() {
-        if !it.usable_by(class) {
+        if !it.usable_by(class) || it.slot() == Slot::Bag {
             return Err(LoadoutError::NotForClass(it.name()));
         }
         if equipment[..i].iter().any(|o| o.slot() == it.slot()) {
@@ -534,7 +538,10 @@ pub fn validate_loadout(class: Class, equipment: &[ItemRef]) -> Result<(), Loado
 pub fn sanitize_loadout(class: Class, equipment: &[ItemRef]) -> Vec<ItemRef> {
     let mut out: Vec<ItemRef> = Vec::new();
     for &it in equipment {
-        if it.usable_by(class) && !out.iter().any(|o| o.slot() == it.slot()) {
+        if it.usable_by(class)
+            && it.slot() != Slot::Bag
+            && !out.iter().any(|o| o.slot() == it.slot())
+        {
             out.push(it);
         }
     }

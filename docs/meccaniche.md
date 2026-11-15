@@ -24,6 +24,7 @@ Con l'esempio `balance` le squadre speculari vincono circa 50 e 50 (su 1000 batt
 | Statuti di battaglia | 9 statuti estratti a caso; chi li viola viene sospeso e poi espulso | |
 | Status alterati | 8 status, durate nei turni dell'unità | dettagli in [SERVER.md](SERVER.md#status-alterati) |
 | Bottino | le unità KO possono lasciare un oggetto; lo raccoglie l'avversario che si ferma sulla casella | dettagli in [SERVER.md](SERVER.md#bottino-e-oggetti-generati) |
+| Consumabili | borsa da 2 posti per unità; usarne uno è l'azione del turno; pergamene con MAG minima garantita | dettagli in [SERVER.md](SERVER.md#consumabili-e-borsa-di-battaglia) |
 | Effetti degli oggetti | elemento degli attacchi fisici, status al colpo (solo se il colpo va a segno), assorbimento, resistenze (danni dimezzati), immunità, rigenerazione | si sommano fra tutti gli oggetti equipaggiati |
 
 ## Mappe

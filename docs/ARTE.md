@@ -21,7 +21,7 @@ Secondo i termini di servizio di PixelLab (sezione 3.3), le immagini generate ap
 | azione, KO e camminata | da fotogrammi scelti delle animazioni |
 | colore della squadra | il blu saturo dei vestiti va nei colori chiave della squadra; l'acciaio, bluastro ma poco saturo, resta com'è |
 
-**Icone degli oggetti** (`tools/pixelart/pixellab/icons/`): una icona 32×32 per ognuna delle 37 basi, per ognuno dei 16 leggendari, per stivali e corno (oggetti del catalogo classico) e per il sacchetto del bottino a terra.
+**Icone degli oggetti** (`tools/pixelart/pixellab/icons/`): una icona 32×32 per ognuna delle 37 basi, dei 16 leggendari e dei 24 consumabili (`use_<codice>`), per stivali e corno (oggetti del catalogo classico) e per il sacchetto del bottino a terra: 80 in tutto.
 
 ```bash
 PIXELLAB_TOKEN=... python3 tools/pixelart/pixellab_icons.py generate

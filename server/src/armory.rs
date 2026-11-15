@@ -127,20 +127,35 @@ pub fn item_info(i: ItemRef) -> ItemInfo {
         bonus: i.bonus(),
         teaches: i.teaches().map(AbilityId::key),
         price: i.price(),
-        in_shop: matches!(i, ItemRef::Fixed(f) if f.def().in_shop),
+        in_shop: matches!(i, ItemRef::Fixed(f) if f.def().in_shop)
+            || SHOP_CONSUMABLES.contains(&i.key().as_str()),
         rarity: i.rarity().key(),
         rarity_name: i.rarity().name(),
-        effects: i.effects().into_iter().map(|e| e.describe()).collect(),
+        effects: match i.consumable() {
+            Some(c) => vec![c.describe()],
+            None => i.effects().into_iter().map(|e| e.describe()).collect(),
+        },
         icon: i.icon(),
         lore: i.lore(),
     }
 }
 
+/// Consumabili in vendita al negozio (qualità I).
+pub const SHOP_CONSUMABLES: [&str; 5] = [
+    "c.pozione.0",
+    "c.etere.0",
+    "c.rimedio.0",
+    "c.bomba.0",
+    "c.p_cura.0",
+];
+
 pub async fn items() -> Json<Vec<ItemInfo>> {
     Json(
         ItemId::ALL
             .into_iter()
-            .map(|i| item_info(i.into()))
+            .map(ItemRef::from)
+            .chain(SHOP_CONSUMABLES.iter().filter_map(|k| ItemRef::from_key(k)))
+            .map(item_info)
             .collect(),
     )
 }
@@ -195,16 +210,20 @@ pub async fn buy(
     user: AuthUser,
     Json(t): Json<Trade>,
 ) -> ApiResult<Json<Inventory>> {
-    let d = match parse_item(&t.item)? {
-        ItemRef::Fixed(f) if f.def().in_shop => f.def(),
-        _ => return Err(ApiError::bad_request("oggetto non in vendita")),
+    let item = parse_item(&t.item)?;
+    let on_sale = match item {
+        ItemRef::Fixed(f) => f.def().in_shop,
+        _ => SHOP_CONSUMABLES.contains(&item.key().as_str()),
     };
-    let item = ItemRef::Fixed(d.id);
+    if !on_sale {
+        return Err(ApiError::bad_request("oggetto non in vendita"));
+    }
+    let price = item.price();
     let mut tx = s.db.begin().await?;
     let paid = sqlx::query("UPDATE accounts SET coins = coins - ? WHERE id = ? AND coins >= ?")
-        .bind(d.price as i64)
+        .bind(price as i64)
         .bind(user.id)
-        .bind(d.price as i64)
+        .bind(price as i64)
         .execute(&mut *tx)
         .await?
         .rows_affected();
@@ -322,6 +341,58 @@ pub async fn change_class(
     sqlx::query("UPDATE roster SET class = ?, equipment = ? WHERE id = ? AND account_id = ?")
         .bind(class.key())
         .bind(items_json(&keep))
+        .bind(id)
+        .bind(user.id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(Json(owned_unit(&s, user.id, id).await?))
+}
+
+#[derive(Deserialize)]
+pub struct SetBag {
+    /// Consumabili da portare in battaglia (al massimo `BAG_SLOTS`).
+    items: Vec<String>,
+}
+
+/// Prepara la borsa di battaglia: i consumabili di prima tornano
+/// nell'inventario, i nuovi ne vengono prelevati. Tutto o niente.
+pub async fn set_bag(
+    State(s): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Json(b): Json<SetBag>,
+) -> ApiResult<Json<RosterUnit>> {
+    use tactica_core::consumable::BAG_SLOTS;
+    ensure_idle(&s, user.id)?;
+    let unit = owned_unit(&s, user.id, id).await?;
+    let wanted = b
+        .items
+        .iter()
+        .map(|k| parse_item(k))
+        .collect::<ApiResult<Vec<_>>>()?;
+    if wanted.len() > BAG_SLOTS {
+        return Err(ApiError::bad_request(format!(
+            "la borsa contiene al massimo {BAG_SLOTS} consumabili"
+        )));
+    }
+    if let Some(bad) = wanted.iter().find(|i| i.consumable().is_none()) {
+        return Err(ApiError::bad_request(format!(
+            "{} non è un consumabile",
+            bad.name()
+        )));
+    }
+    let mut tx = s.db.begin().await?;
+    for old in unit.bag_items() {
+        db::add_item(&mut tx, user.id, old, 1).await?;
+    }
+    for &new in &wanted {
+        if !db::take_item(&mut tx, user.id, new).await? {
+            return Err(ApiError::conflict(format!("non possiedi {}", new.name())));
+        }
+    }
+    sqlx::query("UPDATE roster SET bag = ? WHERE id = ? AND account_id = ?")
+        .bind(items_json(&wanted))
         .bind(id)
         .bind(user.id)
         .execute(&mut *tx)

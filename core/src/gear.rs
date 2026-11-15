@@ -7,6 +7,7 @@
 
 use crate::ability::{AbilityId, Element};
 use crate::class::{Class, Stats};
+use crate::consumable::Consumable;
 use crate::item::{ItemId, Slot};
 use crate::rng::Rng;
 use crate::status::{Status, StatusEffect};
@@ -1359,7 +1360,7 @@ impl Gear {
             Slot::Weapon => 120,
             Slot::Armor => 100,
             Slot::Head => 80,
-            Slot::Accessory => 90,
+            Slot::Accessory | Slot::Bag => 90,
         };
         let teach = if self.teaches.is_some() { 150 } else { 100 };
         slot * TIER_PCT[self.tier as usize] / 100 * self.rarity.price_pct() / 100 * teach / 100
@@ -1373,6 +1374,8 @@ impl Gear {
 pub enum ItemRef {
     Fixed(ItemId),
     Gen(Gear),
+    /// Consumabile da borsa (pergamena, pozione...).
+    Use(Consumable),
 }
 
 impl From<ItemId> for ItemRef {
@@ -1386,6 +1389,7 @@ impl ItemRef {
         match self {
             ItemRef::Fixed(i) => i.key().to_string(),
             ItemRef::Gen(g) => g.key(),
+            ItemRef::Use(c) => c.key(),
         }
     }
 
@@ -1393,12 +1397,14 @@ impl ItemRef {
         ItemId::from_key(key)
             .map(ItemRef::Fixed)
             .or_else(|| Gear::from_key(key).map(ItemRef::Gen))
+            .or_else(|| Consumable::from_key(key).map(ItemRef::Use))
     }
 
     pub fn name(&self) -> String {
         match self {
             ItemRef::Fixed(i) => i.def().name.to_string(),
             ItemRef::Gen(g) => g.name(),
+            ItemRef::Use(c) => c.name(),
         }
     }
 
@@ -1406,6 +1412,7 @@ impl ItemRef {
         match self {
             ItemRef::Fixed(i) => i.def().slot,
             ItemRef::Gen(g) => g.base().slot,
+            ItemRef::Use(_) => Slot::Bag,
         }
     }
 
@@ -1413,6 +1420,7 @@ impl ItemRef {
         match self {
             ItemRef::Fixed(i) => i.def().classes,
             ItemRef::Gen(g) => g.base().classes,
+            ItemRef::Use(_) => &[],
         }
     }
 
@@ -1425,6 +1433,7 @@ impl ItemRef {
         match self {
             ItemRef::Fixed(i) => i.def().bonus,
             ItemRef::Gen(g) => g.bonus(),
+            ItemRef::Use(_) => Stats::ZERO,
         }
     }
 
@@ -1432,12 +1441,13 @@ impl ItemRef {
         match self {
             ItemRef::Fixed(i) => i.def().teaches,
             ItemRef::Gen(g) => g.teaches,
+            ItemRef::Use(_) => None,
         }
     }
 
     pub fn effects(&self) -> Vec<Effect> {
         match self {
-            ItemRef::Fixed(_) => Vec::new(),
+            ItemRef::Fixed(_) | ItemRef::Use(_) => Vec::new(),
             ItemRef::Gen(g) => g.effects(),
         }
     }
@@ -1446,6 +1456,7 @@ impl ItemRef {
         match self {
             ItemRef::Fixed(i) => i.def().price,
             ItemRef::Gen(g) => g.price(),
+            ItemRef::Use(c) => c.price(),
         }
     }
 
@@ -1460,6 +1471,7 @@ impl ItemRef {
                 }
             }
             ItemRef::Gen(g) => g.rarity,
+            ItemRef::Use(c) => c.rarity(),
         }
     }
 
@@ -1471,6 +1483,7 @@ impl ItemRef {
                 Some(l) => format!("legend_{}", l.code),
                 None => g.base().code.to_string(),
             },
+            ItemRef::Use(c) => format!("use_{}", c.def().code),
         }
     }
 
@@ -1478,7 +1491,15 @@ impl ItemRef {
     pub fn lore(&self) -> Option<&'static str> {
         match self {
             ItemRef::Gen(g) => g.legend().map(|l| l.lore),
-            ItemRef::Fixed(_) => None,
+            ItemRef::Fixed(_) | ItemRef::Use(_) => None,
+        }
+    }
+
+    /// Il consumabile, se lo è.
+    pub fn consumable(&self) -> Option<Consumable> {
+        match self {
+            ItemRef::Use(c) => Some(*c),
+            _ => None,
         }
     }
 }
@@ -1556,6 +1577,9 @@ pub fn roll_rarity(rng: &mut Rng, boost: i32) -> Rarity {
     Rarity::Common
 }
 
+/// Probabilità (%) che un oggetto del bottino sia un consumabile.
+pub const CONSUMABLE_PCT: i32 = 32;
+
 /// Oggetto casuale per chi lascia il bottino a questo livello.
 pub fn roll_item(rng: &mut Rng, level: i32, boost: i32) -> ItemRef {
     let rarity = roll_rarity(rng, boost);
@@ -1564,6 +1588,10 @@ pub fn roll_item(rng: &mut Rng, level: i32, boost: i32) -> ItemRef {
         tier += 1;
     }
     let tier = tier.clamp(0, TIERS as i32 - 1) as u8;
+    // Circa un oggetto su tre è un consumabile (pergamena, pozione, bomba...).
+    if rng.percent(CONSUMABLE_PCT) {
+        return ItemRef::Use(crate::consumable::roll(rng, rarity, tier));
+    }
     if rarity == Rarity::Legendary {
         let li = rng.below(LEGENDS.len() as u32) as u8;
         let l = &LEGENDS[li as usize];
@@ -1657,7 +1685,7 @@ mod tests {
         }
         // Varietà: migliaia di oggetti diversi anche in poche estrazioni
         // (i comuni si ripetono spesso, come è giusto).
-        assert!(seen.len() > 2500, "solo {} oggetti diversi", seen.len());
+        assert!(seen.len() > 2000, "solo {} oggetti diversi", seen.len());
     }
 
     #[test]

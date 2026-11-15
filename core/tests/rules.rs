@@ -558,3 +558,139 @@ fn no_loot_without_rules() {
             .any(|e| matches!(e, Event::LootDropped { .. }))
     );
 }
+
+mod consumables {
+    use super::*;
+    use tactica_core::consumable::{CONSUMABLES, Consumable};
+    use tactica_core::gear::ItemRef;
+    use tactica_core::status::Status;
+    use tactica_core::unit::Condition;
+
+    fn item(code: &str, tier: u8) -> ItemRef {
+        let kind = CONSUMABLES.iter().position(|c| c.code == code).unwrap() as u8;
+        ItemRef::Use(Consumable { kind, tier })
+    }
+
+    /// Battaglia con l'unità attiva pronta, senza statuti.
+    fn ready(seed: u64) -> (Battle, usize) {
+        let mut s = setup(seed);
+        s.statutes = 0;
+        let (b, _) = Battle::new(&s);
+        let idx = b.active_index().unwrap();
+        (b, idx)
+    }
+
+    #[test]
+    fn potion_heals_and_is_consumed() {
+        let (mut b, idx) = ready(1);
+        b.units[idx].hp = 10;
+        b.units[idx].bag = vec![Some(item("pozione", 0))];
+        let me = b.units[idx].pos;
+        let ev = b
+            .apply(Action::UseItem {
+                slot: 0,
+                target: me,
+            })
+            .unwrap();
+        assert!(ev.iter().any(|e| matches!(e, Event::ItemUsed { .. })));
+        assert!(b.units[idx].hp > 10);
+        assert_eq!(b.units[idx].bag, vec![None]);
+        assert_eq!(b.consumed.len(), 1);
+        // Una seconda volta non c'è più nulla, e l'azione è già stata usata.
+        assert!(
+            b.apply(Action::UseItem {
+                slot: 0,
+                target: me
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn scrolls_work_for_any_class_but_not_under_silence() {
+        let (mut b, idx) = ready(2);
+        let me = b.units[idx].pos;
+        b.units[idx].bag = vec![Some(item("p_cura", 2)), Some(item("pozione", 0))];
+        b.units[idx].hp = 5;
+        b.units[idx].add_status(Status::Silence, 3);
+        assert_eq!(
+            b.apply(Action::UseItem {
+                slot: 0,
+                target: me
+            }),
+            Err(ActionError::Silenced)
+        );
+        // La pozione invece si beve anche in silenzio.
+        assert!(
+            b.apply(Action::UseItem {
+                slot: 1,
+                target: me
+            })
+            .is_ok()
+        );
+
+        let (mut b, idx) = ready(3);
+        let me = b.units[idx].pos;
+        b.units[idx].mp = 0;
+        b.units[idx].hp = 5;
+        b.units[idx].bag = vec![Some(item("p_cura", 2))];
+        // Senza MP e senza conoscere Cura: la pergamena funziona lo stesso.
+        assert!(
+            b.apply(Action::UseItem {
+                slot: 0,
+                target: me
+            })
+            .is_ok()
+        );
+        assert!(b.units[idx].hp > 5);
+    }
+
+    #[test]
+    fn revive_brings_back_an_adjacent_defeated_ally() {
+        let (mut b, idx) = ready(4);
+        let me = b.units[idx].pos;
+        let team = b.units[idx].team;
+        // Un alleato sconfitto su una casella libera accanto.
+        let ally = (0..b.units.len())
+            .find(|&i| i != idx && b.units[i].team == team)
+            .unwrap();
+        let spot = me
+            .neighbors()
+            .into_iter()
+            .find(|&p| b.map.tile(p).is_some() && b.unit_at(p).is_none())
+            .expect("casella libera accanto");
+        b.units[ally].pos = spot;
+        b.units[ally].hp = 0;
+        b.units[ally].condition = Condition::Defeated;
+        b.units[idx].bag = vec![Some(item("essenza", 0))];
+        let ev = b
+            .apply(Action::UseItem {
+                slot: 0,
+                target: spot,
+            })
+            .unwrap();
+        assert!(ev.iter().any(|e| matches!(e, Event::Revived { .. })));
+        assert!(b.units[ally].is_active() && b.units[ally].hp > 0);
+    }
+
+    #[test]
+    fn ai_uses_consumables_and_battles_stay_deterministic() {
+        let with_bags = |seed| {
+            let mut s = setup(seed);
+            for u in &mut s.units {
+                u.bag = vec![item("pozione", 1), item("bomba", 1)];
+            }
+            s
+        };
+        let mut used = 0;
+        for seed in 0..15 {
+            let (mut a, _) = Battle::new(&with_bags(seed));
+            let (mut c, _) = Battle::new(&with_bags(seed));
+            ai::autoplay(&mut a, 10_000);
+            ai::autoplay(&mut c, 10_000);
+            assert_eq!(a.state_hash(), c.state_hash());
+            used += a.consumed.len();
+        }
+        assert!(used > 10, "l'IA non usa quasi mai i consumabili: {used}");
+    }
+}

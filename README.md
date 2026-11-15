@@ -48,6 +48,7 @@ Tutto è originale: regole, storia, nomi, grafica, musica ed effetti sonori. Ter
 
 - **6 classi:** Avanguardia, Esploratore, Arcanista e Guaritore di base; Spadaruna e Custode da sbloccare.
 - **27 abilità.** Un oggetto insegna un'abilità finché è equipaggiato; con i **punti risonanza** guadagnati in battaglia l'abilità diventa permanente.
+- **Consumabili in battaglia:** ogni unità porta una borsa con 2 consumabili scelti fra 24 tipi in sei qualità: pozioni, eteri, rimedi, essenze vitali che rianimano, elisir, bombe e fiale da lancio. In più 15 pergamene che permettono a qualsiasi classe di lanciare un incantesimo una volta.
 - **Bottino da conquistare sul campo:** le unità sconfitte possono lasciare un oggetto, e per prenderlo bisogna raggiungere la loro casella.
 - **Oggetti generati:** più di 200.000 combinazioni con 5 rarità, 37 basi, 6 materiali e 39 affissi (veleno o gelo al colpo, armi elementali, vampirismo, resistenze, immunità, rigenerazione, +1 movimento...). In più 16 leggendari unici con nome e storia. Quattro slot di equipaggiamento: arma, armatura, copricapo, accessorio.
 - **Esperienza e livelli,** roster fino a 8 unità, negozio, bottino ed economia.
@@ -103,7 +104,7 @@ I personaggi delle sei classi, fatti con PixelLab, con i colori delle due squadr
 
 ![Personaggi](docs/img/sprite_sheet.png)
 
-Le icone degli oggetti: 37 basi, 16 leggendari, gli oggetti classici e il sacchetto del bottino:
+Le icone degli oggetti: 37 basi, 16 leggendari, 24 consumabili (pozioni, bombe, pergamene), gli oggetti classici e il sacchetto del bottino:
 
 ![Icone degli oggetti](docs/img/icone.png)
 

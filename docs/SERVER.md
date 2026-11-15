@@ -50,6 +50,7 @@ Le rotte indicate con 🔒 richiedono l'header `Authorization: Bearer <token>`.
 | `POST /api/roster` 🔒 `{name, class}` | recluta un'unità di classe base (massimo 8), già equipaggiata con il kit iniziale. Classi base: `vanguard`, `scout`, `arcanist`, `mender` |
 | `DELETE /api/roster/{id}` 🔒 | congeda un'unità; il suo equipaggiamento torna nell'inventario |
 | `PUT /api/roster/{id}/equipment` 🔒 `{items:[...]}` | imposta l'intero equipaggiamento (al massimo un oggetto per slot, adatto alla classe). Tutto o niente: i vecchi oggetti tornano nell'inventario, i nuovi ne vengono prelevati |
+| `PUT /api/roster/{id}/bag` 🔒 `{items:[...]}` | prepara la borsa di battaglia (al massimo 2 consumabili, presi dall'inventario; i precedenti vi tornano) |
 | `PUT /api/roster/{id}/class` 🔒 `{class}` | cambia classe se è sbloccata (403 altrimenti, con il requisito); gli oggetti non adatti tornano nell'inventario |
 | `GET /api/inventory` 🔒 | monete e oggetti non equipaggiati |
 | `POST /api/shop/buy` 🔒 `{item}` | compra un oggetto (solo quelli marcati `in_shop`) |
@@ -156,6 +157,22 @@ L'estrazione usa il generatore della battaglia: è deterministica e segreta fino
 Un oggetto generato è descritto per intero dalla sua chiave, per esempio `g.spa.2.r.aff.lup.-.sweep` oppure `u.alba.3`. Inventario, equipaggiamento e replay lo salvano come una stringa qualsiasi. `GET /api/inventory` restituisce per ogni oggetto la scheda completa: nome, rarità, slot, classi, bonus, effetti descritti, abilità insegnata, icona e storia.
 
 **Equipaggiamento:** quattro slot (arma, armatura, copricapo, accessorio), al massimo un oggetto per slot.
+
+## Consumabili e borsa di battaglia
+
+Ogni unità porta in battaglia una **borsa** con al massimo 2 consumabili, preparata dal roster. Usare un consumabile è l'azione del turno (al posto di un'abilità); quelli usati spariscono dalla borsa a fine partita, gli altri restano.
+
+| Tipo | Consumabili | Effetto |
+|---|---|---|
+| Pozioni e preparati | Pozione, Etere, Rimedio, Essenza vitale, Elisir | HP, MP, rimozione degli status negativi, rianimazione di un alleato sconfitto accanto (se la sua casella è libera), HP al massimo |
+| Da lancio | Bomba di brace, Fiala di gelo, Fiala tossica, Polvere del sonno | danni di fuoco ad area, ghiaccio e Lentezza, Veleno ad area, Sonno ad area (portata fino a 4) |
+| Pergamene (15) | Fiamma, Gelo, Folgore, Vampa, Luce, Giudizio, Catene, Torpore, Cura, Cura maggiore, Santuario, Egida, Germoglio, Purificazione, Slancio | lanciano l'incantesimo una volta, da qualsiasi classe, senza MP, con una MAG minima garantita dalla qualità |
+
+- **Qualità:** I-VI, secondo il livello di chi lascia il consumabile. Aumenta i valori fissi (da ×1 a ×4,5) e la MAG minima delle pergamene (18 + 7 per livello di qualità).
+- **Regole:** valgono gli statuti (una pozione viola «Niente cure», una pergamena di Fiamma «Niente fuoco»). Il Silenzio blocca le pergamene ma non pozioni e bombe.
+- **Bottino:** circa un oggetto su tre è un consumabile, della rarità estratta.
+- **Negozio:** Pozione I, Etere I, Rimedio I, Bomba di brace I e Pergamena di Cura I.
+- **IA:** usa i consumabili quando rendono più del loro costo stimato; rianima appena può.
 
 ## Status alterati
 

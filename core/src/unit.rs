@@ -49,6 +49,9 @@ pub struct UnitSetup {
     /// Abilità padroneggiate (di qualsiasi scuola; si usano quelle della classe attuale).
     #[cfg_attr(feature = "serde", serde(default))]
     pub mastered: Vec<AbilityId>,
+    /// Borsa di battaglia: consumabili (al massimo `BAG_SLOTS`).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub bag: Vec<ItemRef>,
 }
 
 impl UnitSetup {
@@ -61,6 +64,7 @@ impl UnitSetup {
             xp: 0,
             equipment: Vec::new(),
             mastered: Vec::new(),
+            bag: Vec::new(),
         }
     }
 
@@ -81,6 +85,9 @@ pub struct Unit {
     pub xp: i32,
     pub equipment: Vec<ItemRef>,
     pub mastered: Vec<AbilityId>,
+    /// Consumabili ancora nella borsa (`None` = già usato).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub bag: Vec<Option<ItemRef>>,
     pub stats: Stats,
     pub hp: i32,
     pub mp: i32,
@@ -110,6 +117,13 @@ impl Unit {
             xp: setup.xp.clamp(0, XP_PER_LEVEL - 1),
             equipment,
             mastered: setup.mastered.clone(),
+            bag: setup
+                .bag
+                .iter()
+                .filter(|i| i.consumable().is_some())
+                .take(crate::consumable::BAG_SLOTS)
+                .map(|&i| Some(i))
+                .collect(),
             stats,
             hp: stats.max_hp,
             mp: stats.max_mp,

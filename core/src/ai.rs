@@ -5,6 +5,7 @@
 use crate::ability::Kind;
 use crate::battle::{Action, Battle, Event};
 use crate::class::Class;
+use crate::consumable::Cast;
 use crate::map::{Dir, Pos, Terrain};
 use crate::status::Status;
 use crate::unit::Unit;
@@ -34,9 +35,29 @@ pub fn plan_turn(b: &Battle) -> Vec<Action> {
                         if b.check_target(idx, from, ability, target).is_err() {
                             continue;
                         }
-                        let s = score(b, idx, from, ability, target) - lava;
+                        let s = score(b, idx, from, ability.into(), target) - lava;
                         if s > 0 && best.as_ref().is_none_or(|(bs, ..)| s > *bs) {
                             best = Some((s, from, Action::Act { ability, target }));
+                        }
+                    }
+                }
+            }
+            // Consumabili della borsa: valgono solo se rendono più di quanto costano.
+            for (slot, item) in u.bag.iter().enumerate() {
+                let Some(cast) = item.and_then(|i| i.consumable()).map(|c| c.cast()) else {
+                    continue;
+                };
+                let r = cast.ability.def().range_max;
+                for dy in -r..=r {
+                    for dx in -r..=r {
+                        let target = Pos::new(from.x + dx, from.y + dy);
+                        if b.check_cast(idx, from, cast, target, true).is_err() {
+                            continue;
+                        }
+                        let s = score(b, idx, from, cast, target) - lava - ITEM_COST;
+                        if s > 0 && best.as_ref().is_none_or(|(bs, ..)| s > *bs) {
+                            let slot = slot as u8;
+                            best = Some((s, from, Action::UseItem { slot, target }));
                         }
                     }
                 }
@@ -108,21 +129,29 @@ fn is_lava(b: &Battle, p: Pos) -> bool {
     b.map.tile(p).is_some_and(|t| t.terrain == Terrain::Lava)
 }
 
-fn score(
-    b: &Battle,
-    idx: usize,
-    from: Pos,
-    ability: crate::ability::AbilityId,
-    target: Pos,
-) -> i32 {
+/// Costo stimato di un consumabile: l'IA lo usa solo se ne vale la pena.
+const ITEM_COST: i32 = 30;
+
+fn score(b: &Battle, idx: usize, from: Pos, cast: Cast, target: Pos) -> i32 {
+    let ability = cast.ability;
     if !b.violations(from, ability, target).is_empty() {
         return VIOLATION_SCORE;
     }
     let u = &b.units[idx];
     let mut s = 0;
-    for o in b.outcomes(idx, from, ability, target) {
+    for o in b.outcomes_cast(idx, from, cast, target) {
         let t = &b.units[o.target];
         let ally = t.team == u.team;
+        if ability.def().revive {
+            // Rimettere in campo un alleato vale moltissimo.
+            s += 90 + o.amount;
+            continue;
+        }
+        if ability.def().restore_mp {
+            let missing = t.stats.max_mp - t.mp;
+            s += o.amount.min(missing) * if missing * 2 > t.stats.max_mp { 2 } else { 0 };
+            continue;
+        }
         if let Some(e) = o.status {
             s += status_value(t, e.status) * e.chance / 100 * o.hit_pct / 100;
         }

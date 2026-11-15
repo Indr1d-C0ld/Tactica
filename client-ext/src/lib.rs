@@ -180,7 +180,53 @@ impl TacticaEngine {
     /// Anteprima: effetti su ogni unità coinvolta e statuti violati.
     #[func]
     fn preview_json(&self, unit: i64, ability_key: GString, target: Vector2i) -> GString {
-        let (Some(b), Some(a)) = (&self.battle, ability(&ability_key)) else {
+        match ability(&ability_key) {
+            Some(a) => self.preview_cast(unit, a.into(), target),
+            None => gs("{}"),
+        }
+    }
+
+    /// Consumabile in `slot` della borsa dell'unità (se c'è).
+    fn bag_cast(&self, unit: i64, slot: i64) -> Option<tactica_core::consumable::Cast> {
+        let b = self.battle.as_ref()?;
+        let u = b.units.get(unit as usize)?;
+        let item = u.bag.get(slot as usize).copied().flatten()?;
+        Some(item.consumable()?.cast())
+    }
+
+    /// Caselle bersagliabili con il consumabile in `slot` della borsa.
+    #[func]
+    fn item_targets(&self, unit: i64, slot: i64) -> Array<Vector2i> {
+        let mut out = Array::new();
+        let (Some(b), Some(cast)) = (&self.battle, self.bag_cast(unit, slot)) else {
+            return out;
+        };
+        let u = &b.units[unit as usize];
+        for p in b.map.positions() {
+            if b.check_cast(unit as usize, u.pos, cast, p, true).is_ok() {
+                out.push(vec2i(p));
+            }
+        }
+        out
+    }
+
+    /// Anteprima del consumabile in `slot` della borsa sul bersaglio.
+    #[func]
+    fn item_preview_json(&self, unit: i64, slot: i64, target: Vector2i) -> GString {
+        match self.bag_cast(unit, slot) {
+            Some(cast) => self.preview_cast(unit, cast, target),
+            None => gs("{}"),
+        }
+    }
+
+    fn preview_cast(
+        &self,
+        unit: i64,
+        cast: tactica_core::consumable::Cast,
+        target: Vector2i,
+    ) -> GString {
+        let a = cast.ability;
+        let Some(b) = &self.battle else {
             return gs("{}");
         };
         let Some(u) = b.units.get(unit as usize) else {
@@ -188,7 +234,7 @@ impl TacticaEngine {
         };
         let t = pos(target);
         let outcomes: Vec<Value> = b
-            .outcomes(unit as usize, u.pos, a, t)
+            .outcomes_cast(unit as usize, u.pos, cast, t)
             .into_iter()
             .map(|o| {
                 let tu = &b.units[o.target];
@@ -345,6 +391,9 @@ impl TacticaEngine {
                     "statuses": u.statuses.iter().map(|(s, t)| json!({
                         "key": s.key(), "name": s.name(), "turns": t, "negative": s.is_negative(),
                     })).collect::<Vec<_>>(),
+                    "bag": u.bag.iter().map(|i| i.map(|i| json!({
+                        "key": i.key(), "name": i.name(),
+                    }))).collect::<Vec<_>>(),
                     "stats": {
                         "atk": u.stats.atk, "def": u.stats.def, "mag": u.stats.mag,
                         "res": u.stats.res, "spd": u.stats.spd, "mov": u.stats.mov,
@@ -477,6 +526,15 @@ impl TacticaEngine {
             }),
             None => GString::new(),
         }
+    }
+
+    /// Azione: usa il consumabile in `slot` della borsa sulla casella (x, y).
+    #[func]
+    fn make_use_item(slot: i64, x: i64, y: i64) -> GString {
+        action_json(Action::UseItem {
+            slot: slot as u8,
+            target: Pos::new(x as i32, y as i32),
+        })
     }
 
     /// `dir`: "N", "E", "S" o "W".

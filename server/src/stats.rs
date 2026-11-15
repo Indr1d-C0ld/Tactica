@@ -293,13 +293,18 @@ pub async fn save_match(
         .await?;
 
         if let (Some(rid), Some(acc), Some(o)) = (roster_id, account, owner) {
-            sqlx::query("UPDATE roster SET level = ?, xp = ? WHERE id = ? AND account_id = ?")
-                .bind(progressed.level as i64)
-                .bind(progressed.xp as i64)
-                .bind(rid)
-                .bind(acc)
-                .execute(&mut *tx)
-                .await?;
+            // I consumabili usati in battaglia spariscono dalla borsa.
+            let bag: Vec<ItemRef> = u.bag.iter().flatten().copied().collect();
+            sqlx::query(
+                "UPDATE roster SET level = ?, xp = ?, bag = ? WHERE id = ? AND account_id = ?",
+            )
+            .bind(progressed.level as i64)
+            .bind(progressed.xp as i64)
+            .bind(db::items_json(&bag))
+            .bind(rid)
+            .bind(acc)
+            .execute(&mut *tx)
+            .await?;
             // Risonanza: RP alle abilità insegnate dall'equipaggiamento schierato.
             let su = &setup.units[i];
             let gained = progression::rp_award(u, match_result(result(u.team)));

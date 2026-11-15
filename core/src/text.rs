@@ -45,6 +45,13 @@ pub fn describe_event(e: &Event, n: &dyn Fn(UnitId) -> String) -> Option<String>
         } => format!("  {} recupera {amount} HP (HP {hp})", n(*unit)),
         Event::Missed { unit, .. } => format!("  mancato {}", n(*unit)),
         Event::Defeated { unit } => format!("  {} è fuori combattimento", n(*unit)),
+        Event::ItemUsed { unit, item, .. } => format!("{} usa {}", n(*unit), item.name()),
+        Event::Revived { unit, hp, .. } => format!("  {} torna in piedi (HP {hp})", n(*unit)),
+        Event::MpRestored {
+            unit, amount, mp, ..
+        } => {
+            format!("  {} recupera {amount} MP (MP {mp})", n(*unit))
+        }
         Event::LootDropped { unit, rarity, .. } => {
             format!("  {} lascia cadere un oggetto {}", n(*unit), rarity.name())
         }

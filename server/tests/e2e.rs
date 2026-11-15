@@ -1560,7 +1560,7 @@ async fn loot_from_defeated_units() {
     // Un oggetto trovato si può equipaggiare (se adatto a una delle unità) e vendere.
     let (_, me) = srv.get("/api/me", Some(&tok)).await;
     let roster = me["roster"].as_array().unwrap();
-    'equip: for it in &found {
+    'equip: for it in found.iter().filter(|i| i["slot_key"] != "bag") {
         let classes: Vec<&str> = it["classes"]
             .as_array()
             .unwrap()
@@ -1603,4 +1603,63 @@ async fn loot_from_defeated_units() {
             }
         }
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn battle_bag_consumables() {
+    let srv = start().await;
+    let (tok, units) = srv.player("speziale").await;
+    // Pozioni dal negozio, poi nella borsa della prima unità.
+    for _ in 0..2 {
+        let (st, body) = srv
+            .post("/api/shop/buy", Some(&tok), json!({"item": "c.pozione.0"}))
+            .await;
+        assert_eq!(st, 200, "{body}");
+    }
+    let (st, body) = srv
+        .put(
+            &format!("/api/roster/{}/bag", units[0]),
+            &tok,
+            json!({"items": ["c.pozione.0", "c.pozione.0"]}),
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(body["bag"].as_array().unwrap().len(), 2);
+    // Equipaggiamento e borsa non si mescolano; la borsa ha due posti.
+    let (st, _) = srv
+        .put(
+            &format!("/api/roster/{}/bag", units[1]),
+            &tok,
+            json!({"items": ["iron_sword"]}),
+        )
+        .await;
+    assert_eq!(st, 400);
+    let (_, inv) = srv.get("/api/inventory", Some(&tok)).await;
+    assert!(
+        !inv["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["key"] == "c.pozione.0"),
+        "le pozioni sono nella borsa, non nell'inventario"
+    );
+
+    // Qualche partita: prima o poi l'unità beve almeno una pozione.
+    let mut left = 2;
+    for _ in 0..5 {
+        play(srv.ws.clone(), tok.clone(), Mode::Pve, units.clone(), None).await;
+        let (_, me) = srv.get("/api/me", Some(&tok)).await;
+        let u = me["roster"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|u| u["id"] == units[0])
+            .unwrap()
+            .clone();
+        left = u["bag"].as_array().unwrap().len();
+        if left < 2 {
+            break;
+        }
+    }
+    assert!(left < 2, "nessuna pozione usata in 5 partite");
 }
