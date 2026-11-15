@@ -1663,3 +1663,81 @@ async fn battle_bag_consumables() {
     }
     assert!(left < 2, "nessuna pozione usata in 5 partite");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn workshop_salvage_and_brew() {
+    let srv = start().await;
+    let (tok, units) = srv.player("artigiano").await;
+    let qty = |w: &Value, k: &str| {
+        w["materials"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["key"] == k)
+            .map_or(0, |m| m["qty"].as_i64().unwrap())
+    };
+    // Smantellare una spada comprata dà metallo.
+    let (st, _) = srv
+        .post("/api/shop/buy", Some(&tok), json!({"item": "iron_sword"}))
+        .await;
+    assert_eq!(st, 200);
+    let (st, body) = srv
+        .post(
+            "/api/craft/salvage",
+            Some(&tok),
+            json!({"item": "iron_sword"}),
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert!(qty(&body["workshop"], "metal") >= 1);
+    // Non si smantella ciò che non si possiede.
+    let (st, _) = srv
+        .post(
+            "/api/craft/salvage",
+            Some(&tok),
+            json!({"item": "iron_sword"}),
+        )
+        .await;
+    assert_eq!(st, 409);
+    // Senza erbe l'alchimia fallisce; due partite ne danno almeno 2.
+    let (st, _) = srv
+        .post(
+            "/api/craft/brew",
+            Some(&tok),
+            json!({"recipe": "pozione", "tier": 0}),
+        )
+        .await;
+    assert_eq!(st, 409);
+    for _ in 0..2 {
+        play(srv.ws.clone(), tok.clone(), Mode::Pve, units.clone(), None).await;
+    }
+    let (_, w) = srv.get("/api/craft", Some(&tok)).await;
+    assert!(qty(&w, "herbs") >= 2, "{w}");
+    assert!(w["recipes"].as_array().unwrap().len() >= 10);
+    let (st, body) = srv
+        .post(
+            "/api/craft/brew",
+            Some(&tok),
+            json!({"recipe": "pozione", "tier": 0}),
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(body["item"]["key"], "c.pozione.0");
+    let (_, inv) = srv.get("/api/inventory", Some(&tok)).await;
+    assert!(
+        inv["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["key"] == "c.pozione.0")
+    );
+    // Qualità oltre il limite dell'alchimia: rifiutata.
+    let (st, _) = srv
+        .post(
+            "/api/craft/brew",
+            Some(&tok),
+            json!({"recipe": "pozione", "tier": 5}),
+        )
+        .await;
+    assert_eq!(st, 400);
+}

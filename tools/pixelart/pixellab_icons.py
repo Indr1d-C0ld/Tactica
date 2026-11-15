@@ -92,6 +92,15 @@ ICONS: dict[str, str] = {
     "horn": "a curved war horn made of bone with metal bands",
     "bag": "a small tied loot sack pouch with a gold coin peeking out",
     # Consumabili
+    # Materiali dei mestieri
+    "mat_metal": "a small pile of scrap iron ingots and bent metal pieces",
+    "mat_wood": "a small bundle of cut wooden planks tied with twine",
+    "mat_cloth": "a folded stack of colorful cloth scraps",
+    "mat_leather": "a rolled bundle of tanned leather strips",
+    "mat_gems": "a small cluster of sparkling gem shards in assorted colors",
+    "mat_paper": "a small stack of blank parchment sheets with a quill",
+    "mat_arcane_dust": "a small glass jar of glowing violet arcane dust",
+    "mat_herbs": "a bundle of fresh green medicinal herbs and leaves tied with string",
     "use_pozione": "a small round glass potion flask with red healing liquid and a cork",
     "use_etere": "a slender glass vial with glowing blue mana liquid and a silver cap",
     "use_rimedio": "a small clay jar of green herbal remedy salve with a cloth lid",

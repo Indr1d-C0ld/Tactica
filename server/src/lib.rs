@@ -7,6 +7,7 @@ pub mod auth;
 pub mod campaign;
 pub mod clans;
 pub mod config;
+pub mod craft;
 pub mod db;
 pub mod error;
 pub mod game;

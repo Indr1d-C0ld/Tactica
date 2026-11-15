@@ -189,9 +189,7 @@ impl TacticaEngine {
     /// Consumabile in `slot` della borsa dell'unità (se c'è).
     fn bag_cast(&self, unit: i64, slot: i64) -> Option<tactica_core::consumable::Cast> {
         let b = self.battle.as_ref()?;
-        let u = b.units.get(unit as usize)?;
-        let item = u.bag.get(slot as usize).copied().flatten()?;
-        Some(item.consumable()?.cast())
+        b.item_cast(unit as usize, slot as u8).map(|(_, cast)| cast)
     }
 
     /// Caselle bersagliabili con il consumabile in `slot` della borsa.

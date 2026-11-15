@@ -4,7 +4,8 @@ extends RefCounted
 const Art := preload("res://scripts/art.gd")
 static var UNITS_TEX: Texture2D = Art.tex("units")
 const CELL := 32
-const CLASS_ORDER := ["vanguard", "scout", "arcanist", "mender", "runeblade", "warden"]
+const CLASS_ORDER := ["vanguard", "scout", "arcanist", "mender", "runeblade", "warden",
+	"shadowblade", "dragoon", "bard", "alchemist", "geomancer", "summoner"]
 const HAIR_COUNT := 5
 const SKIN_COUNT := 3
 const FRAME := {"front_idle0": 0, "front_idle1": 1, "back_idle0": 2, "back_idle1": 3,

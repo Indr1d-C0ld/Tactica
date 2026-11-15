@@ -282,7 +282,10 @@ const fn mj(mov: i32, jump: i32) -> Stats {
     }
 }
 
-use Class::{Arcanist as A, Mender as M, Runeblade as R, Scout as S, Vanguard as V, Warden as W};
+use Class::{
+    Alchemist as Al, Arcanist as A, Bard as Bd, Dragoon as Dr, Geomancer as Ge, Mender as M,
+    Runeblade as R, Scout as S, Shadowblade as Sh, Summoner as Su, Vanguard as V, Warden as W,
+};
 use Family::*;
 use Slot::{Accessory as Acc, Armor as Arm, Head, Weapon as Wpn};
 
@@ -299,7 +302,7 @@ pub static BASES: [Base; 37] = [
         "Spada",
         true,
         Wpn,
-        [V, R],
+        [V, R, Sh],
         Metal,
         st(3, 0, 0, 0, 0, 0, 0, 0)
     ),
@@ -317,7 +320,7 @@ pub static BASES: [Base; 37] = [
         "Lancia",
         true,
         Wpn,
-        [V, W],
+        [V, W, Dr],
         Metal,
         st(4, 0, 0, 0, 0, 0, 0, 0)
     ),
@@ -326,7 +329,7 @@ pub static BASES: [Base; 37] = [
         "Ascia",
         true,
         Wpn,
-        [V, W],
+        [V, W, Dr, Ge],
         Metal,
         st(5, 0, 0, 0, 0, 0, 0, -3)
     ),
@@ -335,7 +338,7 @@ pub static BASES: [Base; 37] = [
         "Mazza",
         true,
         Wpn,
-        [M, W],
+        [M, W, Ge, Al],
         Metal,
         st(3, 0, 0, 1, 0, 0, 0, 0)
     ),
@@ -344,7 +347,7 @@ pub static BASES: [Base; 37] = [
         "Pugnale",
         false,
         Wpn,
-        [S, R],
+        [S, R, Sh, Bd],
         Metal,
         st(2, 0, 0, 0, 0, 0, 0, 5)
     ),
@@ -353,7 +356,7 @@ pub static BASES: [Base; 37] = [
         "Sciabola",
         true,
         Wpn,
-        [R, S],
+        [R, S, Sh],
         Metal,
         st(3, 0, 1, 0, 0, 0, 0, 0)
     ),
@@ -362,7 +365,7 @@ pub static BASES: [Base; 37] = [
         "Arco corto",
         false,
         Wpn,
-        [S],
+        [S, Bd],
         Wood,
         st(3, 0, 0, 0, 0, 0, 0, 0)
     ),
@@ -389,7 +392,7 @@ pub static BASES: [Base; 37] = [
         "Bacchetta",
         true,
         Wpn,
-        [A],
+        [A, Al, Su],
         Wood,
         st(0, 0, 3, 0, 0, 0, 0, 0)
     ),
@@ -398,7 +401,7 @@ pub static BASES: [Base; 37] = [
         "Verga",
         true,
         Wpn,
-        [A],
+        [A, Su],
         Metal,
         st(0, 0, 4, 0, 0, 4, 0, 0)
     ),
@@ -407,7 +410,7 @@ pub static BASES: [Base; 37] = [
         "Bastone",
         false,
         Wpn,
-        [M, A, W],
+        [M, A, W, Al, Ge, Su, Bd],
         Wood,
         st(0, 0, 2, 2, 0, 0, 0, 0)
     ),
@@ -434,7 +437,7 @@ pub static BASES: [Base; 37] = [
         "Tomo",
         false,
         Wpn,
-        [A, M],
+        [A, M, Al, Su],
         Paper,
         st(0, 0, 3, 1, 0, 6, 0, 0)
     ),
@@ -453,7 +456,7 @@ pub static BASES: [Base; 37] = [
         "Veste",
         true,
         Arm,
-        [A, M],
+        [A, M, Bd, Al, Su],
         Cloth,
         st(0, 0, 0, 2, 0, 5, 0, 0)
     ),
@@ -462,7 +465,7 @@ pub static BASES: [Base; 37] = [
         "Saio",
         false,
         Arm,
-        [M, W],
+        [M, W, Ge, Al, Su],
         Cloth,
         st(0, 0, 0, 2, 5, 0, 0, 0)
     ),
@@ -471,7 +474,7 @@ pub static BASES: [Base; 37] = [
         "Giubba",
         true,
         Arm,
-        [S, R, V],
+        [S, R, V, Sh, Bd, Al, Ge],
         Leather,
         st(0, 1, 0, 0, 5, 0, 0, 0)
     ),
@@ -480,7 +483,7 @@ pub static BASES: [Base; 37] = [
         "Giaco",
         false,
         Arm,
-        [S, R],
+        [S, R, Sh, Bd],
         Leather,
         st(0, 2, 0, 0, 0, 0, 0, 3)
     ),
@@ -489,7 +492,7 @@ pub static BASES: [Base; 37] = [
         "Usbergo",
         false,
         Arm,
-        [V, R, W],
+        [V, R, W, Dr, Ge],
         Metal,
         st(0, 3, 0, 0, 0, 0, 0, 0)
     ),
@@ -498,7 +501,7 @@ pub static BASES: [Base; 37] = [
         "Brigantina",
         true,
         Arm,
-        [V, S, R],
+        [V, S, R, Dr, Sh],
         Metal,
         st(0, 3, 0, 0, 4, 0, 0, 0)
     ),
@@ -507,7 +510,7 @@ pub static BASES: [Base; 37] = [
         "Corazza",
         true,
         Arm,
-        [V, W],
+        [V, W, Dr],
         Metal,
         st(0, 5, 0, 0, 0, 0, -1, 0)
     ),
@@ -517,7 +520,7 @@ pub static BASES: [Base; 37] = [
         "Elmo",
         false,
         Head,
-        [V, W, R],
+        [V, W, R, Dr, Ge],
         Metal,
         st(0, 2, 0, 0, 4, 0, 0, 0)
     ),
@@ -526,7 +529,7 @@ pub static BASES: [Base; 37] = [
         "Barbuta",
         true,
         Head,
-        [V, W],
+        [V, W, Dr],
         Metal,
         st(0, 3, 0, 0, 0, 0, 0, -2)
     ),
@@ -535,7 +538,7 @@ pub static BASES: [Base; 37] = [
         "Cappuccio",
         false,
         Head,
-        [S, M, A],
+        [S, M, A, Sh, Bd, Al, Ge],
         Cloth,
         st(0, 0, 0, 1, 0, 0, 0, 2)
     ),
@@ -544,7 +547,7 @@ pub static BASES: [Base; 37] = [
         "Cappello",
         false,
         Head,
-        [A, M],
+        [A, M, Bd, Al, Su],
         Cloth,
         st(0, 0, 1, 0, 0, 4, 0, 0)
     ),
@@ -1555,6 +1558,18 @@ impl<'de> serde::Deserialize<'de> for ItemRef {
 }
 
 // ------------------------------------------------------------------ generazione
+
+/// Oggetto comune di una base (per i kit delle classi senza oggetti del catalogo).
+pub fn common(base_code: &str, tier: u8) -> Option<ItemRef> {
+    Some(ItemRef::Gen(Gear {
+        base: base_index(base_code)?,
+        tier: tier.min(TIERS as u8 - 1),
+        rarity: Rarity::Common,
+        affixes: [NONE; 3],
+        teaches: None,
+        legend: NONE,
+    }))
+}
 
 /// Rarità estratta: `boost` (0-10) sposta il peso verso le rarità alte.
 pub fn roll_rarity(rng: &mut Rng, boost: i32) -> Rarity {

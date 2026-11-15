@@ -14,6 +14,7 @@ var _tabs: TabContainer
 var _play: VBoxContainer
 var _roster: VBoxContainer
 var _shop: VBoxContainer
+var _craft: VBoxContainer
 var _stats: VBoxContainer
 var _clan: VBoxContainer
 var _season: VBoxContainer
@@ -65,6 +66,7 @@ func _ready() -> void:
 	_season = _tab("Stagione")
 	_tourn = _tab("Tornei")
 	_stats = _tab("Statistiche")
+	_craft = _tab("Bottega")
 	_status = UI.label("", 14, UI.MUTED)
 	root.add_child(_status)
 
@@ -142,6 +144,7 @@ func reload() -> void:
 	await _build_season()
 	await _build_tournaments()
 	await _build_stats()
+	await _build_craft()
 
 
 func _logout() -> void:
@@ -331,7 +334,8 @@ func _unit_panel(u: Dictionary) -> Control:
 			stock[str(it["key"])] = int(it["qty"])
 	for k in current_bag:
 		stock[str(k)] = int(stock.get(str(k), 0)) + 1
-	for slot in 2:
+	var bag_size := 4 if str(u["class"]) == "alchemist" else 2
+	for slot in bag_size:
 		var opts := [["(vuoto)", ""]]
 		var sel := 0
 		for k in stock:
@@ -470,6 +474,98 @@ func _trade(kind: String, key: String) -> void:
 		"Acquistato" if kind == "buy" else "Venduto")
 
 
+# ------------------------------------------------------------------ bottega (mestieri)
+
+func _build_craft() -> void:
+	UI.clear(_craft)
+	var r := await Net.get_json("/api/craft")
+	if int(r.status) != 200:
+		_craft.add_child(UI.label(Net.error_text(r), 0, UI.BAD))
+		return
+	var w: Dictionary = r.data
+	_craft.add_child(UI.label("Bottega — monete: %d" % int(w["coins"]), 18, UI.ACCENT))
+	var mats := UI.hbox(14)
+	for m in w["materials"]:
+		var box := UI.hbox(4)
+		var ic := TextureRect.new()
+		ic.texture = Items.icon("mat_" + str(m["key"]))
+		ic.custom_minimum_size = Vector2(32, 32)
+		ic.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ic.tooltip_text = str(m["name"])
+		box.add_child(ic)
+		box.add_child(UI.label("%d" % int(m["qty"])))
+		mats.add_child(box)
+	_craft.add_child(mats)
+	_craft.add_child(UI.label("Le erbe si ricevono a ogni partita; gli altri materiali smantellando gli oggetti.", 12, UI.MUTED))
+
+	_craft.add_child(HSeparator.new())
+	_craft.add_child(UI.label("Forgia: smantella, raffina (qualità +1) o incanta (rarità +1, un affisso in più)", 16))
+	for it in inventory.get("items", []):
+		var key := str(it["key"])
+		var row := UI.hbox(10)
+		row.add_child(Items.icon_box(key))
+		var name := RichTextLabel.new()
+		name.bbcode_enabled = true
+		name.fit_content = true
+		name.custom_minimum_size = Vector2(380, 0)
+		name.text = Items.bb_name(key) + ("  ×%d" % int(it["qty"]) if int(it["qty"]) > 1 else "")
+		row.add_child(name)
+		row.add_child(UI.button("Smantella", func() -> void: _craft_op("salvage", key)))
+		if str(Items.info(key).get("slot_key", "")) != "bag":
+			row.add_child(UI.button("Raffina", func() -> void: _craft_op("refine", key)))
+			row.add_child(UI.button("Incanta", func() -> void: _craft_op("enchant", key)))
+		_craft.add_child(row)
+
+	_craft.add_child(HSeparator.new())
+	_craft.add_child(UI.label("Alchimia: ricette (qualità I-III)", 16))
+	for rec in w["recipes"]:
+		var code := str(rec["code"])
+		var row := UI.hbox(10)
+		var tiers: Array = rec["tiers"]
+		var first: Dictionary = tiers[0][0]
+		row.add_child(Items.icon_box(str(first["key"])))
+		var col := UI.vbox(2)
+		col.add_child(UI.label(str(first["name"]).trim_suffix(" I"), 0, Items.color(str(first["rarity"]))))
+		var buttons := UI.hbox(6)
+		for t in tiers.size():
+			var cost: Dictionary = tiers[t][1]
+			var parts: Array[String] = []
+			for m in cost["materials"]:
+				parts.append("%d %s" % [int(m["qty"]), str(m["name"]).to_lower()])
+			var tier: int = t
+			var b := UI.button(["I", "II", "III"][t], func() -> void: _brew(code, tier))
+			b.tooltip_text = "%s, %d monete" % [", ".join(parts), int(cost["coins"])]
+			buttons.add_child(b)
+		col.add_child(buttons)
+		var c0: Dictionary = tiers[0][1]
+		var need: Array[String] = []
+		for m in c0["materials"]:
+			need.append("%d %s" % [int(m["qty"]), str(m["name"]).to_lower()])
+		col.add_child(UI.label("Qualità I: %s, %d monete (II e III: doppio e triplo)" % [", ".join(need), int(c0["coins"])], 12, UI.MUTED))
+		row.add_child(col)
+		_craft.add_child(row)
+
+
+func _craft_op(op: String, key: String) -> void:
+	var r := await Net.post_json("/api/craft/" + op, {"item": key})
+	if int(r.status) == 200:
+		var made: Variant = r.data.get("item")
+		_say("Creato: " + str(made["name"]) if made != null else "Smantellato")
+		await reload()
+	else:
+		_say(Net.error_text(r), true)
+
+
+func _brew(code: String, tier: int) -> void:
+	var r := await Net.post_json("/api/craft/brew", {"recipe": code, "tier": tier})
+	if int(r.status) == 200:
+		_say("Creato: " + str(r.data["item"]["name"]))
+		await reload()
+	else:
+		_say(Net.error_text(r), true)
+
+
 # ------------------------------------------------------------------ statistiche
 
 func _build_stats() -> void:
@@ -539,7 +635,7 @@ func _autoplay() -> void:
 		await Net.post_json("/api/shop/buy", {"item": "c.bomba.0"})
 		await Net.put_json("/api/roster/%d/bag" % int(first["id"]), {"items": ["c.pozione.0", "c.bomba.0"]})
 		await reload()
-	for tab in [[1, "menu_roster"], [2, "menu_negozio"], [3, "menu_clan"], [4, "menu_stagione"], [5, "menu_tornei"], [6, "menu_statistiche"]]:
+	for tab in [[1, "menu_roster"], [2, "menu_negozio"], [3, "menu_clan"], [4, "menu_stagione"], [5, "menu_tornei"], [6, "menu_statistiche"], [7, "menu_bottega"]]:
 		_tabs.current_tab = tab[0]
 		await get_tree().create_timer(0.3).timeout
 		await main.shot(tab[1])

@@ -789,6 +789,19 @@ impl Battle {
         self.act_cast(idx, ability.into(), target, false, ev)
     }
 
+    /// Consumabile in `slot` della borsa dell'unità e come si lancia
+    /// (l'Alchimista ne aumenta valori fissi e MAG minima).
+    pub fn item_cast(&self, idx: usize, slot: u8) -> Option<(ItemRef, Cast)> {
+        let u = self.units.get(idx)?;
+        let item = u.bag.get(slot as usize).copied().flatten()?;
+        let mut cast = item.consumable()?.cast();
+        if u.class == crate::class::Class::Alchemist {
+            cast.power_pct = cast.power_pct * crate::consumable::ALCHEMIST_POWER_PCT / 100;
+            cast.min_mag = cast.min_mag * crate::consumable::ALCHEMIST_POWER_PCT / 100;
+        }
+        Some((item, cast))
+    }
+
     /// Usa il consumabile in `slot` della borsa dell'unità attiva.
     fn use_item(
         &mut self,
@@ -797,13 +810,7 @@ impl Battle {
         target: Pos,
         ev: &mut Vec<Event>,
     ) -> Result<(), ActionError> {
-        let item = self.units[idx]
-            .bag
-            .get(slot as usize)
-            .copied()
-            .flatten()
-            .ok_or(ActionError::NoItem)?;
-        let cast = item.consumable().ok_or(ActionError::NoItem)?.cast();
+        let (item, cast) = self.item_cast(idx, slot).ok_or(ActionError::NoItem)?;
         let from = self.units[idx].pos;
         self.check_cast(idx, from, cast, target, true)?;
         let uid = self.units[idx].id;

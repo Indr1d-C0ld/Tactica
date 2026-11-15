@@ -694,3 +694,61 @@ mod consumables {
         assert!(used > 10, "l'IA non usa quasi mai i consumabili: {used}");
     }
 }
+
+mod advanced_classes {
+    use super::*;
+    use tactica_core::class::Class;
+    use tactica_core::consumable::bag_slots;
+
+    #[test]
+    fn every_class_has_kit_school_and_requirement() {
+        for c in Class::ALL {
+            let kit = presets::class_kit(c);
+            assert_eq!(kit.len(), 2, "{c:?}: kit incompleto");
+            assert!(
+                tactica_core::item::validate_loadout(c, &kit).is_ok(),
+                "{c:?}"
+            );
+            assert!(!c.innate().is_empty() && c.learnable().len() >= 3, "{c:?}");
+            if !c.is_base() {
+                assert!(c.requirement().is_some());
+            }
+        }
+        assert_eq!(bag_slots(Class::Alchemist), 4);
+        assert_eq!(bag_slots(Class::Scout), 2);
+    }
+
+    #[test]
+    fn mixed_parties_with_new_classes_play_to_the_end() {
+        let new = [
+            Class::Shadowblade,
+            Class::Dragoon,
+            Class::Bard,
+            Class::Alchemist,
+            Class::Geomancer,
+            Class::Summoner,
+        ];
+        for seed in 0..12u64 {
+            let mut units = Vec::new();
+            for team in 0..2u8 {
+                for k in 0..4 {
+                    let c = new[(seed as usize + k + team as usize * 2) % new.len()];
+                    let mut u = UnitSetup::new(format!("u{team}{k}"), team, c, 12)
+                        .with_equipment(&presets::class_kit(c));
+                    u.mastered = c.learnable().to_vec();
+                    units.push(u);
+                }
+            }
+            let (mut b, _) = Battle::new(&BattleSetup {
+                seed,
+                map: None,
+                units,
+                statutes: 2,
+                objective: Default::default(),
+                loot: Default::default(),
+            });
+            ai::autoplay(&mut b, 20_000);
+            assert!(b.is_over(), "seed {seed}: la battaglia non finisce");
+        }
+    }
+}

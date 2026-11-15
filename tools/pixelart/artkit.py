@@ -25,7 +25,11 @@ from pixlib import Mat, darken, ramp  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = Path(__file__).parent / "templates"
-CLASS_ORDER = ["vanguard", "scout", "arcanist", "mender", "runeblade", "warden"]
+CLASS_ORDER = ["vanguard", "scout", "arcanist", "mender", "runeblade", "warden",
+               "shadowblade", "dragoon", "bard", "alchemist", "geomancer", "summoner"]
+# Classi senza disegno procedurale: si parte dalla più simile (poi le sostituisce PixelLab).
+FALLBACK = {"shadowblade": "scout", "dragoon": "vanguard", "bard": "mender",
+            "alchemist": "arcanist", "geomancer": "warden", "summoner": "arcanist"}
 
 # Colori chiave (dal più scuro al più chiaro): non compaiono altrove.
 KEY_TEAM = ramp("#400040", "#800080", "#c000c0", "#ff40ff")
@@ -49,7 +53,7 @@ def base_sheet() -> Image.Image:
         P.TEAM = [KEY_TEAM, KEY_TEAM]
         P.HAIR = {"chiave": KEY_HAIR}
         P.SKIN = {"chiave": KEY_SKIN}
-        rows = [units.sheet_row(c, 0, "chiave", "chiave") for c in CLASS_ORDER]
+        rows = [units.sheet_row(FALLBACK.get(c, c), 0, "chiave", "chiave") for c in CLASS_ORDER]
     finally:
         P.TEAM, P.HAIR, P.SKIN = orig
     sheet = Image.new("RGBA", (rows[0].width, units.H * len(rows)), (0, 0, 0, 0))

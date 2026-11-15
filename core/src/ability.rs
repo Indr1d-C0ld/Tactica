@@ -87,6 +87,36 @@ pub enum AbilityId {
     ShieldWall,
     LightHammer,
     Vow,
+    // Classi avanzate della terza serie.
+    Backstab,
+    SleepBlade,
+    VenomFang,
+    BladeDance,
+    ShadowVeil,
+    Leap,
+    DiveStrike,
+    DragonLance,
+    Roar,
+    Ballad,
+    WarSong,
+    Lullaby,
+    Dirge,
+    Hymn,
+    Lob,
+    Blastmix,
+    ToxicFumes,
+    Panacea,
+    Tonic,
+    Landslide,
+    Quicksand,
+    Earthquake,
+    Stoneskin,
+    Sap,
+    Spark,
+    FireSpirit,
+    FrostSpirit,
+    ThunderSpirit,
+    DawnSpirit,
     // Effetti degli oggetti consumabili (non si imparano).
     Potion,
     Ether,
@@ -182,7 +212,7 @@ macro_rules! ab {
 use Element::*;
 
 /// Indicizzata per `AbilityId as usize`: l'ordine deve coincidere con l'enum.
-static TABLE: [Ability; 55] = [
+static TABLE: [Ability; 84] = [
     ab!(Strike, "strike", "Colpo", Physical, 100, 0, (1, 1)),
     ab!(
         HeavyBlow,
@@ -198,7 +228,7 @@ static TABLE: [Ability; 55] = [
     ab!(Shot, "shot", "Tiro", Physical, 90, 0, (2, 5), vertical: 5, ranged: true),
     ab!(AimedShot, "aimed_shot", "Tiro mirato", Physical, 140, 8, (2, 6), vertical: 6, ranged: true, master_rp: 80),
     ab!(Volley, "volley", "Raffica", Physical, 70, 10, (3, 5), aoe: 1, vertical: 5, ranged: true, master_rp: 120),
-    ab!(Flame, "flame", "Fiamma", Magic, 110, 8, (0, 4), aoe: 1, vertical: 4, element: Some(Fire)),
+    ab!(Flame, "flame", "Fiamma", Magic, 100, 8, (0, 4), aoe: 1, vertical: 4, element: Some(Fire)),
     ab!(Frost, "frost", "Gelo", Magic, 110, 8, (0, 4), aoe: 1, vertical: 4, element: Some(Ice), master_rp: 80,
         effect: fx(Status::Slow, 30, 3)),
     ab!(Bolt, "bolt", "Folgore", Magic, 160, 14, (1, 4), vertical: 6, element: Some(Thunder), master_rp: 100,
@@ -211,7 +241,7 @@ static TABLE: [Ability; 55] = [
     ab!(DrainBlade, "drain_blade", "Lama vorace", Physical, 110, 6, (1, 1), drain: true, master_rp: 100),
     ab!(FrostEdge, "frost_edge", "Taglio gelido", Physical, 130, 8, (1, 1), element: Some(Ice), master_rp: 100,
         effect: fx(Status::Slow, 35, 3)),
-    ab!(Rebuke, "rebuke", "Ammonimento", Magic, 80, 4, (1, 3), vertical: 4, element: Some(Holy),
+    ab!(Rebuke, "rebuke", "Ammonimento", Magic, 95, 4, (1, 3), vertical: 4, element: Some(Holy),
         effect: fx(Status::Silence, 40, 3)),
     ab!(Sanctuary, "sanctuary", "Santuario", Heal, 60, 12, (0, 2), aoe: 2, vertical: 4, master_rp: 120),
     ab!(Judgment, "judgment", "Giudizio", Magic, 140, 16, (1, 4), vertical: 6, element: Some(Holy), master_rp: 140),
@@ -265,10 +295,62 @@ static TABLE: [Ability; 55] = [
     // Custode
     ab!(ShieldWall, "shield_wall", "Muro di scudi", Support, 0, 14, (0, 0), aoe: 2, vertical: 4,
         master_rp: 140, effect: fx(Status::Aegis, 100, 2)),
-    ab!(LightHammer, "light_hammer", "Martello di luce", Physical, 140, 10, (1, 1), element: Some(Holy),
+    ab!(LightHammer, "light_hammer", "Martello di luce", Physical, 160, 8, (1, 1), element: Some(Holy),
         master_rp: 110),
     ab!(Vow, "vow", "Voto", Support, 0, 10, (0, 3), aoe: 1, vertical: 4, master_rp: 110,
         effect: fx(Status::Regen, 100, 4)),
+    // Lama d'ombra
+    ab!(Backstab, "backstab", "Pugnalata", Physical, 125, 4, (1, 1), effect: fx(Status::Poison, 25, 3)),
+    ab!(SleepBlade, "sleep_blade", "Lama soporifera", Physical, 80, 8, (1, 1), master_rp: 110,
+        effect: fx(Status::Sleep, 45, 2)),
+    ab!(VenomFang, "venom_fang", "Zanna velenosa", Physical, 95, 6, (1, 1), master_rp: 90,
+        effect: fx(Status::Poison, 65, 4)),
+    ab!(BladeDance, "blade_dance", "Danza delle lame", Physical, 85, 10, (1, 1), aoe: 1, master_rp: 130),
+    ab!(ShadowVeil, "shadow_veil", "Velo d'ombra", Support, 0, 8, (0, 0), vertical: 4, master_rp: 100,
+        effect: fx(Status::Haste, 100, 3)),
+    // Dragone
+    ab!(Leap, "leap", "Salto", Physical, 135, 6, (2, 3), vertical: 9),
+    ab!(DiveStrike, "dive_strike", "Picchiata", Physical, 190, 14, (2, 4), vertical: 10, master_rp: 150),
+    ab!(DragonLance, "dragon_lance", "Lancia del drago", Physical, 120, 8, (1, 2), vertical: 4,
+        element: Some(Fire), master_rp: 110),
+    ab!(Roar, "roar", "Ruggito", Support, 0, 8, (0, 0), aoe: 1, vertical: 4, master_rp: 100,
+        effect: fx(Status::Slow, 70, 3)),
+    // Bardo
+    ab!(Ballad, "ballad", "Ballata", Support, 0, 6, (0, 0), aoe: 2, vertical: 4, effect: fx(Status::Regen, 100, 3)),
+    ab!(WarSong, "war_song", "Canto di guerra", Support, 0, 12, (0, 0), aoe: 2, vertical: 4, master_rp: 130,
+        effect: fx(Status::Haste, 100, 3)),
+    ab!(Lullaby, "lullaby", "Ninna nanna", Support, 0, 12, (1, 4), aoe: 1, vertical: 4, master_rp: 120,
+        effect: fx(Status::Sleep, 55, 2)),
+    ab!(Dirge, "dirge", "Nenia", Support, 0, 8, (1, 4), aoe: 1, vertical: 4, master_rp: 100,
+        effect: fx(Status::Slow, 60, 3)),
+    ab!(Hymn, "hymn", "Inno", Heal, 70, 14, (0, 0), aoe: 2, vertical: 4, master_rp: 120),
+    // Alchimista
+    ab!(Lob, "lob", "Lancio", Physical, 105, 0, (2, 4), vertical: 5, ranged: true),
+    ab!(Blastmix, "blastmix", "Miscela esplosiva", Magic, 125, 9, (2, 4), aoe: 1, vertical: 5,
+        element: Some(Fire), ranged: true, master_rp: 110),
+    ab!(ToxicFumes, "toxic_fumes", "Vapori tossici", Support, 0, 8, (1, 4), aoe: 1, vertical: 4,
+        ranged: true, master_rp: 100, effect: fx(Status::Poison, 70, 4)),
+    ab!(Panacea, "panacea", "Panacea", Support, 0, 6, (0, 2), aoe: 1, vertical: 4, master_rp: 90, cleanse: true),
+    ab!(Tonic, "tonic", "Tonico", Heal, 130, 6, (0, 1), vertical: 4, master_rp: 90),
+    // Geomante
+    ab!(Landslide, "landslide", "Frana", Magic, 130, 5, (1, 3), vertical: 6, effect: fx(Status::Root, 20, 2)),
+    ab!(Quicksand, "quicksand", "Sabbie mobili", Support, 0, 10, (1, 4), aoe: 1, vertical: 4, master_rp: 110,
+        effect: fx(Status::Root, 70, 2)),
+    ab!(Earthquake, "earthquake", "Terremoto", Magic, 120, 20, (2, 4), aoe: 2, vertical: 6, master_rp: 160),
+    ab!(Stoneskin, "stoneskin", "Pelle di pietra", Support, 0, 8, (0, 2), aoe: 1, vertical: 4, master_rp: 100,
+        effect: fx(Status::Aegis, 100, 3)),
+    ab!(Sap, "sap", "Linfa", Support, 0, 8, (0, 3), aoe: 1, vertical: 4, master_rp: 90,
+        effect: fx(Status::Regen, 100, 3)),
+    // Invocatore
+    ab!(Spark, "spark", "Scintilla", Magic, 100, 4, (1, 4), vertical: 5, element: Some(Holy)),
+    ab!(FireSpirit, "fire_spirit", "Spirito del fuoco", Magic, 150, 30, (2, 5), aoe: 2, vertical: 6,
+        element: Some(Fire), master_rp: 180),
+    ab!(FrostSpirit, "frost_spirit", "Spirito del gelo", Magic, 140, 28, (2, 5), aoe: 2, vertical: 6,
+        element: Some(Ice), master_rp: 170, effect: fx(Status::Slow, 40, 2)),
+    ab!(ThunderSpirit, "thunder_spirit", "Spirito del tuono", Magic, 165, 26, (2, 5), aoe: 1, vertical: 7,
+        element: Some(Thunder), master_rp: 170, effect: fx(Status::Root, 35, 2)),
+    ab!(DawnSpirit, "dawn_spirit", "Spirito dell'alba", Heal, 110, 28, (0, 4), aoe: 2, vertical: 6,
+        master_rp: 170),
     // Consumabili: valori fissi, portata corta (le bombe si lanciano).
     ab!(Potion, "potion", "Pozione", Heal, 50, 0, (0, 1), vertical: 3, fixed: true),
     ab!(Ether, "ether", "Etere", Heal, 25, 0, (0, 1), vertical: 3, fixed: true, restore_mp: true),
@@ -286,10 +368,10 @@ static TABLE: [Ability; 55] = [
 ];
 
 impl AbilityId {
-    pub const ALL: [AbilityId; 55] = {
-        let mut out = [AbilityId::Strike; 55];
+    pub const ALL: [AbilityId; 84] = {
+        let mut out = [AbilityId::Strike; 84];
         let mut i = 0;
-        while i < 55 {
+        while i < 84 {
             out[i] = TABLE[i].id;
             i += 1;
         }

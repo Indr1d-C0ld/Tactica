@@ -1,6 +1,7 @@
 //! Squadre predefinite (demo, test, bilanciamento).
 
 use crate::class::Class;
+use crate::gear::ItemRef;
 use crate::item::ItemId;
 use crate::unit::UnitSetup;
 
@@ -20,15 +21,28 @@ pub fn demo_party(team: u8, level: i32, names: [&str; 4]) -> Vec<UnitSetup> {
 }
 
 /// Equipaggiamento tipico per classe (nemici e squadre generate).
-pub fn class_kit(class: Class) -> [ItemId; 2] {
+pub fn class_kit(class: Class) -> Vec<ItemRef> {
     use ItemId::*;
+    let fixed = |a: ItemId, b: ItemId| vec![ItemRef::from(a), ItemRef::from(b)];
+    let generated = |w: &str, a: &str| -> Vec<ItemRef> {
+        [w, a]
+            .iter()
+            .filter_map(|c| crate::gear::common(c, 1))
+            .collect()
+    };
     match class {
-        Class::Vanguard => [Greatblade, Chainmail],
-        Class::Scout => [Longbow, Leather],
-        Class::Arcanist => [StormRod, Robe],
-        Class::Mender => [SunStaff, Robe],
-        Class::Runeblade => [RuneSaber, Chainmail],
-        Class::Warden => [VotiveMace, WardenPlate],
+        Class::Vanguard => fixed(Greatblade, Chainmail),
+        Class::Scout => fixed(Longbow, Leather),
+        Class::Arcanist => fixed(StormRod, Robe),
+        Class::Mender => fixed(SunStaff, Robe),
+        Class::Runeblade => fixed(RuneSaber, Chainmail),
+        Class::Warden => fixed(VotiveMace, WardenPlate),
+        Class::Shadowblade => generated("pug", "gia"),
+        Class::Dragoon => generated("lan", "bri"),
+        Class::Bard => generated("arc", "giu"),
+        Class::Alchemist => generated("bac", "ves"),
+        Class::Geomancer => generated("bas", "usb"),
+        Class::Summoner => generated("ver", "ves"),
     }
 }
 

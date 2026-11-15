@@ -217,6 +217,14 @@ pub async fn save_match(
         for &item in &loot {
             db::add_item(&mut tx, e.account_id, item, 1).await?;
         }
+        // Erbe per l'alchimia, a ogni partita.
+        let herbs = tactica_core::craft::herbs_reward(mr == MatchResult::Win);
+        crate::craft::add_materials(
+            &mut tx,
+            e.account_id,
+            &vec![(tactica_core::craft::Material::Herbs, herbs)],
+        )
+        .await?;
         sqlx::query(
             "INSERT INTO match_players (match_id, team, account_id, result, elo_before, elo_after,
                                         coins, loot, season_id, clan_id, season_before, season_after)

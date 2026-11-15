@@ -334,17 +334,23 @@ pub async fn change_class(
     }
     let (keep, drop): (Vec<ItemRef>, Vec<ItemRef>) =
         unit.items().into_iter().partition(|i| i.usable_by(class));
+    // La borsa si adatta alla nuova classe: i consumabili in più tornano nell'inventario.
+    let mut bag = unit.bag_items();
+    let extra = bag.split_off(bag.len().min(tactica_core::consumable::bag_slots(class)));
     let mut tx = s.db.begin().await?;
-    for i in drop {
+    for i in drop.into_iter().chain(extra) {
         db::add_item(&mut tx, user.id, i, 1).await?;
     }
-    sqlx::query("UPDATE roster SET class = ?, equipment = ? WHERE id = ? AND account_id = ?")
-        .bind(class.key())
-        .bind(items_json(&keep))
-        .bind(id)
-        .bind(user.id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "UPDATE roster SET class = ?, equipment = ?, bag = ? WHERE id = ? AND account_id = ?",
+    )
+    .bind(class.key())
+    .bind(items_json(&keep))
+    .bind(items_json(&bag))
+    .bind(id)
+    .bind(user.id)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(Json(owned_unit(&s, user.id, id).await?))
 }
@@ -363,17 +369,17 @@ pub async fn set_bag(
     Path(id): Path<i64>,
     Json(b): Json<SetBag>,
 ) -> ApiResult<Json<RosterUnit>> {
-    use tactica_core::consumable::BAG_SLOTS;
     ensure_idle(&s, user.id)?;
     let unit = owned_unit(&s, user.id, id).await?;
+    let slots = tactica_core::consumable::bag_slots(unit.class());
     let wanted = b
         .items
         .iter()
         .map(|k| parse_item(k))
         .collect::<ApiResult<Vec<_>>>()?;
-    if wanted.len() > BAG_SLOTS {
+    if wanted.len() > slots {
         return Err(ApiError::bad_request(format!(
-            "la borsa contiene al massimo {BAG_SLOTS} consumabili"
+            "la borsa di questa classe contiene al massimo {slots} consumabili"
         )));
     }
     if let Some(bad) = wanted.iter().find(|i| i.consumable().is_none()) {

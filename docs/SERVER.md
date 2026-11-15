@@ -105,16 +105,24 @@ Ogni unità del roster riporta anche:
 
 - **Classi:**
   - base: Avanguardia, Esploratore, Arcanista, Guaritore;
-  - avanzate: Spadaruna e Custode.
+  - avanzate: Spadaruna, Custode, Lama d'ombra, Dragone, Bardo, Alchimista, Geomante, Invocatore.
 
-  Ogni classe ha Colpo, un'abilità innata e una propria "scuola" di 2 o 3 abilità da imparare.
+  Ogni classe ha Colpo, un'abilità innata e una propria "scuola" di 3-8 abilità da imparare (tabella in «Abilità per scuola»).
 - **Risonanza:**
   - un oggetto equipaggiato che insegna un'abilità della scuola della classe attuale la rende subito usabile;
   - a fine partita l'abilità accumula punti risonanza (RP): 20 di base, più 10 se si vince, più 2 per azione fino a un massimo di 10 azioni;
   - alla soglia (80-150 RP) l'abilità è padroneggiata: resta usabile senza l'oggetto finché l'unità è in quella classe.
 - **Classi avanzate:**
   - **Spadaruna:** richiede il livello 5, 1 abilità di Avanguardia e 1 di Arcanista padroneggiate;
-  - **Custode:** richiede il livello 5, 1 abilità di Guaritore e 1 di Avanguardia padroneggiate.
+  - **Custode:** richiede il livello 5, 1 abilità di Guaritore e 1 di Avanguardia padroneggiate;
+  - **Lama d'ombra:** livello 8, 2 di Esploratore e 1 di Spadaruna. Velocissima e sfuggente: colpi rapidi, veleno e sonno;
+  - **Dragone:** livello 8, 2 di Avanguardia e 1 di Custode. Salti e picchiate che superano qualsiasi dislivello;
+  - **Bardo:** livello 6, 2 di Guaritore e 1 di Esploratore. Canti ad area: rigenerazione, rapidità, sonno, lentezza;
+  - **Alchimista:** livello 6, 1 di Guaritore e 1 di Arcanista. Borsa da 4 consumabili (invece di 2) e consumabili più potenti del 50% (valori fissi e MAG minima delle pergamene);
+  - **Geomante:** livello 8, 1 di Custode e 2 di Arcanista. Frane, sabbie mobili, terremoti, pelle di pietra;
+  - **Invocatore:** livello 10, 3 di Arcanista e 1 di Guaritore. Invocazioni elementali enormi e una cura ad area, molto costose in MP.
+
+  Cambiando classe, i consumabili che non entrano nella nuova borsa tornano nell'inventario.
 
   Le reclute partono sempre da una classe base.
 - **Economia:**
@@ -174,6 +182,26 @@ Ogni unità porta in battaglia una **borsa** con al massimo 2 consumabili, prepa
 - **Negozio:** Pozione I, Etere I, Rimedio I, Bomba di brace I e Pergamena di Cura I.
 - **IA:** usa i consumabili quando rendono più del loro costo stimato; rianima appena può.
 
+## Mestieri: bottega, forgia e alchimia
+
+Otto materiali: rottami di metallo, legno lavorato, ritagli di stoffa, strisce di cuoio, schegge di gemma, fogli di pergamena, polvere arcana ed erbe officinali.
+
+- **Da dove vengono:**
+  - **erbe:** a ogni partita, 1 più 1 se si vince;
+  - **altri materiali:** si ottengono smantellando gli oggetti dell'inventario. Si ricava il materiale della famiglia dell'oggetto, in quantità che cresce con la qualità, più polvere arcana se l'oggetto è raro o superiore.
+- **Forgia** (solo oggetti generati, non equipaggiati):
+  - **raffinare:** qualità del materiale +1 (per esempio da acciaio ad argento runico). Costa materiale della famiglia, un po' di polvere arcana e monete;
+  - **incantare:** rarità +1, fino a epico, con un affisso in più compatibile con l'oggetto. Costa polvere arcana, gemme e monete. I leggendari non si incantano.
+- **Alchimia:** 16 ricette (pozioni, etere, rimedio, essenza vitale, elisir, bombe, fiale e alcune pergamene, fra cui Ritorno e Meteora). Si possono produrre le qualità I-III, con costi doppi e tripli; le qualità IV-VI si trovano solo come bottino.
+
+| Metodo e rotta | Descrizione |
+|---|---|
+| `GET /api/craft` 🔒 | monete, materiali posseduti e ricette con prodotto e costo per qualità |
+| `POST /api/craft/salvage` 🔒 `{item}` | smantella un oggetto dell'inventario |
+| `POST /api/craft/refine` 🔒 `{item}` | raffina (qualità +1) |
+| `POST /api/craft/enchant` 🔒 `{item}` | incanta (rarità +1) |
+| `POST /api/craft/brew` 🔒 `{recipe, tier}` | crea un consumabile (`tier` 0-2) |
+
 ## Abilità per scuola
 
 Ogni classe ha Colpo, un'abilità innata e una scuola di abilità da imparare con l'equipaggiamento (punti risonanza fino alla padronanza). Quelle in corsivo sono la seconda serie, aggiunta con il bottino generato.
@@ -186,6 +214,14 @@ Ogni classe ha Colpo, un'abilità innata e una scuola di abilità da imparare co
 | Guaritore | Cura | Luce, Cura maggiore, Egida, Germoglio, Purificazione, *Preghiera* (cura ad area 2), *Raggio sacro*, *Ritorno* (rianima un alleato con il 25% degli HP) |
 | Spadaruna | Lama runica | Lama vorace, Taglio gelido, *Lama di fiamma*, *Lama tonante* (Radici), *Sigillo runico* (Silenzio) |
 | Custode | Ammonimento | Santuario, Giudizio, Catene, *Muro di scudi* (Egida, area 2), *Martello di luce*, *Voto* (Rigenerazione) |
+| Lama d'ombra | Pugnalata (Veleno) | Lama soporifera, Zanna velenosa, Danza delle lame (area), Velo d'ombra (Rapidità) |
+| Dragone | Salto (portata 2-3, ignora 9 livelli di dislivello) | Picchiata, Lancia del drago (fuoco), Ruggito (Lentezza attorno a sé) |
+| Bardo | Ballata (Rigenerazione, area 2) | Canto di guerra (Rapidità, area 2), Ninna nanna (Sonno), Nenia (Lentezza), Inno (cura ad area) |
+| Alchimista | Lancio | Miscela esplosiva (fuoco ad area), Vapori tossici, Panacea, Tonico |
+| Geomante | Frana (Radici) | Sabbie mobili, Terremoto (area 2), Pelle di pietra (Egida), Linfa (Rigenerazione) |
+| Invocatore | Scintilla | Spirito del fuoco, Spirito del gelo, Spirito del tuono, Spirito dell'alba (cura ad area) |
+
+**Bilanciamento delle classi:** `cargo run --release -p tactica-core --example classes 800` gioca battaglie fra squadre casuali di tutte le classi (livello 12, scuole padroneggiate) e misura per ogni classe la percentuale di vittorie delle squadre che la schierano. Oggi tutte stanno fra il 37% (Custode) e il 53% (Bardo), con circa il 9% di pareggi.
 
 Gli oggetti rari ed epici possono insegnare qualsiasi abilità della scuola di una classe che li può usare. Con l'esempio `balance` e `TACTICA_MASTER=2` (tutte le abilità padroneggiate) le squadre speculari restano in equilibrio, 284 vittorie a 276; con `TACTICA_MASTER=1` la squadra che padroneggia la scuola vince circa il 63% delle volte.
 

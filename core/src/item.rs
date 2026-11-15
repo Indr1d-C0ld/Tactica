@@ -500,6 +500,8 @@ pub fn starter_kit(class: Class) -> [ItemId; 2] {
         Class::Scout => ItemId::Shortbow,
         Class::Arcanist => ItemId::Rod,
         Class::Mender | Class::Warden => ItemId::Staff,
+        // Le classi avanzate non si reclutano: tengono l'equipaggiamento che hanno.
+        _ => ItemId::Staff,
     };
     [weapon, ItemId::Leather]
 }
@@ -568,7 +570,10 @@ mod tests {
             }
         }
         for c in Class::ALL {
-            assert!(validate_loadout(c, &starter_kit(c).map(ItemRef::from)).is_ok());
+            // Si reclutano solo le classi base: il kit iniziale deve valere per loro.
+            if c.is_base() {
+                assert!(validate_loadout(c, &starter_kit(c).map(ItemRef::from)).is_ok());
+            }
             // Ogni abilità imparabile si può trovare su un oggetto: o del
             // catalogo classico, o generato con una base adatta alla classe.
             for a in c.learnable() {

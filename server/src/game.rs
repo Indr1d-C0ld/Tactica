@@ -79,7 +79,7 @@ pub const LOOT_CAMPAIGN: i32 = 50;
 pub const LOOT_WAR: i32 = 40;
 const AI_NAMES: [&str; 4] = ["Sentinella", "Predone", "Veggente", "Eremita"];
 
-fn random_seed() -> u64 {
+pub fn random_seed() -> u64 {
     let mut b = [0u8; 8];
     getrandom::fill(&mut b).expect("sorgente casuale del sistema");
     u64::from_le_bytes(b)

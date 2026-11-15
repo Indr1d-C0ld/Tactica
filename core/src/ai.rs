@@ -43,8 +43,8 @@ pub fn plan_turn(b: &Battle) -> Vec<Action> {
                 }
             }
             // Consumabili della borsa: valgono solo se rendono più di quanto costano.
-            for (slot, item) in u.bag.iter().enumerate() {
-                let Some(cast) = item.and_then(|i| i.consumable()).map(|c| c.cast()) else {
+            for slot in 0..u.bag.len() {
+                let Some((_, cast)) = b.item_cast(idx, slot as u8) else {
                     continue;
                 };
                 let r = cast.ability.def().range_max;
@@ -231,8 +231,18 @@ fn position_for(b: &Battle, idx: usize, froms: &[Pos]) -> Pos {
             Some(p) => (Some(p), 2),
             None => (nearest_enemy(b, idx, u.pos), 4),
         },
-        Class::Vanguard | Class::Runeblade | Class::Warden => (nearest_enemy(b, idx, u.pos), 1),
-        Class::Scout | Class::Arcanist => (nearest_enemy(b, idx, u.pos), 3),
+        Class::Bard | Class::Alchemist => match wounded_ally {
+            Some(p) => (Some(p), 2),
+            None => (nearest_enemy(b, idx, u.pos), 3),
+        },
+        Class::Vanguard
+        | Class::Runeblade
+        | Class::Warden
+        | Class::Shadowblade
+        | Class::Dragoon => (nearest_enemy(b, idx, u.pos), 1),
+        Class::Scout | Class::Arcanist | Class::Geomancer | Class::Summoner => {
+            (nearest_enemy(b, idx, u.pos), 3)
+        }
     };
     let Some(anchor) = anchor else { return u.pos };
     froms

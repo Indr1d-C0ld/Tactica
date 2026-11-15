@@ -121,7 +121,7 @@ impl Unit {
                 .bag
                 .iter()
                 .filter(|i| i.consumable().is_some())
-                .take(crate::consumable::BAG_SLOTS)
+                .take(crate::consumable::bag_slots(setup.class))
                 .map(|&i| Some(i))
                 .collect(),
             stats,

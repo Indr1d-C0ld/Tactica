@@ -10,6 +10,18 @@ use crate::gear::{Rarity, TIERS};
 
 /// Consumabili che un'unità può portare in battaglia.
 pub const BAG_SLOTS: usize = 2;
+/// L'Alchimista porta più consumabili e li rende più efficaci.
+pub const ALCHEMIST_BAG_SLOTS: usize = 4;
+pub const ALCHEMIST_POWER_PCT: i32 = 150;
+
+/// Posti della borsa per classe.
+pub fn bag_slots(class: crate::class::Class) -> usize {
+    if class == crate::class::Class::Alchemist {
+        ALCHEMIST_BAG_SLOTS
+    } else {
+        BAG_SLOTS
+    }
+}
 
 pub struct ConsumableDef {
     pub code: &'static str,

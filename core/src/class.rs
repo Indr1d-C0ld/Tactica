@@ -56,6 +56,12 @@ pub enum Class {
     Mender,
     Runeblade,
     Warden,
+    Shadowblade,
+    Dragoon,
+    Bard,
+    Alchemist,
+    Geomancer,
+    Summoner,
 }
 
 pub const MAX_LEVEL: i32 = 50;
@@ -69,13 +75,19 @@ pub struct Requirement {
 }
 
 impl Class {
-    pub const ALL: [Class; 6] = [
+    pub const ALL: [Class; 12] = [
         Class::Vanguard,
         Class::Scout,
         Class::Arcanist,
         Class::Mender,
         Class::Runeblade,
         Class::Warden,
+        Class::Shadowblade,
+        Class::Dragoon,
+        Class::Bard,
+        Class::Alchemist,
+        Class::Geomancer,
+        Class::Summoner,
     ];
 
     /// Chiave stabile per database e protocollo.
@@ -87,6 +99,12 @@ impl Class {
             Class::Mender => "mender",
             Class::Runeblade => "runeblade",
             Class::Warden => "warden",
+            Class::Shadowblade => "shadowblade",
+            Class::Dragoon => "dragoon",
+            Class::Bard => "bard",
+            Class::Alchemist => "alchemist",
+            Class::Geomancer => "geomancer",
+            Class::Summoner => "summoner",
         }
     }
 
@@ -102,6 +120,12 @@ impl Class {
             Class::Mender => "Guaritore",
             Class::Runeblade => "Spadaruna",
             Class::Warden => "Custode",
+            Class::Shadowblade => "Lama d'ombra",
+            Class::Dragoon => "Dragone",
+            Class::Bard => "Bardo",
+            Class::Alchemist => "Alchimista",
+            Class::Geomancer => "Geomante",
+            Class::Summoner => "Invocatore",
         }
     }
 
@@ -115,6 +139,12 @@ impl Class {
             Class::Mender => &[Mend],
             Class::Runeblade => &[RuneEdge],
             Class::Warden => &[Rebuke],
+            Class::Shadowblade => &[Backstab],
+            Class::Dragoon => &[Leap],
+            Class::Bard => &[Ballad],
+            Class::Alchemist => &[Lob],
+            Class::Geomancer => &[Landslide],
+            Class::Summoner => &[Spark],
         }
     }
 
@@ -146,6 +176,12 @@ impl Class {
             ],
             Class::Runeblade => &[DrainBlade, FrostEdge, FlameEdge, StormEdge, RuneSeal],
             Class::Warden => &[Sanctuary, Judgment, Chains, ShieldWall, LightHammer, Vow],
+            Class::Shadowblade => &[SleepBlade, VenomFang, BladeDance, ShadowVeil],
+            Class::Dragoon => &[DiveStrike, DragonLance, Roar],
+            Class::Bard => &[WarSong, Lullaby, Dirge, Hymn],
+            Class::Alchemist => &[Blastmix, ToxicFumes, Panacea, Tonic],
+            Class::Geomancer => &[Quicksand, Earthquake, Stoneskin, Sap],
+            Class::Summoner => &[FireSpirit, FrostSpirit, ThunderSpirit, DawnSpirit],
         }
     }
 
@@ -159,6 +195,30 @@ impl Class {
             Class::Warden => Some(Requirement {
                 level: 5,
                 mastered: &[(Class::Mender, 1), (Class::Vanguard, 1)],
+            }),
+            Class::Shadowblade => Some(Requirement {
+                level: 8,
+                mastered: &[(Class::Scout, 2), (Class::Runeblade, 1)],
+            }),
+            Class::Dragoon => Some(Requirement {
+                level: 8,
+                mastered: &[(Class::Vanguard, 2), (Class::Warden, 1)],
+            }),
+            Class::Bard => Some(Requirement {
+                level: 6,
+                mastered: &[(Class::Mender, 2), (Class::Scout, 1)],
+            }),
+            Class::Alchemist => Some(Requirement {
+                level: 6,
+                mastered: &[(Class::Mender, 1), (Class::Arcanist, 1)],
+            }),
+            Class::Geomancer => Some(Requirement {
+                level: 8,
+                mastered: &[(Class::Warden, 1), (Class::Arcanist, 2)],
+            }),
+            Class::Summoner => Some(Requirement {
+                level: 10,
+                mastered: &[(Class::Arcanist, 3), (Class::Mender, 1)],
             }),
             _ => None,
         }
@@ -217,7 +277,13 @@ impl Class {
             Class::Arcanist => s(70, 40, 7, 6, 17, 12, 10, 3, 2, 5),
             Class::Mender => s(75, 36, 8, 7, 14, 13, 10, 4, 2, 8),
             Class::Runeblade => s(95, 24, 15, 10, 13, 10, 10, 4, 2, 8),
-            Class::Warden => s(120, 26, 11, 15, 10, 14, 8, 3, 2, 4),
+            Class::Warden => s(125, 26, 13, 15, 12, 14, 10, 3, 2, 4),
+            Class::Shadowblade => s(88, 20, 15, 8, 8, 9, 13, 5, 3, 18),
+            Class::Dragoon => s(112, 14, 17, 13, 5, 8, 9, 4, 5, 6),
+            Class::Bard => s(80, 34, 9, 8, 12, 12, 11, 4, 2, 10),
+            Class::Alchemist => s(88, 30, 11, 9, 13, 11, 10, 4, 2, 8),
+            Class::Geomancer => s(98, 30, 12, 11, 15, 12, 9, 4, 3, 7),
+            Class::Summoner => s(65, 52, 6, 6, 19, 14, 9, 3, 2, 5),
         }
     }
 
@@ -239,7 +305,13 @@ impl Class {
             Class::Arcanist => g(55, 30, 4, 5, 15, 11, 6),
             Class::Mender => g(60, 28, 5, 6, 12, 12, 6),
             Class::Runeblade => g(80, 18, 12, 9, 11, 9, 6),
-            Class::Warden => g(95, 16, 8, 14, 8, 13, 4),
+            Class::Warden => g(98, 16, 10, 14, 10, 13, 5),
+            Class::Shadowblade => g(72, 14, 13, 7, 6, 8, 9),
+            Class::Dragoon => g(92, 10, 14, 12, 4, 7, 5),
+            Class::Bard => g(65, 26, 7, 7, 10, 11, 7),
+            Class::Alchemist => g(68, 22, 8, 8, 10, 10, 6),
+            Class::Geomancer => g(80, 22, 9, 10, 14, 11, 5),
+            Class::Summoner => g(52, 36, 4, 5, 17, 13, 5),
         }
     }
 
