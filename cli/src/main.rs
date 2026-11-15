@@ -107,6 +107,7 @@ fn demo_setup(seed: u64) -> BattleSetup {
         map: None,
         units,
         statutes: 2,
+        objective: Default::default(),
     }
 }
 

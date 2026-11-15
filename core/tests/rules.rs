@@ -15,6 +15,7 @@ fn setup(seed: u64) -> BattleSetup {
         map: None,
         units,
         statutes: 2,
+        objective: Default::default(),
     }
 }
 
@@ -116,6 +117,7 @@ fn violating_a_statute_suspends_then_expels() {
                 map: Some(params.clone()),
                 units: units.clone(),
                 statutes: 1,
+                objective: Default::default(),
             })
         })
         .find(|(b, _)| b.statutes == [Statute::NoHealing] && b.active_index() == Some(0))
@@ -252,6 +254,7 @@ fn advanced_classes_fight() {
             map: None,
             units: units.clone(),
             statutes: 1,
+            objective: Default::default(),
         });
         let (_, ev) = ai::autoplay(&mut b, 10_000);
         assert!(b.is_over());
@@ -269,4 +272,48 @@ fn advanced_classes_fight() {
     ] {
         assert!(used.contains(&a), "{a:?} mai usata");
     }
+}
+
+#[test]
+fn missions_scale_and_champion_wins() {
+    use tactica_core::Objective;
+    let allies = presets::demo_party(0, 5, ["A", "B", "C", "D"]);
+    let m1 = presets::mission(7, &allies, 1);
+    let m3 = presets::mission(7, &allies, 3);
+    assert_eq!(m1, presets::mission(7, &allies, 1), "deterministica");
+    assert!(m3.enemies.len() > m1.enemies.len());
+    assert!(m3.enemies.iter().map(|e| e.level).max() > m1.enemies.iter().map(|e| e.level).max());
+    assert!(m1.enemies.iter().all(|e| e.team == 1));
+
+    // Abbattere il campione basta per vincere, anche con altri nemici in piedi.
+    let mut early_wins = 0;
+    for seed in 0..60 {
+        let m = presets::mission(seed, &allies, 1);
+        let Some(c) = m.champion else { continue };
+        let champ_id = (allies.len() + c) as u32;
+        let mut units = allies.clone();
+        units.extend(m.enemies.clone());
+        let setup = BattleSetup {
+            seed,
+            map: None,
+            units,
+            statutes: 0,
+            objective: Objective::Champion(champ_id),
+        };
+        let (mut b, _) = Battle::new(&setup);
+        let (_, ev) = ai::autoplay(&mut b, 20_000);
+        let champ_down = ev
+            .iter()
+            .any(|e| matches!(e, Event::Defeated { unit } if *unit == champ_id));
+        if champ_down {
+            assert_eq!(b.winner(), Some(Some(0)), "seed {seed}");
+            if b.units.iter().any(|u| u.team == 1 && u.is_active()) {
+                early_wins += 1;
+            }
+        }
+    }
+    assert!(
+        early_wins > 0,
+        "nessuna vittoria anticipata per caduta del campione"
+    );
 }

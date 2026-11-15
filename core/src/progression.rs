@@ -71,11 +71,16 @@ pub fn coins(result: MatchResult) -> i64 {
 /// Bottino di fine partita, deterministico dato il seed (verificabile).
 /// Gli oggetti più costosi sono più rari.
 pub fn loot(seed: u64, result: MatchResult) -> Option<ItemId> {
+    loot_with_chance(seed, result, LOOT_CHANCE)
+}
+
+/// Come `loot`, con probabilità di bottino personalizzata (es. missioni cooperative).
+pub fn loot_with_chance(seed: u64, result: MatchResult, chance: i32) -> Option<ItemId> {
     if result != MatchResult::Win {
         return None;
     }
     let mut rng = Rng::new(seed ^ 0x6c6f_6f74);
-    if !rng.percent(LOOT_CHANCE) {
+    if !rng.percent(chance) {
         return None;
     }
     let weight = |i: ItemId| (2000 / i.def().price.max(50)) as u32;

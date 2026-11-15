@@ -16,6 +16,8 @@ pub const BASE_RATING: i64 = 1000;
 pub const CLAN_POINTS_PVP_WIN: i64 = 3;
 pub const CLAN_POINTS_PVP_DRAW: i64 = 1;
 pub const CLAN_POINTS_PVE_WIN: i64 = 1;
+/// Missione cooperativa vinta (+1 se era una caccia al campione), una volta per clan.
+pub const CLAN_POINTS_COOP_WIN: i64 = 2;
 
 const NAMES: [&str; 6] = [
     "dell'Alba",
@@ -63,24 +65,27 @@ async fn open_next(conn: &mut SqliteConnection, days: i64, start: i64) -> sqlx::
         .await?;
     let number = last.unwrap_or(0) + 1;
     let ends = start + days.max(1) * 86_400;
-    let id =
-        sqlx::query("INSERT INTO seasons (number, name, starts_at, ends_at) VALUES (?, ?, ?, ?)")
-            .bind(number)
-            .bind(season_name(number))
-            .bind(start)
-            .bind(ends)
-            .execute(&mut *conn)
-            .await?
-            .last_insert_rowid();
-    tracing::info!(number, "nuova stagione aperta");
-    Ok(Season {
-        id,
-        number,
-        name: season_name(number),
-        starts_at: start,
-        ends_at: ends,
-        closed: false,
-    })
+    // Due richieste concorrenti possono provare ad aprirla insieme: vince la prima.
+    let inserted = sqlx::query(
+        "INSERT INTO seasons (number, name, starts_at, ends_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(number) DO NOTHING",
+    )
+    .bind(number)
+    .bind(season_name(number))
+    .bind(start)
+    .bind(ends)
+    .execute(&mut *conn)
+    .await?
+    .rows_affected();
+    if inserted == 1 {
+        tracing::info!(number, "nuova stagione aperta");
+    }
+    sqlx::query_as(
+        "SELECT id, number, name, starts_at, ends_at, closed FROM seasons WHERE number = ?",
+    )
+    .bind(number)
+    .fetch_one(&mut *conn)
+    .await
 }
 
 /// Punteggio stagionale dell'account (inizializzato col reset morbido).
@@ -227,7 +232,8 @@ pub async fn rollover_if_due(db: &SqlitePool, days: i64, at: i64) -> sqlx::Resul
     let mut tx = db.begin().await?;
     let season = current(&mut tx, days).await?;
     if at < season.ends_at {
-        tx.rollback().await?;
+        // Conferma comunque: `current` può aver appena aperto la prima stagione.
+        tx.commit().await?;
         return Ok(None);
     }
 

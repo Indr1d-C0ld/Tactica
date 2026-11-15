@@ -24,6 +24,10 @@ var main: Node
 var online := false
 var my_team := 0
 var opponent := "IA"
+## Unità comandate da questo giocatore (in cooperativa solo una parte della squadra).
+var mine := {}
+var allies: Array = []
+var mission: Dictionary = {}
 var engine: TacticaEngine
 var snapshot: Dictionary = {}
 var units: Array = []
@@ -55,6 +59,11 @@ func setup_online(matched: Dictionary, raw: String) -> void:
 	online = true
 	my_team = int(matched["team"])
 	opponent = str(matched.get("opponent", "?"))
+	for i in matched.get("mine", []):
+		mine[int(i)] = true
+	allies = matched.get("allies", [])
+	if matched.get("mission") is Dictionary:
+		mission = matched["mission"]
 	engine = TacticaEngine.new()
 	engine.set_snapshot_from_message(raw)
 
@@ -201,11 +210,19 @@ func refresh() -> void:
 	snapshot = JSON.parse_string(engine.snapshot_json())
 	units = JSON.parse_string(engine.units_view_json())
 	board.active = _active()
+	var obj: Variant = snapshot.get("objective")
+	board.champion = int(obj["Champion"]) if obj is Dictionary and obj.has("Champion") else -1
 	board.units = units
 	var turn_txt := "Turno %d" % int(snapshot["turn"])
-	_top.text = "%s · %s · Statuti: %s · Avversario: %s · Tu: squadra %s" % [
-		turn_txt, engine.biome_name(), ", ".join(engine.statute_names()), opponent,
-		"blu" if my_team == 0 else "rossa"]
+	if not mission.is_empty():
+		var goal := "abbatti il campione" if bool(mission.get("hunt", false)) else "sconfiggi tutti i nemici"
+		_top.text = "%s · %s (%s) · Obiettivo: %s · %s · Statuti: %s · Con: %s" % [
+			turn_txt, mission["name"], mission["difficulty_name"], goal, engine.biome_name(),
+			", ".join(engine.statute_names()), ", ".join(allies) if not allies.is_empty() else "—"]
+	else:
+		_top.text = "%s · %s · Statuti: %s · Avversario: %s · Tu: squadra %s" % [
+			turn_txt, engine.biome_name(), ", ".join(engine.statute_names()), opponent,
+			"blu" if my_team == 0 else "rossa"]
 	_show_card(_active())
 	_rebuild_actions()
 
@@ -217,8 +234,11 @@ func _active() -> int:
 
 func my_turn() -> bool:
 	var a := _active()
-	return not ended and not bool(snapshot.get("finished", false)) and a >= 0 \
-		and int(units[a]["team"]) == my_team
+	if ended or bool(snapshot.get("finished", false)) or a < 0:
+		return false
+	if not mine.is_empty():
+		return mine.has(a)
+	return int(units[a]["team"]) == my_team
 
 
 func _show_card(i: int) -> void:
@@ -233,6 +253,8 @@ func _show_card(i: int) -> void:
 		team_col, u["name"], u["class_name"], int(u["level"]), int(u["hp"]), int(u["max_hp"]),
 		int(u["mp"]), int(u["max_mp"]), int(st["atk"]), int(st["def"]), int(st["mag"]),
 		int(st["res"]), int(st["spd"]), int(st["mov"]), int(st["jump"]), int(st["evade"])]
+	if not mine.is_empty() and int(u["team"]) == my_team:
+		_card.text += "\n[color=#9cf]%s[/color]" % ("Tua unità" if mine.has(i) else "Unità di un alleato")
 	if int(u["penalties"]) > 0:
 		_card.text += "\n[color=#f96]Sanzioni: %d[/color]" % int(u["penalties"])
 
@@ -252,7 +274,11 @@ func _rebuild_actions() -> void:
 	if ended:
 		return
 	if not my_turn():
-		_actions.add_child(UI.label("Turno dell'avversario..." if not busy else "In attesa...", 0, UI.MUTED))
+		var who := "Turno dell'avversario..."
+		var a := _active()
+		if not mine.is_empty() and a >= 0 and int(units[a]["team"]) == my_team:
+			who = "Turno di un alleato..."
+		_actions.add_child(UI.label(who if not busy else "In attesa...", 0, UI.MUTED))
 		if mode != "idle":
 			_set_mode("idle")
 		return
@@ -460,6 +486,8 @@ func _after_change() -> void:
 		await get_tree().create_timer(0.3 if not main.autoplay() else 0.02).timeout
 		if not ended and not my_turn():
 			_ai_step()
+	elif not my_turn():
+		_rebuild_actions()
 
 
 func _autoplay_tick() -> void:

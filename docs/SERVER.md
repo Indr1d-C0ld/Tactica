@@ -28,6 +28,7 @@ La configurazione si fa con variabili d'ambiente:
 | `TACTICA_BACKUP_EVERY_HOURS` | `24` | frequenza dei backup |
 | `TACTICA_BACKUP_KEEP` | `14` | quanti backup conservare |
 | `TACTICA_SEASON_DAYS` | `28` | durata di una stagione classificata |
+| `TACTICA_COOP_MIN_PLAYERS` | `2` | giocatori minimi per avviare una missione cooperativa |
 | `RUST_LOG` | `info,sqlx=warn` | livello dei log |
 
 ## API HTTP
@@ -118,6 +119,39 @@ Ogni unità del roster riporta anche:
   - **Nuova stagione:** si apre subito dopo.
 - **`/api/me`:** riporta clan, inviti, titoli e il punteggio stagionale; il profilo pubblico mostra la sigla del clan e i titoli.
 
+## Missioni cooperative di clan
+
+- **Stanze:** da 2 a 6 membri dello stesso clan aprono o raggiungono una stanza di missione e il capostanza la avvia. Il minimo di giocatori si configura con `TACTICA_COOP_MIN_PLAYERS`.
+- **Squadra:** la squadra alleata ha 6 posti, divisi fra i giocatori (2 giocatori: 3 unità ciascuno; 3: 2 ciascuno; da 4 a 6: 1 ciascuno). Ognuno comanda solo le proprie unità: il server accetta un'azione solo da chi controlla l'unità di turno.
+- **Generazione da seed:**
+  - **Nemici:** tanti quanti gli alleati (almeno 3), più 1 per ogni livello di difficoltà oltre il primo. Il loro livello è la media degli alleati più 2 per ogni livello di difficoltà oltre il primo.
+  - **Classi:** con difficoltà Ardua e Leggendaria compaiono anche le classi avanzate.
+  - **Statuti:** 1 a difficoltà Normale, 2 dalla Ardua in su.
+- **Tipi di missione:**
+  - **Assedio:** si vince sconfiggendo tutti i nemici.
+  - **Caccia:** un campione nominato di 3 livelli più alto; abbatterlo basta per vincere.
+- **Abbandono:** se un giocatore se ne va o si disconnette, le sue unità passano all'IA. La squadra si arrende solo quando non resta nessun umano.
+- **Ricompense:**
+  - esperienza e punti risonanza per le proprie unità;
+  - in caso di vittoria, monete pari a 150 + 50 per ogni livello di difficoltà oltre il primo (più il bonus del clan) e bottino al 75%;
+  - punti clan: 2 per la vittoria (3 per una caccia), assegnati una sola volta al clan.
+- **ELO e punteggio stagionale:** non cambiano.
+
+Messaggi WebSocket:
+
+| Direzione | Messaggio |
+|---|---|
+| client → server | `room_create {difficulty, units}`, `room_join {room, units}`, `room_leave`, `room_start`, `room_list` |
+| server → client | `room {room}` (stato della propria stanza, `null` se non si è in una stanza) e `rooms {rooms}` |
+
+In `matched`:
+
+- **`mine`:** gli indici delle unità comandate;
+- **`allies`:** gli altri umani della squadra;
+- **`mission`:** nome, difficoltà e tipo della missione.
+
+Lo snapshot contiene `objective` (`Rout` oppure `{"Champion": id}`).
+
 ## Protocollo WebSocket
 
 Connessione a `GET /ws?token=<token>`. Tutti i messaggi sono JSON con il campo `type`.
@@ -187,4 +221,4 @@ Note sul deploy:
 - **Matchmaking:** una sola coda PvP a un posto. Mancano lo scarto ELO e la gestione di più livelli.
 - **Livelli in PvP:** il PvP usa i livelli reali del roster; si valuta una modalità classificata con livelli normalizzati.
 - **Rate limiting:** manca su login e registrazione; va aggiunto prima di aprire il server su Internet.
-- **Contenuti mancanti:** missioni cooperative di clan (più giocatori nella stessa squadra), guerre fra clan, status alterati (veleno, sonno...), seconda scuola equipaggiabile.
+- **Contenuti mancanti:** guerre fra clan, status alterati (veleno, sonno...), seconda scuola equipaggiabile.

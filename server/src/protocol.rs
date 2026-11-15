@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 use tactica_core::{Action, Event, Snapshot};
 
+pub use crate::game::MissionInfo;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Mode {
@@ -13,6 +15,8 @@ pub enum Mode {
     Pve,
     /// Contro un altro giocatore (classificata, ELO).
     Pvp,
+    /// Missione cooperativa di clan contro l'IA.
+    Coop,
 }
 
 impl Mode {
@@ -20,6 +24,7 @@ impl Mode {
         match self {
             Mode::Pve => "pve",
             Mode::Pvp => "pvp",
+            Mode::Coop => "coop",
         }
     }
 }
@@ -33,8 +38,36 @@ pub enum ClientMsg {
     Cancel,
     /// Azione nella partita in corso.
     Action { action: Action },
-    /// Abbandona la partita (resa).
+    /// Abbandona la partita (resa; in cooperativa le unità passano all'IA).
     Leave,
+    /// Apre una stanza di missione per il proprio clan (difficoltà 1-3).
+    RoomCreate { difficulty: u8, units: Vec<i64> },
+    /// Entra in una stanza del proprio clan.
+    RoomJoin { room: u64, units: Vec<i64> },
+    /// Esce dalla stanza.
+    RoomLeave,
+    /// Il capostanza avvia la missione.
+    RoomStart,
+    /// Stanze aperte del proprio clan.
+    RoomList,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RoomMember {
+    pub username: String,
+    pub units: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RoomView {
+    pub id: u64,
+    pub clan: String,
+    pub difficulty: u8,
+    pub difficulty_name: String,
+    pub host: String,
+    pub members: Vec<RoomMember>,
+    pub max_players: usize,
+    pub min_players: usize,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -72,7 +105,22 @@ pub enum ServerMsg {
         mode: Mode,
         team: u8,
         opponent: String,
+        /// Altri umani nella propria squadra (cooperativa).
+        #[serde(default)]
+        allies: Vec<String>,
+        /// Indici delle unità comandate da questo giocatore.
+        #[serde(default)]
+        mine: Vec<usize>,
+        #[serde(default)]
+        mission: Option<MissionInfo>,
         snapshot: Snapshot,
+    },
+    /// Stato della propria stanza di missione (`None`: non sei in una stanza).
+    Room {
+        room: Option<RoomView>,
+    },
+    Rooms {
+        rooms: Vec<RoomView>,
     },
     Update {
         events: Vec<Event>,

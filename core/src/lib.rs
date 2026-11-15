@@ -15,6 +15,6 @@ pub mod statute;
 pub mod text;
 pub mod unit;
 
-pub use battle::{Action, ActionError, Battle, BattleSetup, Event, Snapshot};
+pub use battle::{Action, ActionError, Battle, BattleSetup, Event, Objective, Snapshot};
 pub use map::{Biome, Dir, Map, MapParams, Pos, Terrain};
 pub use unit::{Unit, UnitSetup};

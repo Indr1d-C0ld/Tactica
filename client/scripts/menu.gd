@@ -18,6 +18,10 @@ var _clan: VBoxContainer
 var _season: VBoxContainer
 var _status: Label
 var _picked := {}
+var _room: Dictionary = {}
+var _rooms: Array = []
+var _coop: VBoxContainer
+var _difficulty := 1
 var _queued := false
 
 
@@ -189,6 +193,16 @@ func _on_ws(msg: Dictionary, raw: String) -> void:
 			main.start_online_battle(msg, raw)
 		"error":
 			_say(str(msg.get("message", "errore")), true)
+		"room":
+			_room = msg["room"] if msg.get("room") is Dictionary else {}
+			_render_coop()
+			if main.autoplay():
+				_autoplay_room()
+		"rooms":
+			_rooms = msg.get("rooms", [])
+			_render_coop()
+			if main.autoplay():
+				_autoplay_room()
 
 
 # ------------------------------------------------------------------ roster
@@ -416,12 +430,13 @@ func _autoplay() -> void:
 			i += 1
 		await reload()
 	# Fonda un clan dimostrativo, se possibile.
-	if me.get("clan") == null and int(me["coins"]) >= 200:
+	if me.get("clan") == null and int(me["coins"]) >= 200 and str(main.opts.get("mode", "")) != "coop":
 		await Net.post_json("/api/clans", {"name": "Compagnia di " + str(me["username"]), "tag": str(me["username"]).substr(0, 4).to_upper(), "motto": "Pixel e onore"})
 		await reload()
 	# Compra e equipaggia un oggetto che insegna un'abilità, se possibile.
 	for u in me["roster"]:
-		if str(u["class"]) == "arcanist" and not ("frost_rod" in u["equipment"]) and int(inventory.get("coins", 0)) >= 350:
+		if str(u["class"]) == "arcanist" and not ("frost_rod" in u["equipment"]) and int(inventory.get("coins", 0)) >= 350 \
+				and str(main.opts.get("mode", "")) != "coop":
 			await Net.post_json("/api/shop/buy", {"item": "frost_rod"})
 			await Net.put_json("/api/roster/%d/equipment" % int(u["id"]), {"items": ["frost_rod", "leather"]})
 			await reload()
@@ -430,6 +445,9 @@ func _autoplay() -> void:
 		_tabs.current_tab = tab[0]
 		await get_tree().create_timer(0.3).timeout
 		await main.shot(tab[1])
+	if str(main.opts.get("mode", "")) == "coop":
+		await _autoplay_coop_setup()
+		return
 	_tabs.current_tab = 0
 	var n := 0
 	for u in me["roster"]:
@@ -482,6 +500,67 @@ func _build_clan() -> void:
 		_clan.add_child(row)
 
 
+# ------------------------------------------------------------------ missioni cooperative
+
+func _coop_section() -> void:
+	_coop = UI.vbox(6)
+	_clan.add_child(HSeparator.new())
+	_clan.add_child(UI.label("Missioni cooperative", 18, UI.ACCENT))
+	_clan.add_child(UI.label("Da 2 a 6 membri del clan contro l'IA: 6 posti divisi fra i giocatori (le unità scelte nella scheda Gioca). Obiettivi: sbaragliare i nemici o abbattere il campione.", 13, UI.MUTED))
+	_clan.add_child(_coop)
+	_render_coop()
+	Net.ws_send({"type": "room_list"})
+
+
+func _render_coop() -> void:
+	if _coop == null or not is_instance_valid(_coop):
+		return
+	UI.clear(_coop)
+	if not _room.is_empty():
+		var host := str(_room["host"]) == str(me["username"])
+		_coop.add_child(UI.label("Stanza #%d — difficoltà %s — capostanza %s" % [int(_room["id"]), _room["difficulty_name"], _room["host"]], 16))
+		for m in _room["members"]:
+			_coop.add_child(UI.label("   %s (%d unità)" % [m["username"], int(m["units"])]))
+		var row := UI.hbox()
+		if host:
+			var b := UI.button("Avvia la missione", func() -> void: Net.ws_send({"type": "room_start"}))
+			b.disabled = (_room["members"] as Array).size() < int(_room["min_players"])
+			row.add_child(b)
+		row.add_child(UI.button("Esci dalla stanza", func() -> void: Net.ws_send({"type": "room_leave"})))
+		_coop.add_child(row)
+		if host and (_room["members"] as Array).size() < int(_room["min_players"]):
+			_coop.add_child(UI.label("In attesa di altri membri del clan...", 0, UI.MUTED))
+		return
+	var row := UI.hbox()
+	var diff := UI.option([["Normale", 1], ["Ardua", 2], ["Leggendaria", 3]], _difficulty - 1)
+	diff.item_selected.connect(func(i: int) -> void: _difficulty = i + 1)
+	row.add_child(diff)
+	row.add_child(UI.button("Apri una stanza", func() -> void:
+		Net.ws_send({"type": "room_create", "difficulty": _difficulty, "units": _picked_ids()})))
+	row.add_child(UI.button("Aggiorna", func() -> void: Net.ws_send({"type": "room_list"})))
+	_coop.add_child(row)
+	if _rooms.is_empty():
+		_coop.add_child(UI.label("Nessuna stanza aperta nel clan.", 0, UI.MUTED))
+	for r in _rooms:
+		var rid := int(r["id"])
+		var rr := UI.hbox()
+		rr.add_child(UI.label("Stanza #%d di %s — %s — %d/%d giocatori" % [rid, r["host"], r["difficulty_name"], (r["members"] as Array).size(), int(r["max_players"])]))
+		rr.add_child(UI.button("Entra", func() -> void: Net.ws_send({"type": "room_join", "room": rid, "units": _picked_ids()})))
+		_coop.add_child(rr)
+
+
+func _picked_ids() -> Array:
+	var ids: Array = []
+	for u in me["roster"]:
+		if _picked.has(int(u["id"])):
+			ids.append(int(u["id"]))
+	if ids.is_empty():
+		for u in me["roster"]:
+			if ids.size() < MAX_PARTY:
+				ids.append(int(u["id"]))
+	return ids
+
+
 func _build_my_clan(tag: String, role: String) -> void:
 	var r := await Net.get_json("/api/clans/" + tag)
 	if int(r.status) != 200:
@@ -527,6 +606,7 @@ func _build_my_clan(tag: String, role: String) -> void:
 		set_row.add_child(UI.button("Rendi su invito" if bool(c["open"]) else "Apri a tutti", func() -> void: _clan_put(tag, {"open": not bool(c["open"])})))
 		_clan.add_child(set_row)
 	_clan.add_child(UI.button("Lascia il clan", func() -> void: _clan_post("/api/clans/leave", {}, "Hai lasciato il clan")))
+	_coop_section()
 
 
 func _clan_post(path: String, body: Dictionary, ok: String) -> void:
@@ -571,3 +651,41 @@ func _build_season() -> void:
 				txt += "%s\n" % old["name"]
 	t.text = txt
 	_season.add_child(t)
+
+
+func _autoplay_coop_setup() -> void:
+	var tag := str(main.opts.get("clan", "COOP"))
+	if me.get("clan") == null:
+		if str(main.opts.get("role", "host")) == "host":
+			await Net.post_json("/api/clans", {"name": "Compagnia " + tag, "tag": tag, "motto": "Insieme"})
+		else:
+			for i in 40:
+				var r := await Net.post_json("/api/clans/%s/join" % tag, {})
+				if int(r.status) == 200:
+					break
+				await get_tree().create_timer(0.5).timeout
+		await reload()
+	_tabs.current_tab = 3
+	if str(main.opts.get("role", "host")) == "host":
+		Net.ws_send({"type": "room_create", "difficulty": 1, "units": _picked_ids()})
+	else:
+		Net.ws_send({"type": "room_list"})
+
+
+var _autoplay_shot_room := false
+
+
+func _autoplay_room() -> void:
+	var host := str(main.opts.get("role", "host")) == "host"
+	if host and not _room.is_empty() and (_room["members"] as Array).size() >= int(_room["min_players"]):
+		if not _autoplay_shot_room:
+			_autoplay_shot_room = true
+			await get_tree().create_timer(0.4).timeout
+			await main.shot("menu_stanza")
+		Net.ws_send({"type": "room_start"})
+	elif not host and _room.is_empty():
+		if _rooms.is_empty():
+			await get_tree().create_timer(0.5).timeout
+			Net.ws_send({"type": "room_list"})
+		else:
+			Net.ws_send({"type": "room_join", "room": int(_rooms[0]["id"]), "units": _picked_ids()})

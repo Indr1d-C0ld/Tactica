@@ -26,6 +26,20 @@ pub struct BattleSetup {
     /// Squadre 0 e 1. L'id di ogni unità è il suo indice in questa lista.
     pub units: Vec<UnitSetup>,
     pub statutes: usize,
+    /// Condizione di vittoria (predefinita: sconfiggere tutti i nemici).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub objective: Objective,
+}
+
+/// Obiettivo della battaglia.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Objective {
+    /// Vince chi resta con unità in campo.
+    #[default]
+    Rout,
+    /// La squadra 0 vince anche abbattendo questa unità (il campione nemico).
+    Champion(UnitId),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -157,6 +171,7 @@ pub struct Battle {
     acted: bool,
     last_ability: Option<AbilityId>,
     winner: Option<Option<u8>>,
+    pub objective: Objective,
 }
 
 /// Stato pubblico della battaglia, senza il generatore casuale: è ciò che il
@@ -176,6 +191,8 @@ pub struct Snapshot {
     pub finished: bool,
     /// Significativo solo se `finished`: `None` = pareggio.
     pub winner: Option<u8>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub objective: Objective,
 }
 
 impl Battle {
@@ -191,6 +208,7 @@ impl Battle {
             last_ability: self.last_ability,
             finished: self.winner.is_some(),
             winner: self.winner.flatten(),
+            objective: self.objective,
         }
     }
 
@@ -209,6 +227,7 @@ impl Battle {
             acted: s.acted,
             last_ability: s.last_ability,
             winner: s.finished.then_some(s.winner),
+            objective: s.objective,
         }
     }
 
@@ -248,6 +267,7 @@ impl Battle {
             .collect();
 
         let mut b = Battle {
+            objective: setup.objective,
             seed: setup.seed,
             map,
             units,
@@ -714,7 +734,12 @@ impl Battle {
             return;
         }
         let alive = |t: u8| self.units.iter().any(|u| u.team == t && u.is_active());
+        let champion_down = match self.objective {
+            Objective::Champion(id) => self.units.get(id as usize).is_some_and(|u| !u.is_active()),
+            Objective::Rout => false,
+        };
         let w = match (alive(0), alive(1)) {
+            (true, true) if champion_down => Some(0),
             (true, true) => return,
             (true, false) => Some(0),
             (false, true) => Some(1),

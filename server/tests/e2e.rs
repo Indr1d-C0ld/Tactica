@@ -5,6 +5,8 @@ use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
+#[allow(unused_imports)]
+use tactica_core::Objective;
 use tactica_core::ai;
 use tactica_core::{Action, Battle, BattleSetup};
 use tactica_server::protocol::{ClientMsg, Mode, ServerMsg};
@@ -31,6 +33,7 @@ async fn start() -> Server {
         backup_every_hours: 24,
         backup_keep: 1,
         season_days: 28,
+        coop_min_players: 2,
     };
     let state = AppState::new(config).await.unwrap();
     let db = state.db.clone();
@@ -109,55 +112,77 @@ impl Server {
     }
 }
 
-/// Gioca una partita: a ogni aggiornamento in cui tocca alla propria squadra
-/// invia la prossima azione pianificata dall'IA sullo snapshot ricevuto.
-/// `concede_after`: arrendersi dopo N azioni proprie.
-async fn play(
-    ws_url: String,
-    token: String,
-    mode: Mode,
-    units: Vec<i64>,
-    concede_after: Option<usize>,
-) -> ServerMsg {
-    let (mut ws, _) = connect_async(format!("{ws_url}?token={token}"))
+type Ws =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+fn text(m: ClientMsg) -> Message {
+    Message::text(serde_json::to_string(&m).unwrap())
+}
+
+async fn connect(ws_url: &str, token: &str) -> Ws {
+    connect_async(format!("{ws_url}?token={token}"))
         .await
-        .unwrap();
-    let send = |m: ClientMsg| Message::text(serde_json::to_string(&m).unwrap());
-    ws.send(send(ClientMsg::Queue { mode, units }))
-        .await
-        .unwrap();
-    let mut team = None;
-    let mut sent = 0usize;
+        .unwrap()
+        .0
+}
+
+async fn next_msg(ws: &mut Ws) -> ServerMsg {
     loop {
         let msg = tokio::time::timeout(Duration::from_secs(30), ws.next())
             .await
             .expect("il server non risponde")
             .expect("connessione chiusa")
             .unwrap();
-        let Message::Text(t) = msg else { continue };
-        let m: ServerMsg = serde_json::from_str(t.as_str()).unwrap();
+        if let Message::Text(t) = msg {
+            return serde_json::from_str(t.as_str()).unwrap();
+        }
+    }
+}
+
+/// Gioca una partita: a ogni aggiornamento in cui tocca a una propria unità
+/// invia la prossima azione pianificata dall'IA sullo snapshot ricevuto.
+/// `leave_after`: abbandona dopo N azioni proprie.
+async fn game_loop(ws: &mut Ws, leave_after: Option<usize>) -> ServerMsg {
+    let mut mine: Vec<usize> = Vec::new();
+    let mut sent = 0usize;
+    let mut left = false;
+    loop {
+        let m = next_msg(ws).await;
         match &m {
-            ServerMsg::Matched { team: t, .. } => team = Some(*t),
+            ServerMsg::Matched { mine: units, .. } => mine = units.clone(),
             ServerMsg::Update { snapshot, .. } => {
-                let mine = snapshot
-                    .active
-                    .is_some_and(|i| Some(snapshot.units[i].team) == team);
-                if mine && !snapshot.finished {
-                    let action = if concede_after.is_some_and(|n| sent >= n) {
-                        Action::Concede(team.unwrap())
-                    } else {
-                        let view = Battle::from_snapshot(snapshot.clone());
-                        ai::plan_turn(&view)[0]
-                    };
-                    ws.send(send(ClientMsg::Action { action })).await.unwrap();
+                let my_turn = snapshot.active.is_some_and(|i| mine.contains(&i));
+                if my_turn && !snapshot.finished && !left {
+                    if leave_after.is_some_and(|n| sent >= n) {
+                        ws.send(text(ClientMsg::Leave)).await.unwrap();
+                        left = true;
+                        continue;
+                    }
+                    let view = Battle::from_snapshot(snapshot.clone());
+                    let action = ai::plan_turn(&view)[0];
+                    ws.send(text(ClientMsg::Action { action })).await.unwrap();
                     sent += 1;
                 }
             }
             ServerMsg::Error { message } => panic!("errore dal server: {message}"),
             ServerMsg::Ended { .. } => return m,
-            ServerMsg::Welcome { .. } | ServerMsg::Queued { .. } => {}
+            _ => {}
         }
     }
+}
+
+async fn play(
+    ws_url: String,
+    token: String,
+    mode: Mode,
+    units: Vec<i64>,
+    leave_after: Option<usize>,
+) -> ServerMsg {
+    let mut ws = connect(&ws_url, &token).await;
+    ws.send(text(ClientMsg::Queue { mode, units }))
+        .await
+        .unwrap();
+    game_loop(&mut ws, leave_after).await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -682,4 +707,227 @@ async fn clans_and_seasons() {
     assert_eq!(st, 200);
     let (st, _) = srv.get("/api/clans/LAME", None).await;
     assert_eq!(st, 404, "clan sciolto quando esce l'ultimo membro");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn coop_clan_mission() {
+    let srv = start().await;
+    let (alice, alice_units) = srv.player("alice").await;
+    let (bob, bob_units) = srv.player("bob").await;
+    let (carol, carol_units) = srv.player("carol").await;
+    let (st, _) = srv
+        .post(
+            "/api/clans",
+            Some(&alice),
+            json!({"name": "Compagnia", "tag": "COMP"}),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let (st, _) = srv
+        .post("/api/clans/COMP/join", Some(&bob), json!({}))
+        .await;
+    assert_eq!(st, 200);
+
+    // Senza clan niente stanze.
+    let mut wc = connect(&srv.ws, &carol).await;
+    wc.send(text(ClientMsg::RoomCreate {
+        difficulty: 1,
+        units: carol_units.clone(),
+    }))
+    .await
+    .unwrap();
+    loop {
+        match next_msg(&mut wc).await {
+            ServerMsg::Error { message } => {
+                assert!(message.contains("clan"), "{message}");
+                break;
+            }
+            ServerMsg::Welcome { .. } => {}
+            other => panic!("inatteso: {other:?}"),
+        }
+    }
+
+    // Alice apre una stanza; Bob la trova e ci entra.
+    let mut wa = connect(&srv.ws, &alice).await;
+    let mut wb = connect(&srv.ws, &bob).await;
+    wa.send(text(ClientMsg::RoomCreate {
+        difficulty: 2,
+        units: alice_units.clone(),
+    }))
+    .await
+    .unwrap();
+    let room_id = loop {
+        if let ServerMsg::Room { room: Some(r) } = next_msg(&mut wa).await {
+            assert_eq!(r.clan, "COMP");
+            assert_eq!(r.members.len(), 1);
+            break r.id;
+        }
+    };
+    // Avvio con un solo giocatore: rifiutato.
+    wa.send(text(ClientMsg::RoomStart)).await.unwrap();
+    loop {
+        match next_msg(&mut wa).await {
+            ServerMsg::Error { message } => {
+                assert!(message.contains("giocatori"), "{message}");
+                break;
+            }
+            ServerMsg::Room { .. } => {}
+            other => panic!("inatteso: {other:?}"),
+        }
+    }
+    wb.send(text(ClientMsg::RoomList)).await.unwrap();
+    loop {
+        if let ServerMsg::Rooms { rooms } = next_msg(&mut wb).await {
+            assert_eq!(rooms.len(), 1);
+            assert_eq!(rooms[0].id, room_id);
+            break;
+        }
+    }
+    wb.send(text(ClientMsg::RoomJoin {
+        room: room_id,
+        units: bob_units.clone(),
+    }))
+    .await
+    .unwrap();
+    loop {
+        if let ServerMsg::Room { room: Some(r) } = next_msg(&mut wa).await
+            && r.members.len() == 2
+        {
+            // 6 posti divisi fra 2 giocatori: 3 unità ciascuno.
+            assert!(r.members.iter().all(|m| m.units == 3));
+            break;
+        }
+    }
+    // Solo il capostanza può avviare.
+    wb.send(text(ClientMsg::RoomStart)).await.unwrap();
+    loop {
+        match next_msg(&mut wb).await {
+            ServerMsg::Error { message } => {
+                assert!(message.contains("capostanza"), "{message}");
+                break;
+            }
+            ServerMsg::Room { .. } => {}
+            other => panic!("inatteso: {other:?}"),
+        }
+    }
+    wa.send(text(ClientMsg::RoomStart)).await.unwrap();
+
+    // Entrambi giocano le proprie unità; Bob abbandona a metà e l'IA lo sostituisce.
+    let a = tokio::spawn(async move {
+        let (mode, mine, allies, mission, snapshot) = loop {
+            if let ServerMsg::Matched {
+                mode,
+                mine,
+                allies,
+                mission,
+                snapshot,
+                ..
+            } = next_msg(&mut wa).await
+            {
+                break (mode, mine, allies, mission, snapshot);
+            }
+        };
+        assert_eq!(mode, Mode::Coop);
+        assert_eq!(mine, vec![0, 1, 2]);
+        assert_eq!(allies, vec!["bob".to_string()]);
+        let mission = mission.expect("informazioni sulla missione");
+        assert_eq!(mission.difficulty, 2);
+        let enemies = snapshot.units.iter().filter(|u| u.team == 1).count();
+        assert!(
+            enemies >= 4,
+            "difficoltà 2: almeno 4 nemici, trovati {enemies}"
+        );
+        if mission.hunt {
+            assert!(matches!(snapshot.objective, Objective::Champion(_)));
+        }
+        game_loop_with(&mut wa, mine, None).await
+    });
+    let b = tokio::spawn(async move { game_loop(&mut wb, Some(4)).await });
+    let (ea, eb) = (a.await.unwrap(), b.await.unwrap());
+    let ServerMsg::Ended {
+        match_id,
+        result: ra,
+        rewards: rwa,
+        coins,
+        clan_points,
+        ..
+    } = ea
+    else {
+        unreachable!()
+    };
+    let ServerMsg::Ended {
+        match_id: mb,
+        result: rb,
+        rewards: rwb,
+        ..
+    } = eb
+    else {
+        unreachable!()
+    };
+    assert_eq!(match_id, mb);
+    assert_eq!(ra, rb, "stessa squadra, stesso esito");
+    assert_eq!(rwa.len(), 3, "ricompense solo per le proprie unità");
+    assert_eq!(rwb.len(), 3);
+    assert!(rwa.iter().all(|r| alice_units.contains(&r.roster_id)));
+    assert!(rwb.iter().all(|r| bob_units.contains(&r.roster_id)));
+    if ra == "win" {
+        assert_eq!(
+            coins,
+            (150 + 50) * 110 / 100,
+            "missione ardua vinta + bonus clan"
+        );
+        assert!(clan_points >= 2);
+        let (_, c) = srv.get("/api/clans/COMP", None).await;
+        assert_eq!(
+            c["season_points"].as_i64(),
+            Some(clan_points),
+            "punti assegnati una sola volta"
+        );
+    }
+
+    // Partita registrata con entrambi i giocatori e il replay riproducibile.
+    let (_, m) = srv.get(&format!("/api/matches/{match_id}"), None).await;
+    assert_eq!(m["mode"], "coop");
+    let setup: BattleSetup = serde_json::from_value(m["setup"].clone()).unwrap();
+    let actions: Vec<Action> = serde_json::from_value(m["actions"].clone()).unwrap();
+    let (mut replay, _) = Battle::new(&setup);
+    for a in actions {
+        replay.apply(a).unwrap();
+    }
+    assert_eq!(
+        format!("{:016x}", replay.state_hash()),
+        m["final_hash"].as_str().unwrap()
+    );
+    let (_, pa) = srv.get("/api/players/alice", None).await;
+    let (_, pb) = srv.get("/api/players/bob", None).await;
+    assert_eq!(pa["recent"][0]["mode"], "coop");
+    assert_eq!(pb["recent"][0]["mode"], "coop");
+}
+
+/// Come `game_loop`, ma con le unità già note (il `Matched` è stato letto prima).
+async fn game_loop_with(ws: &mut Ws, mine: Vec<usize>, leave_after: Option<usize>) -> ServerMsg {
+    let mut sent = 0usize;
+    loop {
+        let m = next_msg(ws).await;
+        match &m {
+            ServerMsg::Update { snapshot, .. } => {
+                if snapshot.active.is_some_and(|i| mine.contains(&i)) && !snapshot.finished {
+                    if leave_after.is_some_and(|n| sent >= n) {
+                        ws.send(text(ClientMsg::Leave)).await.unwrap();
+                        continue;
+                    }
+                    let view = Battle::from_snapshot(snapshot.clone());
+                    ws.send(text(ClientMsg::Action {
+                        action: ai::plan_turn(&view)[0],
+                    }))
+                    .await
+                    .unwrap();
+                    sent += 1;
+                }
+            }
+            ServerMsg::Error { message } => panic!("errore dal server: {message}"),
+            ServerMsg::Ended { .. } => return m,
+            _ => {}
+        }
+    }
 }

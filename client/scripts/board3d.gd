@@ -26,6 +26,8 @@ var w := 0
 var h := 0
 var tiles: Array = []
 var active := -1
+## Indice del campione nemico (missioni di caccia), -1 se assente.
+var champion := -1
 var highlight := {}
 var area := {}
 var hover := Vector2i(-1, -1)
@@ -501,6 +503,13 @@ func draw_hud(ci: CanvasItem, scale: float, font: Font) -> void:
 		ci.draw_rect(Rect2(bar.position + Vector2(-scale * 3, -scale), Vector2(scale * 2, scale * 4)), team_col)
 		if int(u["suspended"]) > 0:
 			ci.draw_rect(Rect2(bar.end + Vector2(scale * 2, -scale * 3), Vector2(scale * 3, scale * 3)), UI.ACCENT)
+		if i == champion:
+			# Corona a pixel sopra il campione.
+			var c := head + Vector2(0, -scale * 5)
+			var s := scale
+			for r in [Rect2(-3, 0, 7, 2), Rect2(-3, -2, 1, 2), Rect2(0, -3, 1, 3), Rect2(3, -2, 1, 2)]:
+				ci.draw_rect(Rect2(c + r.position * s, r.size * s), UI.ACCENT)
+			ci.draw_rect(Rect2(c + Vector2(0, 0.5) * s, Vector2(s, s)), UI.BAD)
 	for f in floats:
 		var a := clampf(1.4 - float(f["t"]), 0.0, 1.0)
 		var col: Color = f["color"]

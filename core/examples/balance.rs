@@ -25,6 +25,7 @@ fn main() {
             map: None,
             units,
             statutes: 2,
+            objective: Default::default(),
         });
         ai::autoplay(&mut b, 20_000);
         let w = match b.winner() {

@@ -1,11 +1,16 @@
 //! Esecuzione di una partita: un task per partita possiede la `Battle`,
 //! riceve le intenzioni dei giocatori, le valida, fa giocare l'IA quando
 //! serve e alla fine salva replay, statistiche, esperienza ed ELO.
+//!
+//! Ogni unità appartiene a un "giocatore" (umano o IA). Una squadra può avere
+//! più giocatori umani (missioni cooperative): il server accetta un'azione solo
+//! da chi controlla l'unità di turno.
 
 use std::time::Duration;
 
-use tactica_core::ai;
-use tactica_core::{Action, Battle, BattleSetup, Event};
+use serde::{Deserialize, Serialize};
+use tactica_core::presets;
+use tactica_core::{Action, Battle, BattleSetup, Event, Objective, UnitSetup, ai};
 use tokio::sync::mpsc;
 use tokio::time::{Instant, sleep, timeout_at};
 
@@ -16,12 +21,14 @@ use crate::protocol::{Mode, ServerMsg};
 use crate::stats;
 
 pub struct MatchInput {
-    pub team: u8,
+    pub seat: usize,
     pub kind: InputKind,
 }
 
 pub enum InputKind {
     Action(Action),
+    /// Il giocatore abbandona: resa in PvE/PvP, passaggio all'IA in cooperativa.
+    Leave,
     Disconnected,
 }
 
@@ -30,16 +37,31 @@ pub enum Seat {
     Ai,
 }
 
-impl Seat {
-    fn human(&self) -> Option<&Entrant> {
-        match self {
-            Seat::Human(e) => Some(e),
-            Seat::Ai => None,
-        }
+/// Chi controlla un gruppo di unità.
+pub struct Player {
+    pub entrant: Option<Entrant>,
+    pub team: u8,
+    pub units: Vec<usize>,
+    pub connected: bool,
+}
+
+impl Player {
+    pub fn human(&self) -> Option<&Entrant> {
+        self.entrant.as_ref()
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MissionInfo {
+    pub name: String,
+    pub difficulty: u8,
+    pub difficulty_name: String,
+    pub hunt: bool,
+}
+
 pub const STATUTES_PER_BATTLE: usize = 2;
+/// Posti totali della squadra alleata in una missione.
+pub const COOP_SLOTS: usize = 6;
 const AI_NAMES: [&str; 4] = ["Sentinella", "Predone", "Veggente", "Eremita"];
 
 fn random_seed() -> u64 {
@@ -48,12 +70,13 @@ fn random_seed() -> u64 {
     u64::from_le_bytes(b)
 }
 
-/// Avvia una partita in un task dedicato.
+/// PvE (umano contro IA che lo rispecchia) o PvP (due umani).
 pub fn start_match(state: AppState, mode: Mode, seats: [Seat; 2]) {
-    // Squadre: umani dal roster; l'IA rispecchia classi, livelli ed equipaggiamento dell'avversario.
     let mut units = Vec::new();
     let mut roster_ids = Vec::new();
+    let mut players = Vec::new();
     for team in 0..2u8 {
+        let start = units.len();
         match &seats[team as usize] {
             Seat::Human(e) => {
                 for r in &e.units {
@@ -62,7 +85,9 @@ pub fn start_match(state: AppState, mode: Mode, seats: [Seat; 2]) {
                 }
             }
             Seat::Ai => {
-                let other = seats[1 - team as usize].human().expect("almeno un umano");
+                let Seat::Human(other) = &seats[1 - team as usize] else {
+                    panic!("almeno un umano");
+                };
                 for (i, r) in other.units.iter().enumerate() {
                     let mut u = r.to_setup(team);
                     u.name = AI_NAMES[i % AI_NAMES.len()].to_string();
@@ -72,41 +97,116 @@ pub fn start_match(state: AppState, mode: Mode, seats: [Seat; 2]) {
                 }
             }
         }
+        let entrant = match &seats[team as usize] {
+            Seat::Human(e) => Some(e.clone()),
+            Seat::Ai => None,
+        };
+        players.push(Player {
+            connected: entrant.is_some(),
+            entrant,
+            team,
+            units: (start..units.len()).collect(),
+        });
     }
     let setup = BattleSetup {
         seed: random_seed(),
         map: None,
         units,
         statutes: STATUTES_PER_BATTLE,
+        objective: Objective::Rout,
     };
+    launch(state, mode, setup, players, roster_ids, None);
+}
 
+/// Missione cooperativa: i membri della stanza (stesso clan) contro l'IA.
+pub fn start_mission(state: AppState, members: Vec<Entrant>, difficulty: u8) {
+    let seed = random_seed();
+    let quota = (COOP_SLOTS / members.len().max(1)).max(1);
+    let mut allies: Vec<UnitSetup> = Vec::new();
+    let mut roster_ids = Vec::new();
+    let mut players = Vec::new();
+    for e in members {
+        let start = allies.len();
+        let mut e = e;
+        e.units.truncate(quota);
+        for r in &e.units {
+            allies.push(r.to_setup(0));
+            roster_ids.push(Some(r.id));
+        }
+        players.push(Player {
+            team: 0,
+            units: (start..allies.len()).collect(),
+            connected: true,
+            entrant: Some(e),
+        });
+    }
+    let mission = presets::mission(seed, &allies, difficulty);
+    let enemy_start = allies.len();
+    let objective = match mission.champion {
+        Some(c) => Objective::Champion((enemy_start + c) as u32),
+        None => Objective::Rout,
+    };
+    let mut units = allies;
+    units.extend(mission.enemies.iter().cloned());
+    roster_ids.extend(std::iter::repeat_n(None, mission.enemies.len()));
+    players.push(Player {
+        entrant: None,
+        team: 1,
+        units: (enemy_start..units.len()).collect(),
+        connected: false,
+    });
+    let info = MissionInfo {
+        name: mission.name.clone(),
+        difficulty: mission.difficulty,
+        difficulty_name: presets::difficulty_name(mission.difficulty).to_string(),
+        hunt: mission.champion.is_some(),
+    };
+    let setup = BattleSetup {
+        seed,
+        map: None,
+        units,
+        statutes: mission.statutes,
+        objective,
+    };
+    launch(state, Mode::Coop, setup, players, roster_ids, Some(info));
+}
+
+fn launch(
+    state: AppState,
+    mode: Mode,
+    setup: BattleSetup,
+    players: Vec<Player>,
+    roster_ids: Vec<Option<i64>>,
+    mission: Option<MissionInfo>,
+) {
     let (tx, rx) = mpsc::channel(64);
     {
         let mut busy = state.busy.lock().unwrap();
-        for (team, seat) in seats.iter().enumerate() {
-            if let Some(e) = seat.human() {
+        for (seat, p) in players.iter().enumerate() {
+            if let Some(e) = p.human() {
                 busy.insert(e.account_id);
                 let _ = e.conn.send(ToConn::Joined {
                     input: tx.clone(),
-                    team: team as u8,
+                    seat,
+                    team: p.team,
                 });
             }
         }
     }
     drop(tx);
-    tokio::spawn(run(state, mode, seats, setup, roster_ids, rx));
+    tokio::spawn(run(state, mode, players, setup, roster_ids, mission, rx));
 }
 
-fn broadcast(seats: &[Seat; 2], msg: &ServerMsg) {
-    for e in seats.iter().filter_map(Seat::human) {
+fn broadcast(players: &[Player], msg: &ServerMsg) {
+    for e in players.iter().filter_map(Player::human) {
         e.send(msg.clone());
     }
 }
 
-fn update(seats: &[Seat; 2], b: &Battle, events: Vec<Event>) {
+fn update(players: &[Player], b: &Battle, events: Vec<Event>) {
     if !events.is_empty() {
         broadcast(
-            seats,
+            players,
             &ServerMsg::Update {
                 events,
                 snapshot: b.snapshot(),
@@ -129,51 +229,72 @@ fn ai_turn(b: &mut Battle, actions: &mut Vec<Action>) -> Vec<Event> {
     events
 }
 
+fn owner_of(players: &[Player], unit: usize) -> usize {
+    players
+        .iter()
+        .position(|p| p.units.contains(&unit))
+        .unwrap_or(0)
+}
+
 async fn run(
     state: AppState,
     mode: Mode,
-    seats: [Seat; 2],
+    mut players: Vec<Player>,
     setup: BattleSetup,
     roster_ids: Vec<Option<i64>>,
+    mission: Option<MissionInfo>,
     mut rx: mpsc::Receiver<MatchInput>,
 ) {
     let started = now();
     let (mut battle, first) = Battle::new(&setup);
     let mut actions: Vec<Action> = Vec::new();
-    let mut connected = [seats[0].human().is_some(), seats[1].human().is_some()];
     let turn_time = Duration::from_secs(state.config.turn_secs);
     let ai_delay = Duration::from_millis(state.config.ai_delay_ms);
 
-    for (team, seat) in seats.iter().enumerate() {
-        if let Some(e) = seat.human() {
-            let opponent = seats[1 - team]
-                .human()
-                .map_or_else(|| "IA".to_string(), |o| o.username.clone());
+    for p in &players {
+        if let Some(e) = p.human() {
+            let names = |same: bool| -> Vec<String> {
+                players
+                    .iter()
+                    .filter(|o| (o.team == p.team) == same)
+                    .filter_map(|o| o.human().map(|h| h.username.clone()))
+                    .filter(|n| n != &e.username)
+                    .collect()
+            };
+            let opponents = names(false);
             e.send(ServerMsg::Matched {
                 mode,
-                team: team as u8,
-                opponent,
+                team: p.team,
+                opponent: if opponents.is_empty() {
+                    "IA".to_string()
+                } else {
+                    opponents.join(", ")
+                },
+                allies: names(true),
+                mine: p.units.clone(),
+                mission: mission.clone(),
                 snapshot: battle.snapshot(),
             });
         }
     }
-    update(&seats, &battle, first);
+    update(&players, &battle, first);
 
     while !battle.is_over() {
-        let team = battle.active_unit().map_or(0, |u| u.team) as usize;
-        if !connected[team] {
+        let active = battle.active_index().unwrap_or(0);
+        let seat = owner_of(&players, active);
+        if !players[seat].connected {
             if !ai_delay.is_zero() {
                 sleep(ai_delay).await;
             }
-            // Le rese o disconnessioni arrivate nel frattempo vanno lette comunque.
+            // Rese e disconnessioni arrivate nel frattempo vanno lette comunque.
             while let Ok(input) = rx.try_recv() {
-                handle_out_of_turn(&mut battle, &mut actions, &mut connected, &seats, input);
+                handle_input(mode, &mut battle, &mut actions, &mut players, None, input);
             }
             if battle.is_over() {
                 break;
             }
             let ev = ai_turn(&mut battle, &mut actions);
-            update(&seats, &battle, ev);
+            update(&players, &battle, ev);
             continue;
         }
 
@@ -184,67 +305,54 @@ async fn run(
                 Err(_) => {
                     // Tempo scaduto: l'IA conclude il turno al posto del giocatore.
                     let ev = ai_turn(&mut battle, &mut actions);
-                    update(&seats, &battle, ev);
+                    update(&players, &battle, ev);
                     break;
                 }
                 Ok(None) => {
-                    connected = [false, false];
+                    for p in &mut players {
+                        p.connected = false;
+                    }
                     break;
                 }
-                Ok(Some(input)) if input.team as usize != team => {
-                    handle_out_of_turn(&mut battle, &mut actions, &mut connected, &seats, input);
+                Ok(Some(input)) => {
+                    handle_input(
+                        mode,
+                        &mut battle,
+                        &mut actions,
+                        &mut players,
+                        Some(seat),
+                        input,
+                    );
                 }
-                Ok(Some(MatchInput {
-                    kind: InputKind::Disconnected,
-                    ..
-                })) => {
-                    connected[team] = false;
-                    break;
-                }
-                Ok(Some(MatchInput {
-                    kind: InputKind::Action(a),
-                    ..
-                })) => match battle.apply(a) {
-                    Ok(ev) => {
-                        actions.push(a);
-                        update(&seats, &battle, ev);
-                    }
-                    Err(e) => {
-                        if let Some(p) = seats[team].human() {
-                            p.send(ServerMsg::Error {
-                                message: e.to_string(),
-                            });
-                        }
-                    }
-                },
             }
-            if battle.is_over() || battle.turn() != turn {
+            if battle.is_over() || battle.turn() != turn || !players[seat].connected {
                 break;
             }
         }
     }
 
-    let accounts: Vec<i64> = seats
+    let accounts: Vec<i64> = players
         .iter()
-        .filter_map(Seat::human)
+        .filter_map(Player::human)
         .map(|e| e.account_id)
         .collect();
-    match stats::save_match(
+    let saved = stats::save_match(
         &state.db,
         mode,
         &setup,
         &actions,
         &battle,
-        &seats,
+        &players,
         &roster_ids,
         started,
         state.config.season_days,
+        mission.as_ref(),
     )
-    .await
-    {
+    .await;
+    match saved {
         Ok(saved) => {
-            for (team, seat) in seats.iter().enumerate() {
-                if let (Some(e), Some(o)) = (seat.human(), &saved.seats[team]) {
+            for (i, p) in players.iter().enumerate() {
+                if let (Some(e), Some(o)) = (p.human(), &saved.players[i]) {
                     e.send(ServerMsg::Ended {
                         match_id: saved.match_id,
                         winner: battle.winner().flatten(),
@@ -270,7 +378,7 @@ async fn run(
         Err(e) => {
             tracing::error!("salvataggio partita fallito: {e}");
             broadcast(
-                &seats,
+                &players,
                 &ServerMsg::Error {
                     message: "salvataggio della partita fallito".into(),
                 },
@@ -283,28 +391,57 @@ async fn run(
     }
 }
 
-/// Input di chi non è di turno: è accettata solo la resa (o la disconnessione).
-fn handle_out_of_turn(
+/// Gestisce un input. `on_turn`: il giocatore che controlla l'unità di turno
+/// (se si sta aspettando un umano).
+fn handle_input(
+    mode: Mode,
     battle: &mut Battle,
     actions: &mut Vec<Action>,
-    connected: &mut [bool; 2],
-    seats: &[Seat; 2],
+    players: &mut [Player],
+    on_turn: Option<usize>,
     input: MatchInput,
 ) {
-    let t = input.team as usize;
+    let seat = input.seat;
+    let Some(team) = players.get(seat).map(|p| p.team) else {
+        return;
+    };
+    let error = |players: &[Player], m: &str| {
+        if let Some(e) = players[seat].human() {
+            e.send(ServerMsg::Error {
+                message: m.to_string(),
+            });
+        }
+    };
     match input.kind {
-        InputKind::Disconnected => connected[t] = false,
-        InputKind::Action(a @ Action::Concede(team)) if team == input.team => {
-            if let Ok(ev) = battle.apply(a) {
-                actions.push(a);
-                update(seats, battle, ev);
+        InputKind::Disconnected => players[seat].connected = false,
+        InputKind::Leave => {
+            players[seat].connected = false;
+            let humans_left = players.iter().any(|p| p.team == team && p.connected);
+            // In cooperativa le unità passano all'IA; la squadra si arrende solo
+            // quando non resta nessun umano. Altrove abbandonare è una resa.
+            if mode != Mode::Coop || !humans_left {
+                let a = Action::Concede(team);
+                if let Ok(ev) = battle.apply(a) {
+                    actions.push(a);
+                    update(players, battle, ev);
+                }
             }
         }
-        InputKind::Action(_) => {
-            if let Some(p) = seats[t].human() {
-                p.send(ServerMsg::Error {
-                    message: "non è il tuo turno".into(),
-                });
+        InputKind::Action(Action::Concede(_)) => {
+            // La resa passa sempre da `Leave`, così vale la regola della cooperativa.
+            error(players, "per arrenderti abbandona la partita");
+        }
+        InputKind::Action(a) => {
+            if on_turn != Some(seat) {
+                error(players, "non è il turno di una tua unità");
+                return;
+            }
+            match battle.apply(a) {
+                Ok(ev) => {
+                    actions.push(a);
+                    update(players, battle, ev);
+                }
+                Err(e) => error(players, &e.to_string()),
             }
         }
     }

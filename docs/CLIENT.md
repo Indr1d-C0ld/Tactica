@@ -47,7 +47,7 @@ godot --path client --editor
   - **Gioca:** scelta di fino a 4 unità, coda PvE o PvP, annullamento della coda.
   - **Roster:** reclutamento; per ogni unità equipaggiamento per slot, abilità usabili, progressi di risonanza, cambio classe con i requisiti mancanti, congedo.
   - **Negozio:** acquisti e vendite.
-  - **Clan:** fondazione, adesione, inviti ricevuti, membri e ruoli, inviti, espulsioni, motto, apertura, uscita.
+  - **Clan:** fondazione, adesione, inviti ricevuti, membri e ruoli, inviti, espulsioni, motto, apertura, uscita. Da qui si gestiscono anche le **missioni cooperative**: apri una stanza scegliendo la difficoltà, vedi ed entri nelle stanze del clan, avvii la missione se sei il capostanza.
   - **Stagione:** tempo rimanente, premi, il tuo punteggio, classifiche di giocatori e clan, stagioni passate.
   - **Statistiche:** profilo, classifica, statistiche globali.
 - **Battaglia:**
@@ -81,7 +81,8 @@ Argomenti dopo `--`:
 | `--offline` | schermaglia locale |
 | `--server=URL` | server da usare |
 | `--user=… --pass=…` | credenziali; se l'account non esiste viene registrato |
-| `--mode=pve` oppure `--mode=pvp` | modalità della partita |
+| `--mode=pve`, `--mode=pvp` oppure `--mode=coop` | modalità della partita |
+| `--role=host` oppure `--role=guest`, `--clan=SIGLA` | solo in cooperativa: chi fonda il clan e apre la stanza, e chi entra |
 | `--shots=CARTELLA` | salva schermate dei momenti salienti |
 
 In modalità online, se il roster è vuoto il client:

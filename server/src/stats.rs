@@ -1,5 +1,7 @@
 //! Persistenza delle partite e statistiche personali/globali.
 
+use std::collections::HashSet;
+
 use serde::Serialize;
 use sqlx::SqlitePool;
 use tactica_core::item::ItemId;
@@ -8,7 +10,7 @@ use tactica_core::unit::Unit;
 use tactica_core::{Action, Battle, BattleSetup};
 
 use crate::db::{self, RosterUnit, now};
-use crate::game::Seat;
+use crate::game::{MissionInfo, Player};
 use crate::protocol::{Mode, Reward, RpGain};
 use crate::{clans, seasons};
 
@@ -30,8 +32,16 @@ pub struct SeatOutcome {
 
 pub struct SavedMatch {
     pub match_id: i64,
-    pub seats: [Option<SeatOutcome>; 2],
+    /// Esito per giocatore (stesso ordine dei `players`; `None` per l'IA).
+    pub players: Vec<Option<SeatOutcome>>,
 }
+
+/// Monete per una missione cooperativa vinta, secondo la difficoltà.
+pub fn coop_win_coins(difficulty: u8) -> i64 {
+    150 + 50 * (difficulty.max(1) as i64 - 1)
+}
+
+pub const COOP_LOOT_CHANCE: i32 = 75;
 
 fn match_result(r: &str) -> MatchResult {
     match r {
@@ -53,10 +63,11 @@ pub async fn save_match(
     setup: &BattleSetup,
     actions: &[Action],
     battle: &Battle,
-    seats: &[Seat; 2],
+    players: &[Player],
     roster_ids: &[Option<i64>],
     started: i64,
     season_days: i64,
+    mission: Option<&MissionInfo>,
 ) -> anyhow::Result<SavedMatch> {
     let winner = battle.winner().flatten();
     let result = |team: u8| match winner {
@@ -68,8 +79,8 @@ pub async fn save_match(
 
     let match_id = sqlx::query(
         "INSERT INTO matches (mode, seed, setup, actions, finished, winner_team, turns, biome,
-                              final_hash, started_at, ended_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                              final_hash, started_at, ended_at, mission)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(mode.key())
     .bind(setup.seed as i64)
@@ -82,6 +93,7 @@ pub async fn save_match(
     .bind(format!("{:016x}", battle.state_hash()))
     .bind(started)
     .bind(now())
+    .bind(mission.map(|m| m.name.clone()))
     .execute(&mut *tx)
     .await?
     .last_insert_rowid();
@@ -94,34 +106,48 @@ pub async fn save_match(
             .await?;
     }
 
-    // ELO solo in PvP tra due umani; i valori correnti si rileggono dal DB.
-    let mut elo = [0i64; 2];
-    for (team, seat) in seats.iter().enumerate() {
-        if let Seat::Human(e) = seat {
-            elo[team] = sqlx::query_scalar("SELECT elo FROM accounts WHERE id = ?")
-                .bind(e.account_id)
-                .fetch_one(&mut *tx)
-                .await?;
-        }
+    // Classificata solo in PvP con un umano per parte.
+    let humans: Vec<usize> = (0..players.len())
+        .filter(|&i| players[i].human().is_some())
+        .collect();
+    let ranked = mode == Mode::Pvp
+        && humans.len() == 2
+        && players[humans[0]].team != players[humans[1]].team;
+    let opponent = |i: usize| {
+        humans
+            .iter()
+            .copied()
+            .find(|&j| players[j].team != players[i].team)
+    };
+
+    let mut elo = vec![0i64; players.len()];
+    for &i in &humans {
+        elo[i] = sqlx::query_scalar("SELECT elo FROM accounts WHERE id = ?")
+            .bind(players[i].human().unwrap().account_id)
+            .fetch_one(&mut *tx)
+            .await?;
     }
-    let ranked = mode == Mode::Pvp && seats.iter().all(|s| matches!(s, Seat::Human(_)));
     let season = seasons::current(&mut tx, season_days).await?;
-    let mut season_rating = [0i64; 2];
+    let mut season_rating = vec![0i64; players.len()];
     if ranked {
-        for (team, seat) in seats.iter().enumerate() {
-            if let Seat::Human(e) = seat {
-                season_rating[team] = seasons::rating(&mut tx, &season, e.account_id).await?;
-            }
+        for &i in &humans {
+            season_rating[i] =
+                seasons::rating(&mut tx, &season, players[i].human().unwrap().account_id).await?;
         }
     }
 
-    let mut out: [Option<SeatOutcome>; 2] = [None, None];
-    for (team, seat) in seats.iter().enumerate() {
-        let Seat::Human(e) = seat else { continue };
-        let r = result(team as u8);
+    let mut out: Vec<Option<SeatOutcome>> = (0..players.len()).map(|_| None).collect();
+    let mut clans_awarded: HashSet<i64> = HashSet::new();
+    for &i in &humans {
+        let e = players[i].human().unwrap();
+        let team = players[i].team;
+        let r = result(team);
         let mr = match_result(r);
         let clan = clans::membership(&mut tx, e.account_id).await?;
-        let mut coins = progression::coins(mr);
+        let mut coins = match (mode, mr, mission) {
+            (Mode::Coop, MatchResult::Win, Some(m)) => coop_win_coins(m.difficulty),
+            _ => progression::coins(mr),
+        };
         if clan.is_some() {
             coins += coins * clans::COIN_BONUS_PCT / 100;
         }
@@ -130,31 +156,48 @@ pub async fn save_match(
             "loss" => 0.0,
             _ => 0.5,
         };
-        let (season_before, season_after) = if ranked {
-            let before = season_rating[team];
-            let after = before + elo_delta(before, season_rating[1 - team], score);
-            seasons::record(&mut tx, &season, e.account_id, after, r).await?;
-            (Some(before), Some(after))
-        } else {
-            (None, None)
+        let (season_before, season_after, after) = match (ranked, opponent(i)) {
+            (true, Some(o)) => {
+                let before = season_rating[i];
+                let s_after = before + elo_delta(before, season_rating[o], score);
+                seasons::record(&mut tx, &season, e.account_id, s_after, r).await?;
+                (
+                    Some(before),
+                    Some(s_after),
+                    elo[i] + elo_delta(elo[i], elo[o], score),
+                )
+            }
+            _ => (None, None, elo[i]),
         };
         let clan_points = match (mode, r) {
             (Mode::Pvp, "win") if ranked => seasons::CLAN_POINTS_PVP_WIN,
             (Mode::Pvp, "draw") if ranked => seasons::CLAN_POINTS_PVP_DRAW,
             (Mode::Pve, "win") => seasons::CLAN_POINTS_PVE_WIN,
+            (Mode::Coop, "win") => {
+                seasons::CLAN_POINTS_COOP_WIN
+                    + if mission.is_some_and(|m| m.hunt) {
+                        1
+                    } else {
+                        0
+                    }
+            }
             _ => 0,
         };
         let clan_points = if clan.is_some() { clan_points } else { 0 };
-        let after = if ranked {
-            elo[team] + elo_delta(elo[team], elo[1 - team], score)
-        } else {
-            elo[team]
-        };
         if let Some(c) = &clan {
-            seasons::add_clan_points(&mut tx, &season, c.clan_id, clan_points, r == "win").await?;
+            // In cooperativa il clan prende i punti una volta sola per partita.
+            if mode != Mode::Coop || clans_awarded.insert(c.clan_id) {
+                seasons::add_clan_points(&mut tx, &season, c.clan_id, clan_points, r == "win")
+                    .await?;
+            }
         }
         // Bottino deterministico: verificabile da seed della partita e account.
-        let loot = progression::loot(setup.seed ^ e.account_id as u64, mr);
+        let loot_seed = setup.seed ^ e.account_id as u64;
+        let loot = if mode == Mode::Coop {
+            progression::loot_with_chance(loot_seed, mr, COOP_LOOT_CHANCE)
+        } else {
+            progression::loot(loot_seed, mr)
+        };
         sqlx::query("UPDATE accounts SET elo = ?, coins = coins + ? WHERE id = ?")
             .bind(after)
             .bind(coins)
@@ -173,7 +216,7 @@ pub async fn save_match(
         .bind(team as i64)
         .bind(e.account_id)
         .bind(r)
-        .bind(elo[team])
+        .bind(elo[i])
         .bind(after)
         .bind(coins)
         .bind(loot.map(ItemId::key))
@@ -183,9 +226,9 @@ pub async fn save_match(
         .bind(season_after)
         .execute(&mut *tx)
         .await?;
-        out[team] = Some(SeatOutcome {
+        out[i] = Some(SeatOutcome {
             result: r,
-            elo_before: elo[team],
+            elo_before: elo[i],
             elo_after: after,
             coins,
             loot,
@@ -197,10 +240,8 @@ pub async fn save_match(
     }
 
     for (i, u) in battle.units.iter().enumerate() {
-        let account = match &seats[u.team as usize] {
-            Seat::Human(e) => Some(e.account_id),
-            Seat::Ai => None,
-        };
+        let owner = players.iter().position(|p| p.units.contains(&i));
+        let account = owner.and_then(|o| players[o].human()).map(|e| e.account_id);
         let roster_id = roster_ids.get(i).copied().flatten();
         let level_start = setup.units[i].level as i64;
 
@@ -239,7 +280,7 @@ pub async fn save_match(
         .execute(&mut *tx)
         .await?;
 
-        if let (Some(rid), Some(acc)) = (roster_id, account) {
+        if let (Some(rid), Some(acc), Some(o)) = (roster_id, account, owner) {
             sqlx::query("UPDATE roster SET level = ?, xp = ? WHERE id = ? AND account_id = ?")
                 .bind(progressed.level as i64)
                 .bind(progressed.xp as i64)
@@ -280,8 +321,8 @@ pub async fn save_match(
                     mastered_now,
                 });
             }
-            if let Some(o) = out[u.team as usize].as_mut() {
-                o.rewards.push(Reward {
+            if let Some(out) = out[o].as_mut() {
+                out.rewards.push(Reward {
                     roster_id: rid,
                     name: u.name.clone(),
                     level_before: level_start,
@@ -296,7 +337,7 @@ pub async fn save_match(
     tx.commit().await?;
     Ok(SavedMatch {
         match_id,
-        seats: out,
+        players: out,
     })
 }
 

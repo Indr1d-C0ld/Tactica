@@ -68,6 +68,7 @@ impl TacticaEngine {
             map: None,
             units,
             statutes: statutes.max(0) as usize,
+            objective: Default::default(),
         };
         let (battle, _) = Battle::new(&setup);
         Some(Gd::from_init_fn(|base| Self {
