@@ -5,7 +5,8 @@ members = ["core", "cli", "server", "client-ext"]
 [workspace.package]
 edition = "2024"
 version = "0.1.0"
-license = "Proprietary"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/Indr1d-C0ld/tactica"
 
 [profile.release]
 debug = 1

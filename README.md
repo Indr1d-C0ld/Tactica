@@ -1,74 +1,151 @@
-# Gioco tattico multiplayer (nome di lavoro: Tactica)
+# Tactica
+
+**Gioco tattico fantasy a turni, in pixel-art, per giocare da soli, in cooperativa o in competizione su un server proprio.**
 
 ![Battaglia](docs/img/battaglia.png)
 
-Gioco tattico fantasy originale, ispirato ai classici tattici a turni per console portatili. Contiene:
+[![Licenza: GPL v3](https://img.shields.io/badge/licenza-GPLv3-blue.svg)](LICENSE)
+![Rust](https://img.shields.io/badge/Rust-2024-orange.svg)
+![Godot](https://img.shields.io/badge/Godot-4.7-478cbf.svg)
+![Piattaforme](https://img.shields.io/badge/client-Linux%20%7C%20Windows-lightgrey.svg)
+![Server](https://img.shields.io/badge/server-Debian%20%2B%20systemd-red.svg)
 
-- battaglie su griglia con altezze;
-- classi;
-- statuti procedurali con sanzioni;
-- mappe generate da seed;
-- un server autoritativo con statistiche persistenti.
+Tactica è un gioco originale ispirato ai classici tattici a turni delle console portatili. Si gioca su mappe isometriche con altezze, generate da un seed e ruotabili in 3D. Ogni battaglia ha i suoi **Statuti**, regole estratte a sorte: chi le infrange viene sospeso e poi espulso dal campo. Le unità crescono di livello, cambiano classe e imparano abilità dall'equipaggiamento, fino a padroneggiarle.
 
+Tutto è fatto da zero: regole, storia, nomi, grafica, musica ed effetti sonori. La grafica e l'audio sono generati da script inclusi nel repository, quindi si possono ricostruire e modificare.
 
-## Stato
+*[English summary below](#in-english).*
 
-- `core/`: motore di regole deterministico (solo aritmetica intera, nessuna dipendenza). Comprende:
-  - mappe procedurali per 5 biomi, con verifica che gli schieramenti siano collegati;
-  - 6 classi (4 base, 2 avanzate da sbloccare);
-  - 27 abilità;
-  - 29 oggetti che danno bonus e insegnano abilità, padroneggiabili con i punti risonanza;
-  - turni a CT;
-  - danno con altezza, lato d'attacco e terreno;
-  - 9 statuti con sospensione ed espulsione;
-  - 8 status alterati (veleno, sonno, silenzio, lentezza, radici, rapidità, egida, rigenerazione);
-  - esperienza e livelli;
-  - contatori statistici per unità;
-  - IA golosa che rispetta gli statuti;
-  - replay (seed più azioni).
-- `cli/`: demo da terminale con una battaglia tra IA e la verifica del replay.
-- `server/`: server autoritativo (axum, WebSocket, SQLite WAL). Comprende:
-  - account Argon2id, con limiti ai tentativi di accesso e registrazione;
-  - roster persistente con esperienza, livelli, equipaggiamento e padronanze;
-  - inventario, negozio e bottino;
-  - partite PvE contro l'IA e PvP con ELO, con una coda che abbina giocatori di ELO vicino;
-  - IA che subentra a chi si disconnette o va oltre il tempo;
-  - replay verificabili;
-  - statistiche personali e globali;
-  - backup automatici;
-  - clan con ruoli e inviti;
-  - missioni cooperative di clan (da 2 a 6 giocatori contro l'IA, con caccia al campione);
-  - guerre fra clan (fino a 6 contro 6) con ELO dei clan;
-  - tornei fra clan a eliminazione diretta con teste di serie e premi;
-  - stagioni classificate con titoli e premi.
+---
 
-  Dettagli in [docs/SERVER.md](docs/SERVER.md).
-- `deploy/`: unit systemd isolata e Caddyfile per TLS.
-- `tools/pixelart/`: generatore della pixel-art originale del client: personaggi chibi con camminata, terreni, effetti, font, mappa del mondo, kit per il pixel artist.
-- `tools/audio/`: sintetizzatore chiptune delle musiche (menu, battaglia, mappa del mondo, fanfare) e degli effetti sonori.
-- Campagna in singolo: «Le Terre di Velmara», con 5 regioni, 15 tappe, una storia originale e un tutorial guidato.
-- `client-ext/` e `client/`: client Godot 4.7 con estensione Rust sul core. Comprende:
-  - accesso;
-  - roster, negozio e statistiche;
-  - battaglia in 3D ruotabile con estetica VGA/SVGA, anteprime e suggerimenti;
-  - clan e stagioni;
-  - partite online e schermaglia offline;
-  - modalità automatica per i test.
+## Indice
 
-  Dettagli in [docs/CLIENT.md](docs/CLIENT.md).
+- [Caratteristiche](#caratteristiche)
+- [Immagini](#immagini)
+- [Come si gioca](#come-si-gioca)
+- [Architettura](#architettura)
+- [Compilare ed eseguire](#compilare-ed-eseguire)
+- [Server su Debian](#server-su-debian)
+- [Pacchetti per i giocatori](#pacchetti-per-i-giocatori)
+- [Documentazione](#documentazione)
+- [Stato e prossimi passi](#stato-e-prossimi-passi)
+- [Licenza](#licenza)
 
-## Comandi
+## Caratteristiche
+
+### Battaglia
+
+- **Griglia isometrica con altezze** su 5 biomi (prateria, palude, deserto, vulcano, altopiano). Le mappe sono generate da un seed, e il generatore verifica che gli schieramenti siano collegati.
+- **Turni a iniziativa (CT):** la velocità decide chi agisce. Muoversi e agire costano iniziativa.
+- **Danno con dislivello, fianco, spalle e terreno.** Gli elementi interagiscono con il terreno: il fulmine è più forte sull'acqua, il ghiaccio più debole sulla lava.
+- **9 Statuti** estratti a sorte (per esempio «Niente cure» o «Divieto di colpire dall'alto»). Chi li viola viene sospeso e poi espulso.
+- **8 status alterati:** veleno, sonno, silenzio, lentezza, radici, rapidità, egida, rigenerazione.
+- **Anteprima del danno** e **suggerimento dell'IA** per ogni mossa.
+- **Telecamera libera:** rotazione a 360°, inclinazione, zoom. Tre stili di resa: VGA (con retino), SVGA e nitido.
+
+### Progressione
+
+- **6 classi:** Avanguardia, Esploratore, Arcanista e Guaritore di base; Spadaruna e Custode da sbloccare.
+- **27 abilità e 29 oggetti.** Un oggetto insegna un'abilità finché è equipaggiato; con i **punti risonanza** guadagnati in battaglia l'abilità diventa permanente.
+- **Esperienza e livelli,** roster fino a 8 unità, negozio, bottino ed economia.
+
+### Modalità
+
+| Modalità | Giocatori | Descrizione |
+|---|---|---|
+| **Campagna** | 1 | «Le Terre di Velmara»: 5 regioni, 15 tappe, una storia originale e un tutorial guidato |
+| **PvE** | 1 | battaglia contro un'IA che rispecchia la tua squadra |
+| **Schermaglia offline** | 1 | senza server, tutto in locale |
+| **PvP classificato** | 2 | coda che abbina giocatori di ELO vicino; ELO di carriera e punteggio stagionale |
+| **Missioni cooperative** | 2-6 | membri dello stesso clan contro l'IA: assedio o caccia al campione |
+| **Guerre fra clan** | fino a 6 contro 6 | con ELO dei clan |
+| **Tornei fra clan** | 2-16 clan | eliminazione diretta con teste di serie e premi |
+
+### Comunità e statistiche
+
+- **Clan** con capo, ufficiali, inviti e bonus di monete.
+- **Stagioni classificate** con reset morbido, titoli (Campione, Podio, Élite) e premi.
+- **Statistiche personali e globali:** vittorie, classi più usate e percentuali di vittoria, biomi, statuti rispettati e violati.
+- **Replay verificabili:** seed più azioni, con hash dello stato finale.
+
+### Server
+
+- **Autoritativo:** il client invia solo intenzioni. Il server le valida con lo stesso motore di regole e tiene segreto il seed fino a fine partita, quindi nessuno può prevedere i tiri.
+- **Persistenza** su SQLite (WAL), con migrazioni automatiche e backup periodici coerenti.
+- **Sicurezza:** password Argon2id, token salvati solo come SHA-256, limiti ai tentativi di accesso e registrazione, servizio systemd isolato, TLS automatico con Caddy.
+- **Partite a turni senza fretta:** nelle partite in solitaria non c'è limite di tempo. Il limite per turno vale solo quando altri giocatori aspettano, e chi si disconnette viene sostituito dall'IA.
+
+## Immagini
+
+| | |
+|---|---|
+| ![Mappa del mondo](docs/img/mappa_mondo.png) | ![Tutorial](docs/img/tutorial.png) |
+| *La mappa della campagna* | *Il tutorial guidato* |
+| ![Missione cooperativa](docs/img/missione.png) | ![Stanza cooperativa](docs/img/stanza.png) |
+| *Missione cooperativa di clan* | *Stanza di missione con due giocatori* |
+| ![Effetti](docs/img/effetti.png) | ![Anteprima](docs/img/anteprima.png) |
+| *Primo piano con effetti di fuoco* | *Anteprima di un'abilità* |
+| ![Stile SVGA](docs/img/stile_svga.png) | ![Vittoria](docs/img/vittoria.png) |
+| *Stile SVGA* | *Fine battaglia con ricompense* |
+| ![Roster](docs/img/roster.png) | ![Negozio](docs/img/negozio.png) |
+| *Roster ed equipaggiamento* | *Negozio* |
+| ![Statistiche](docs/img/statistiche.png) | ![Tornei](docs/img/tornei.png) |
+| *Statistiche personali e globali* | *Tornei fra clan* |
+
+La telecamera ruota, si inclina e cambia stile di resa:
+
+![Telecamera](docs/img/telecamera.gif)
+
+Tutti i personaggi derivano da un unico foglio base, ricolorato per classe, squadra, capelli e carnagione:
+
+![Sprite](docs/img/sprite_sheet.png)
+
+## Come si gioca
+
+| Comando | Effetto |
+|---|---|
+| clic sulla mappa | sceglie la casella (movimento o bersaglio) |
+| Q / E | ruota la mappa |
+| rotella | zoom |
+| tasto centrale | orbita; con Maiusc sposta la vista |
+| F2 | cambia stile: VGA, SVGA, nitido |
+| «Suggerimento IA» | mostra la mossa consigliata |
+
+Ogni unità, nel suo turno, può muoversi e agire una volta. Prima di confermare un attacco vedi danno e probabilità di colpire. Tieni d'occhio gli Statuti in alto: violarli costa caro.
+
+## Architettura
+
+```
+core/        motore di regole deterministico in Rust (solo interi, nessuna dipendenza obbligatoria)
+cli/         demo da terminale: battaglia fra IA e verifica del replay
+server/      server autoritativo: axum, WebSocket, SQLite (sqlx), Argon2id
+client-ext/  estensione GDExtension in Rust che porta core/ dentro Godot
+client/      client Godot 4.7 (GDScript, renderer Compatibility)
+tools/       generatori di pixel-art e audio, script dei pacchetti
+deploy/      servizio systemd, script d'installazione, Caddyfile
+docs/        documentazione
+```
+
+**Un solo motore di regole per tutti.** Lo stesso `tactica-core` gira:
+
+- sul server, che risolve le azioni;
+- nel client, per anteprime, caselle raggiungibili, suggerimenti dell'IA e schermaglia offline;
+- nei test.
+
+Il motore è deterministico (SplitMix64 con seed, solo aritmetica intera), quindi i replay si riproducono identici e non ci sono desincronizzazioni.
+
+```
+ client Godot ──intenzioni (WebSocket)──▶ server ──▶ tactica-core ──▶ SQLite
+      ▲                                     │
+      └──────── eventi + stato pubblico ────┘
+```
+
+## Compilare ed eseguire
+
+Servono **Rust** (edizione 2024), **Godot 4.7** e **Python 3** con Pillow, quest'ultimo solo per rigenerare grafica e audio.
 
 ```bash
 cargo test
-```
-
-```bash
-cargo run --release -p tactica-cli -- 12345
-```
-
-```bash
-cargo run --release -p tactica-core --example balance 1000
 ```
 
 ```bash
@@ -79,17 +156,92 @@ cargo run --release -p tactica-server
 cargo build -p tactica-godot && godot --path client
 ```
 
+Altri comandi utili:
+
+```bash
+cargo run --release -p tactica-cli -- 12345
+```
+
+```bash
+cargo run --release -p tactica-core --example balance 1000
+```
+
+```bash
+godot --path client -- --offline
+```
+
+```bash
+python3 tools/pixelart/build.py
+```
+
+```bash
+python3 tools/audio/synth.py
+```
+
+In ordine: una battaglia fra IA nel terminale con il seed 12345; 1000 battaglie simulate per verificare il bilanciamento; una schermaglia locale senza server; la rigenerazione di tutta la grafica; la rigenerazione di musiche ed effetti sonori.
+
+## Server su Debian
+
+```bash
+cargo build --release -p tactica-server
+```
+
+```bash
+sudo deploy/install.sh --domain gioco.esempio.it --email tua@email.it
+```
+
+Lo script installa il servizio systemd (utente effimero, dati in `/var/lib/tactica`, backup automatici) e configura Caddy con un certificato Let's Encrypt. Si può rilanciare per gli aggiornamenti; `--dry-run` mostra i comandi senza eseguirli. Dettagli e variabili di configurazione: [docs/SERVER.md](docs/SERVER.md).
+
+## Pacchetti per i giocatori
+
 ```bash
 tools/package/build.sh --server https://gioco.esempio.it
 ```
 
-```bash
-sudo deploy/install.sh --domain gioco.esempio.it
-```
+Crea `dist/tactica-linux.tar.gz` (circa 30 MB) e `dist/tactica-windows.zip` (circa 39 MB). Basta estrarli e avviare l'eseguibile; l'indirizzo del server è in `server.txt` e si cambia anche dalla schermata di accesso. Requisiti di compilazione: [docs/CLIENT.md](docs/CLIENT.md#pacchetti-per-i-giocatori).
 
-Pacchetti del client (Linux e Windows): [docs/CLIENT.md](docs/CLIENT.md). Installazione del server: [docs/SERVER.md](docs/SERVER.md).
+## Documentazione
 
-## Prossimi passi
+| Documento | Contenuto |
+|---|---|
+| [docs/SERVER.md](docs/SERVER.md) | API HTTP e WebSocket, progressione, clan, stagioni, cooperative, guerre, tornei, campagna, installazione |
+| [docs/CLIENT.md](docs/CLIENT.md) | client Godot, schermate, controlli, pacchetti, modalità automatica per i test |
+| [docs/meccaniche.md](docs/meccaniche.md) | formule di combattimento, bilanciamento, determinismo |
+| [docs/ARTE.md](docs/ARTE.md) | specifiche per sostituire la grafica con pixel-art disegnata a mano |
+| [tools/pixelart/README.md](tools/pixelart/README.md) | generatore della pixel-art |
 
-1. **Prova sul campo** con altri giocatori; scadenze per gli incontri di torneo.
-2. **Grafica definitiva** di un pixel artist (kit pronto: [docs/ARTE.md](docs/ARTE.md)).
+## Stato e prossimi passi
+
+Il gioco è completo e giocabile. Ci sono test end-to-end per tutte le modalità online (bot che giocano contro il server) e una modalità automatica del client per le prove e le schermate.
+
+Prossimi passi:
+
+1. **Prova sul campo** con altri giocatori.
+2. **Scadenze per gli incontri di torneo** (oggi un incontro resta aperto finché non si gioca).
+3. **PvP classificato a livelli normalizzati.**
+4. **Grafica e musiche disegnate a mano:** il kit per il pixel artist è pronto ([docs/ARTE.md](docs/ARTE.md)).
+
+## Licenza
+
+Tactica è software libero: codice, grafica e audio sono distribuiti secondo la [GNU General Public License v3.0 o successiva](LICENSE).
+
+I pacchetti per i giocatori includono il motore [Godot Engine](https://godotengine.org) (licenza MIT). Le dipendenze Rust hanno licenze compatibili (MIT, Apache-2.0, MPL-2.0, Zlib e simili).
+
+---
+
+## In English
+
+**Tactica** is an original turn-based fantasy tactics game with pixel art, playable solo, co-op or competitively on a self-hosted server. The game text is in Italian.
+
+- **Isometric battles** on seeded procedural maps with height, fully rotatable in 3D. Rendering is styled after the VGA and SVGA era (with Bayer dithering).
+- **Statutes:** random battle rules; breaking one gets a unit suspended, then expelled.
+- **Progression:** 6 classes, 27 abilities and 29 items. Abilities are learned from equipment and mastered with resonance points.
+- **Modes:** single-player campaign with tutorial, PvE, offline skirmish, ELO-matched PvP, 2-6 player co-op clan missions, clan wars (up to 6v6), clan tournaments, ranked seasons.
+- **Tech:**
+  - deterministic rules engine in Rust (`core/`), shared by the authoritative server (axum, WebSocket, SQLite) and the Godot 4.7 client (GDExtension);
+  - replays are seed plus actions;
+  - Debian/systemd install script with Caddy TLS;
+  - Linux and Windows client packages.
+- **License:** GPL-3.0-or-later.
+
+Quick start: `cargo test`, then `cargo run --release -p tactica-server` and `cargo build -p tactica-godot && godot --path client`.

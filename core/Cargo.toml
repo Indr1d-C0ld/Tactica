@@ -4,6 +4,7 @@ description = "Motore di regole deterministico: mappe procedurali, classi, comba
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
 serde = { version = "1.0.229", features = ["derive"], optional = true }

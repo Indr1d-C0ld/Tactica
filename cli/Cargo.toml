@@ -4,6 +4,7 @@ description = "Demo da terminale del motore di regole"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
 tactica-core = { path = "../core" }
