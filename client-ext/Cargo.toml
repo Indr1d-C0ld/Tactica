@@ -1,0 +1,13 @@
+[package]
+name = "tactica-godot"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+godot = "0.5.5"
+serde_json = "1.0.154"
+tactica-core = { version = "0.1.0", path = "../core", features = ["serde"] }
+
+[lib]
+crate-type = ["cdylib"]

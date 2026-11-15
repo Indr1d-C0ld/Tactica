@@ -12,6 +12,7 @@ pub mod presets;
 pub mod progression;
 pub mod rng;
 pub mod statute;
+pub mod text;
 pub mod unit;
 
 pub use battle::{Action, ActionError, Battle, BattleSetup, Event, Snapshot};

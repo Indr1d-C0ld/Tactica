@@ -36,6 +36,14 @@ Gioco tattico fantasy originale, ispirato ai classici tattici a turni per consol
 
   Dettagli in [docs/SERVER.md](docs/SERVER.md).
 - `deploy/`: unit systemd isolata e Caddyfile per TLS.
+- `client-ext/` e `client/`: client Godot 4.7 con estensione Rust sul core. Comprende:
+  - accesso;
+  - roster, negozio e statistiche;
+  - battaglia isometrica con anteprime e suggerimenti;
+  - partite online e schermaglia offline;
+  - modalità automatica per i test.
+
+  Dettagli in [docs/CLIENT.md](docs/CLIENT.md).
 
 ## Comandi
 
@@ -55,7 +63,11 @@ cargo run --release -p tactica-core --example balance 1000
 cargo run --release -p tactica-server
 ```
 
+```bash
+cargo build -p tactica-godot && godot --path client
+```
+
 ## Prossimi passi
 
 1. **Clan e stagioni**, status alterati, matchmaking per ELO; rate limiting prima dell'apertura su Internet.
-2. **Client Godot 4** con godot-rust, che riusa `core/`.
+2. **Grafica e audio originali** per il client: sprite, tileset, effetti, musiche.
