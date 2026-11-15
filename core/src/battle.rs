@@ -464,9 +464,10 @@ impl Battle {
         }
         let (best, _) = self.move_costs(idx);
         let at = |p: Pos| (p.y * self.map.width + p.x) as usize;
+        let mov = u.move_points();
         self.map
             .positions()
-            .filter(|&p| best[at(p)] <= u.stats.mov && (p == u.pos || self.unit_at(p).is_none()))
+            .filter(|&p| best[at(p)] <= mov && (p == u.pos || self.unit_at(p).is_none()))
             .collect()
     }
 
@@ -491,6 +492,7 @@ impl Battle {
     /// Costi minimi di movimento (Dijkstra su griglia) e predecessori.
     fn move_costs(&self, idx: usize) -> (Vec<i32>, Vec<Option<Pos>>) {
         let u = &self.units[idx];
+        let mov = u.move_points();
         let w = self.map.width;
         let at = |p: Pos| (p.y * w + p.x) as usize;
         let n = (w * self.map.height) as usize;
@@ -503,7 +505,7 @@ impl Battle {
             let h = self.map.tile(p).unwrap().height;
             for nb in p.neighbors() {
                 let Some(t) = self.map.tile(nb) else { continue };
-                if (t.height - h).abs() > u.stats.jump {
+                if !u.can_step(h, t.height) {
                     continue;
                 }
                 // Ogni unità in piedi occupa la sua casella: non si attraversano
@@ -511,8 +513,8 @@ impl Battle {
                 if self.unit_at(nb).is_some() {
                     continue;
                 }
-                let c = cost + t.terrain.move_cost();
-                if c <= u.stats.mov && c < best[at(nb)] {
+                let c = cost + u.terrain_cost(t.terrain);
+                if c <= mov && c < best[at(nb)] {
                     best[at(nb)] = c;
                     parent[at(nb)] = Some(p);
                     q.push_back(nb);
@@ -667,7 +669,8 @@ impl Battle {
                     } else {
                         (90 + facing_bonus(t.facing, tpos, from)
                             - t.stats.evade
-                            - tile.terrain.evade_bonus())
+                            - tile.terrain.evade_bonus()
+                            - t.people.terrain_evade(tile.terrain))
                         .clamp(5, 100)
                     };
                     (hit, dmg, false)
@@ -1197,7 +1200,11 @@ impl Battle {
         let terrain = self.map.tile(self.units[idx].pos).unwrap().terrain;
         let u = &mut self.units[idx];
         if u.is_active() {
-            let pct = terrain.end_turn_damage_pct();
+            let pct = if u.people.lava_proof() {
+                0
+            } else {
+                terrain.end_turn_damage_pct()
+            };
             if pct > 0 {
                 let amount = (u.stats.max_hp * pct / 100).max(1).min(u.hp);
                 u.hp -= amount;

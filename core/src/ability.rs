@@ -117,6 +117,7 @@ pub enum AbilityId {
     FrostSpirit,
     ThunderSpirit,
     DawnSpirit,
+    DragonWings,
     // Effetti degli oggetti consumabili (non si imparano).
     Potion,
     Ether,
@@ -127,6 +128,8 @@ pub enum AbilityId {
     FrostVial,
     ToxinVial,
     SleepPowder,
+    LeadVial,
+    WindFeather,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -212,7 +215,7 @@ macro_rules! ab {
 use Element::*;
 
 /// Indicizzata per `AbilityId as usize`: l'ordine deve coincidere con l'enum.
-static TABLE: [Ability; 84] = [
+static TABLE: [Ability; 87] = [
     ab!(Strike, "strike", "Colpo", Physical, 100, 0, (1, 1)),
     ab!(
         HeavyBlow,
@@ -335,7 +338,7 @@ static TABLE: [Ability; 84] = [
     // Geomante
     ab!(Landslide, "landslide", "Frana", Magic, 130, 5, (1, 3), vertical: 6, effect: fx(Status::Root, 20, 2)),
     ab!(Quicksand, "quicksand", "Sabbie mobili", Support, 0, 10, (1, 4), aoe: 1, vertical: 4, master_rp: 110,
-        effect: fx(Status::Root, 70, 2)),
+        effect: fx(Status::Burden, 75, 3)),
     ab!(Earthquake, "earthquake", "Terremoto", Magic, 120, 20, (2, 4), aoe: 2, vertical: 6, master_rp: 160),
     ab!(Stoneskin, "stoneskin", "Pelle di pietra", Support, 0, 8, (0, 2), aoe: 1, vertical: 4, master_rp: 100,
         effect: fx(Status::Aegis, 100, 3)),
@@ -351,6 +354,8 @@ static TABLE: [Ability; 84] = [
         element: Some(Thunder), master_rp: 170, effect: fx(Status::Root, 35, 2)),
     ab!(DawnSpirit, "dawn_spirit", "Spirito dell'alba", Heal, 110, 28, (0, 4), aoe: 2, vertical: 6,
         master_rp: 170),
+    ab!(DragonWings, "dragon_wings", "Ali del drago", Support, 0, 8, (0, 0), vertical: 4, master_rp: 110,
+        effect: fx(Status::Flight, 100, 3)),
     // Consumabili: valori fissi, portata corta (le bombe si lanciano).
     ab!(Potion, "potion", "Pozione", Heal, 50, 0, (0, 1), vertical: 3, fixed: true),
     ab!(Ether, "ether", "Etere", Heal, 25, 0, (0, 1), vertical: 3, fixed: true, restore_mp: true),
@@ -365,13 +370,17 @@ static TABLE: [Ability; 84] = [
         ranged: true, effect: fx(Status::Poison, 85, 4)),
     ab!(SleepPowder, "sleep_powder", "Polvere del sonno", Support, 0, 0, (1, 3), aoe: 1, vertical: 4,
         ranged: true, effect: fx(Status::Sleep, 55, 2)),
+    ab!(LeadVial, "lead_vial", "Fiala di piombo", Support, 0, 0, (1, 4), aoe: 1, vertical: 4,
+        ranged: true, effect: fx(Status::Burden, 80, 3)),
+    ab!(WindFeather, "wind_feather", "Piuma del vento", Support, 0, 0, (0, 1), vertical: 3,
+        effect: fx(Status::Flight, 100, 3)),
 ];
 
 impl AbilityId {
-    pub const ALL: [AbilityId; 84] = {
-        let mut out = [AbilityId::Strike; 84];
+    pub const ALL: [AbilityId; 87] = {
+        let mut out = [AbilityId::Strike; 87];
         let mut i = 0;
-        while i < 84 {
+        while i < 87 {
             out[i] = TABLE[i].id;
             i += 1;
         }

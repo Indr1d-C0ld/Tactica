@@ -31,6 +31,19 @@ PIXELLAB_TOKEN=... python3 tools/pixelart/pixellab_icons.py generate
 python3 tools/pixelart/pixellab_icons.py atlas
 ```
 
+**Terreni** (`tools/pixelart/pixellab/terrain/`): tessere 32×32 fatte con `create_tiles_pro` (sommità e fianchi) e decorazioni fatte con Pixen (alberello, cespuglio, sassi, ciuffo d'erba). `python3 tools/pixelart/pixellab_terrain.py` compone `client/assets/override/terrain3d.png` con celle da 32:
+- **sommità:** una tessera base per terreno, con le rotazioni come varianti perché lo stile resti uniforme;
+- **bordi:** tolti dalle sommità, così le caselle vicine si fondono;
+- **acqua e lava:** tre fotogrammi ottenuti facendo scorrere la tessera;
+- **fianchi:** ripuliti dal bordo chiaro.
+
+La mappa 3D ricava la dimensione della cella dall'atlante, quindi funziona sia con le celle da 16 del generatore sia con quelle da 32.
+
+**Interfaccia** (`tools/pixelart/pixellab/ui/`): due pannelli fatti con `create_ui_asset`, uno per la finestra con cornice dorata decorata e uno per il pulsante a bordo fine. `python3 tools/pixelart/pixellab_ui.py` scrive in `client/assets/override/`:
+- **finestra:** ritagliata, a 9 parti con margine 18;
+- **pulsante:** compattato a 24×24, con margine 9;
+- **varianti** (passaggio del mouse, premuto, disattivato, campo di testo): ricavate variando luminosità e saturazione.
+
 **Mappa del mondo** (`tools/pixelart/pixellab/worldmap/`): pergamena 480×272 fatta con lo strumento «Pro» di PixelLab, usando la mappa generata come riferimento per la disposizione delle cinque regioni da ovest a est. È installata come `client/assets/override/worldmap.png`; le tappe della campagna (`server/src/campaign.rs`) sono posizionate sui punti di riferimento del disegno (tempio, oasi, fortezza di lava, Sala dei Custodi). I nomi delle regioni compaiono in targhe in fondo a ogni fascia.
 
 Il primo comando genera solo le icone mancanti; il secondo compone `client/assets/items.png` e l'indice `items.json`. Per rifare un'icona basta cancellarne il PNG e rilanciare `generate`.

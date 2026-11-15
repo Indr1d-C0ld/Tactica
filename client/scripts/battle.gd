@@ -326,11 +326,14 @@ func _show_card(i: int) -> void:
 	var u: Dictionary = units[i]
 	var st: Dictionary = u["stats"]
 	var team_col := "#6b9cff" if int(u["team"]) == 0 else "#ff7b6b"
-	_card.text = ("[b][color=%s]%s[/color][/b]\n%s · Lv %d\nHP %d/%d   MP %d/%d\n" +
-		"ATK %d DEF %d MAG %d RES %d\nVEL %d MOV %d SALTO %d SCHIVATA %d") % [
-		team_col, u["name"], u["class_name"], int(u["level"]), int(u["hp"]), int(u["max_hp"]),
+	# MOV e salto effettivi: in verde se migliorati da status o oggetti, in rosso se ridotti.
+	var mv := _delta(int(st["mov"]), int(st.get("base_mov", st["mov"])))
+	var jp := _delta(int(st["jump"]), int(st.get("base_jump", st["jump"])))
+	_card.text = ("[b][color=%s]%s[/color][/b]\n%s %s · Lv %d\nHP %d/%d   MP %d/%d\n" +
+		"ATK %d DEF %d MAG %d RES %d\nVEL %d MOV %s SALTO %s SCHIVATA %d") % [
+		team_col, u["name"], u.get("people_name", ""), u["class_name"], int(u["level"]), int(u["hp"]), int(u["max_hp"]),
 		int(u["mp"]), int(u["max_mp"]), int(st["atk"]), int(st["def"]), int(st["mag"]),
-		int(st["res"]), int(st["spd"]), int(st["mov"]), int(st["jump"]), int(st["evade"])]
+		int(st["res"]), int(st["spd"]), mv, jp, int(st["evade"])]
 	var sts: Array[String] = []
 	for status in u.get("statuses", []):
 		sts.append("[color=%s]%s (%d)[/color]" % ["#f9a" if bool(status["negative"]) else "#9fc", status["name"], int(status["turns"])])
@@ -340,6 +343,14 @@ func _show_card(i: int) -> void:
 		_card.text += "\n[color=#9cf]%s[/color]" % ("Tua unità" if mine.has(i) else "Unità di un alleato")
 	if int(u["penalties"]) > 0:
 		_card.text += "\n[color=#f96]Sanzioni: %d[/color]" % int(u["penalties"])
+
+
+func _delta(now: int, base: int) -> String:
+	if now > base:
+		return "[color=#7f7]%d[/color]" % now
+	if now < base:
+		return "[color=#f88]%d[/color]" % now
+	return str(now)
 
 
 func _rebuild_actions() -> void:

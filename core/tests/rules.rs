@@ -221,11 +221,11 @@ fn equipment_teaches_and_boosts() {
     assert_eq!(u1.stats.mag, u0.stats.mag + 4);
     assert_eq!(
         u1.stats,
-        stats_with(
+        tactica_core::people::People::Human.apply(stats_with(
             Class::Arcanist,
             5,
             &[ItemId::FrostRod, ItemId::Robe].map(tactica_core::gear::ItemRef::from)
-        )
+        ))
     );
     // Padroneggiata: resta anche senza l'oggetto, ma solo nella propria classe.
     let mut m = bare.clone();
@@ -749,6 +749,78 @@ mod advanced_classes {
             });
             ai::autoplay(&mut b, 20_000);
             assert!(b.is_over(), "seed {seed}: la battaglia non finisce");
+        }
+    }
+}
+
+mod movement {
+    use super::*;
+    use tactica_core::class::Class;
+    use tactica_core::map::Terrain;
+    use tactica_core::people::People;
+    use tactica_core::status::Status;
+    use tactica_core::{Dir, Unit};
+
+    fn unit(class: Class, people: People) -> Unit {
+        let mut s = UnitSetup::new("u", 0, class, 5);
+        s.people = people;
+        Unit::new(0, &s, Pos::new(0, 0), Dir::E)
+    }
+
+    #[test]
+    fn statuses_change_movement() {
+        let mut u = unit(Class::Scout, People::Human);
+        let base = u.move_points();
+        u.add_status(Status::Haste, 2);
+        assert_eq!(u.move_points(), base + 1);
+        u.add_status(Status::Slow, 2); // annulla Rapidità
+        assert_eq!(u.move_points(), base - 1);
+        u.add_status(Status::Burden, 2);
+        assert_eq!(u.move_points(), (base - 3).max(1));
+        u.add_status(Status::Root, 2);
+        assert_eq!(u.move_points(), 0);
+        let mut f = unit(Class::Arcanist, People::Human);
+        f.add_status(Status::Flight, 2);
+        assert!(f.can_step(0, 9));
+        assert_eq!(f.terrain_cost(Terrain::Water), 1);
+    }
+
+    #[test]
+    fn peoples_and_classes_change_terrain_and_reach() {
+        let h = unit(Class::Vanguard, People::Human);
+        let s = unit(Class::Vanguard, People::Sylvan);
+        let r = unit(Class::Vanguard, People::Stonekin);
+        let w = unit(Class::Vanguard, People::Winged);
+        let o = unit(Class::Vanguard, People::Undine);
+        assert_eq!(s.move_points(), h.move_points() + 1);
+        assert_eq!(r.move_points(), h.move_points() - 1);
+        assert_eq!(w.stats.jump, h.stats.jump + 2);
+        assert_eq!(h.terrain_cost(Terrain::Thicket), 2);
+        assert_eq!(s.terrain_cost(Terrain::Thicket), 1);
+        assert_eq!(o.terrain_cost(Terrain::Water), 1);
+        assert_eq!(o.terrain_cost(Terrain::Sand), 3);
+        assert_eq!(
+            unit(Class::Geomancer, People::Undine).terrain_cost(Terrain::Sand),
+            1
+        );
+        assert_eq!(
+            unit(Class::Scout, People::Human).terrain_cost(Terrain::Sand),
+            1
+        );
+        let d = unit(Class::Dragoon, People::Human);
+        assert!(d.can_step(8, 0) && !d.can_step(0, 8));
+    }
+
+    #[test]
+    fn mixed_peoples_battles_finish() {
+        for seed in 0..20u64 {
+            let mut s = setup(seed);
+            for (i, u) in s.units.iter_mut().enumerate() {
+                u.people = People::ALL[(i + seed as usize) % People::ALL.len()];
+            }
+            let (mut b, _) = Battle::new(&s);
+            ai::autoplay(&mut b, 20_000);
+            assert!(b.is_over());
         }
     }
 }

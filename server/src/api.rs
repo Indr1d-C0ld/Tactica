@@ -136,6 +136,9 @@ async fn roster(State(s): State<AppState>, user: AuthUser) -> ApiResult<Json<Vec
 struct Recruit {
     name: String,
     class: String,
+    /// Popolo (predefinito: umano).
+    #[serde(default)]
+    people: Option<String>,
 }
 
 async fn recruit(
@@ -154,6 +157,11 @@ async fn recruit(
             "le reclute partono da una classe base; le avanzate si sbloccano con la padronanza",
         ));
     }
+    let people = match r.people.as_deref() {
+        None => tactica_core::people::People::Human,
+        Some(k) => tactica_core::people::People::from_key(k)
+            .ok_or_else(|| ApiError::bad_request("popolo sconosciuto"))?,
+    };
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM roster WHERE account_id = ?")
         .bind(user.id)
         .fetch_one(&s.db)
@@ -164,13 +172,14 @@ async fn recruit(
         )));
     }
     let id = sqlx::query(
-        "INSERT INTO roster (account_id, name, class, equipment, created_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO roster (account_id, name, class, equipment, created_at, people) VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(user.id)
     .bind(&name)
     .bind(class.key())
     .bind(items_json(&starter_kit(class).map(tactica_core::gear::ItemRef::from)))
     .bind(now())
+    .bind(people.key())
     .execute(&s.db)
     .await?
     .last_insert_rowid();

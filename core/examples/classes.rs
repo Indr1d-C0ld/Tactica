@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 
 use tactica_core::class::Class;
+use tactica_core::people::People;
 use tactica_core::rng::Rng;
 use tactica_core::{Battle, BattleSetup, UnitSetup, ai, presets};
 
@@ -17,6 +18,7 @@ fn main() {
     // classe -> [presenze, vittorie, danni, cure, ko]
     let mut stats: BTreeMap<&str, [i64; 5]> = BTreeMap::new();
     let mut draws = 0;
+    let mut by_people: BTreeMap<&str, [i64; 2]> = BTreeMap::new();
     for seed in 0..n {
         let mut rng = Rng::new(seed ^ 0xc1a5);
         let mut units = Vec::new();
@@ -26,6 +28,7 @@ fn main() {
                 let mut u = UnitSetup::new(format!("{team}{k}"), team, c, 12)
                     .with_equipment(&presets::class_kit(c));
                 u.mastered = c.learnable().to_vec();
+                u.people = People::ALL[rng.below(People::ALL.len() as u32) as usize];
                 units.push(u);
             }
         }
@@ -49,6 +52,9 @@ fn main() {
             e[2] += u.tally.damage_dealt as i64;
             e[3] += u.tally.healing_done as i64;
             e[4] += u.tally.kills as i64;
+            let pe = by_people.entry(u.people.name()).or_default();
+            pe[0] += 1;
+            pe[1] += (winner == Some(u.team)) as i64;
         }
     }
     println!("Battaglie: {n}  pareggi: {draws}");
@@ -66,6 +72,13 @@ fn main() {
             e[2] / p,
             e[3] / p,
             e[4] as f64 / p as f64
+        );
+    }
+    println!("\n{:<10} {:>8}", "Popolo", "Vitt. %");
+    for (name, e) in by_people {
+        println!(
+            "{name:<10} {:>7.1}%",
+            e[1] as f64 * 100.0 / e[0].max(1) as f64
         );
     }
 }

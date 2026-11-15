@@ -1741,3 +1741,37 @@ async fn workshop_salvage_and_brew() {
         .await;
     assert_eq!(st, 400);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn recruits_choose_their_people() {
+    let srv = start().await;
+    let (tok, _) = srv.player("popoli").await;
+    let (st, u) = srv
+        .post(
+            "/api/roster",
+            Some(&tok),
+            json!({"name": "Fronda", "class": "scout", "people": "sylvan"}),
+        )
+        .await;
+    assert_eq!(st, 200, "{u}");
+    assert_eq!(u["people"], "sylvan");
+    // Esploratore (MOV 5) silvano: MOV 6.
+    assert_eq!(u["mov"], 6);
+    let (st, u) = srv
+        .post(
+            "/api/roster",
+            Some(&tok),
+            json!({"name": "Masso", "class": "vanguard", "people": "stonekin"}),
+        )
+        .await;
+    assert_eq!(st, 200, "{u}");
+    assert_eq!(u["mov"], 3);
+    let (st, _) = srv
+        .post(
+            "/api/roster",
+            Some(&tok),
+            json!({"name": "Nessuno", "class": "scout", "people": "drago"}),
+        )
+        .await;
+    assert_eq!(st, 400);
+}

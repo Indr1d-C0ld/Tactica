@@ -48,7 +48,7 @@ macro_rules! cons {
     };
 }
 
-pub static CONSUMABLES: [ConsumableDef; 32] = [
+pub static CONSUMABLES: [ConsumableDef; 34] = [
     // Pozioni e preparati
     cons!(
         "pozione",
@@ -130,6 +130,24 @@ pub static CONSUMABLES: [ConsumableDef; 32] = [
         Rare,
         140,
         "Si lancia: Sonno su un'area."
+    ),
+    cons!(
+        "piombo",
+        "Fiala di piombo",
+        LeadVial,
+        false,
+        Uncommon,
+        80,
+        "Si lancia: Zavorra su un'area (−2 movimento, −1 salto)."
+    ),
+    cons!(
+        "piuma",
+        "Piuma del vento",
+        WindFeather,
+        false,
+        Rare,
+        150,
+        "Volo a sé o a un alleato vicino: ignora dislivelli e terreno."
     ),
     // Pergamene: un incantesimo, una volta, per qualsiasi classe
     cons!(

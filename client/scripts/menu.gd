@@ -246,11 +246,26 @@ func _build_roster() -> void:
 		if bool(c["base"]):
 			base.append([c["name"], c["key"]])
 	var cls := UI.option(base)
+	var peoples: Array = JSON.parse_string(TacticaEngine.peoples_json())
+	var popts := []
+	for p in peoples:
+		popts.append([p["name"], p["key"]])
+	var ppl := UI.option(popts)
 	rec.add_child(name_edit)
+	rec.add_child(ppl)
 	rec.add_child(cls)
 	rec.add_child(UI.button("Recluta", func() -> void:
-		_recruit(name_edit.text.strip_edges(), str(cls.get_selected_metadata()))))
+		_recruit(name_edit.text.strip_edges(), str(cls.get_selected_metadata()), str(ppl.get_selected_metadata()))))
 	_roster.add_child(rec)
+	var traits := UI.label("", 12, UI.MUTED)
+	traits.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var show_traits := func(_i: int = 0) -> void:
+		for p in peoples:
+			if p["key"] == ppl.get_selected_metadata():
+				traits.text = "%s: %s" % [p["name"], p["traits"]]
+	ppl.item_selected.connect(show_traits)
+	show_traits.call()
+	_roster.add_child(traits)
 	for u in me["roster"]:
 		_roster.add_child(_unit_panel(u))
 
@@ -262,7 +277,10 @@ func _unit_panel(u: Dictionary) -> Control:
 	var box := UI.vbox(4)
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	outer.add_child(box)
-	box.add_child(UI.label("%s — %s  Lv %d  (EXP %d/100)" % [u["name"], u["class_name"], int(u["level"]), int(u["xp"])], 17, UI.ACCENT))
+	box.add_child(UI.label("%s — %s %s  Lv %d  (EXP %d/100)" % [u["name"], u.get("people_name", ""), u["class_name"], int(u["level"]), int(u["xp"])], 17, UI.ACCENT))
+	var mv := UI.label("MOV %d · SALTO %d · %s" % [int(u.get("mov", 0)), int(u.get("jump", 0)), u.get("people_traits", "")], 12, UI.MUTED)
+	mv.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(mv)
 	var eq: Array[String] = []
 	for k in u["equipment"]:
 		eq.append(Items.bb_name(str(k)))
@@ -386,8 +404,8 @@ func _result(r: Dictionary, ok_text: String) -> bool:
 	return false
 
 
-func _recruit(name: String, cls: String) -> void:
-	await _result(await Net.post_json("/api/roster", {"name": name, "class": cls}), "Recluta arruolata")
+func _recruit(name: String, cls: String, people := "human") -> void:
+	await _result(await Net.post_json("/api/roster", {"name": name, "class": cls, "people": people}), "Recluta arruolata")
 
 
 func _equip(id: int, keys: Array) -> void:

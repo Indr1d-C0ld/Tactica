@@ -12,7 +12,7 @@
 
 Tactica è un gioco originale ispirato ai classici tattici a turni delle console portatili. Si gioca su mappe isometriche con altezze, generate da un seed e ruotabili in 3D. Ogni battaglia ha i suoi **Statuti**, regole estratte a sorte: chi le infrange viene sospeso e poi espulso dal campo. Le unità crescono di livello, cambiano classe e imparano abilità dall'equipaggiamento, fino a padroneggiarle.
 
-Tutto è originale: regole, storia, nomi, grafica, musica ed effetti sonori. Terreni, interfaccia, effetti e audio sono generati da script inclusi nel repository. Personaggi e icone degli oggetti sono fatti con [PixelLab](https://pixellab.ai) e inclusi come immagini ([docs/ARTE.md](docs/ARTE.md)).
+Tutto è originale: regole, storia, nomi, grafica, musica ed effetti sonori. Terreni, interfaccia, effetti e audio sono generati da script inclusi nel repository. Personaggi, icone degli oggetti, terreni, cornici dell'interfaccia e mappa della campagna sono fatti con [PixelLab](https://pixellab.ai) e inclusi come immagini ([docs/ARTE.md](docs/ARTE.md)).
 
 *[English summary below](#in-english).*
 
@@ -36,6 +36,8 @@ Tutto è originale: regole, storia, nomi, grafica, musica ed effetti sonori. Ter
 ### Battaglia
 
 - **Griglia isometrica con altezze** su 5 biomi (prateria, palude, deserto, vulcano, altopiano). Le mappe sono generate da un seed: da 14×12 a 20×17 caselle, fino a 8 livelli d'altezza. Ognuna ha una forma del terreno (vallata, colle, gola, gradoni, fiume con guadi, laghi, pinnacoli) con affioramenti di roccia e boscaglia. Il generatore verifica che gli schieramenti siano collegati.
+- **Movimento vario:** MOV e salto cambiano con classe, popolo, status (Rapidità, Lentezza, Zavorra, Volo, Radici), armature e oggetti. Ogni terreno ha un costo che dipende da chi lo attraversa.
+- **Cinque popoli** originali, scelti alla recluta: Umani, Silvani, Rocciosi, Alati e Ondini, ognuno con bonus e malus su statistiche, movimento e terreni.
 - **Ogni unità occupa la sua casella:** nessuno attraversa né alleati né nemici. Il terreno conta: la roccia protegge, la boscaglia aiuta a schivare, acqua e sabbia rallentano, la lava brucia.
 - **Turni a iniziativa (CT):** la velocità decide chi agisce. Muoversi e agire costano iniziativa.
 - **Danno con dislivello, fianco, spalle e terreno.** Gli elementi interagiscono con il terreno: il fulmine è più forte sull'acqua, il ghiaccio più debole sulla lava.
@@ -48,7 +50,7 @@ Tutto è originale: regole, storia, nomi, grafica, musica ed effetti sonori. Ter
 
 - **12 classi:** Avanguardia, Esploratore, Arcanista e Guaritore di base; da sbloccare padroneggiando le scuole delle altre: Spadaruna, Custode, Lama d'ombra, Dragone, Bardo, Alchimista (borsa da 4 consumabili più potenti), Geomante, Invocatore.
 - **75 abilità di classe** (attacchi, magie elementali ad area, cure, rianimazione, status, protezioni). Un oggetto insegna un'abilità finché è equipaggiato; con i **punti risonanza** guadagnati in battaglia l'abilità diventa permanente.
-- **Consumabili in battaglia:** ogni unità porta una borsa con 2 consumabili scelti fra 24 tipi in sei qualità: pozioni, eteri, rimedi, essenze vitali che rianimano, elisir, bombe e fiale da lancio. In più 23 pergamene che permettono a qualsiasi classe di lanciare un incantesimo una volta.
+- **Consumabili in battaglia:** ogni unità porta una borsa con 2 consumabili scelti fra 24 tipi in sei qualità: pozioni, eteri, rimedi, essenze vitali che rianimano, elisir, bombe e fiale da lancio (anche la Fiala di piombo che appesantisce), la Piuma del vento che fa volare. In più 23 pergamene che permettono a qualsiasi classe di lanciare un incantesimo una volta.
 - **Mestieri:** nella Bottega si smantellano gli oggetti in materiali, si raffinano e si incantano nella forgia e si preparano pozioni, bombe e pergamene con l'alchimia.
 - **Bottino da conquistare sul campo:** le unità sconfitte possono lasciare un oggetto, e per prenderlo bisogna raggiungere la loro casella.
 - **Oggetti generati:** più di 200.000 combinazioni con 5 rarità, 37 basi, 6 materiali e 39 affissi (veleno o gelo al colpo, armi elementali, vampirismo, resistenze, immunità, rigenerazione, +1 movimento...). In più 16 leggendari unici con nome e storia. Quattro slot di equipaggiamento: arma, armatura, copricapo, accessorio.
@@ -94,8 +96,8 @@ Tutto è originale: regole, storia, nomi, grafica, musica ed effetti sonori. Ter
 | *Deserto con pinnacoli di roccia* | *Anteprima di un'abilità* |
 | ![Stile SVGA](docs/img/stile_svga.png) | ![Negozio](docs/img/negozio.png) |
 | *Stile SVGA* | *Negozio con le icone degli oggetti* |
-| ![Roster](docs/img/roster.png) | ![Statistiche](docs/img/statistiche.png) |
-| *Roster ed equipaggiamento* | *Statistiche personali e globali* |
+| ![Roster](docs/img/roster.png) | ![Bottega](docs/img/bottega.png) |
+| *Roster: equipaggiamento e borsa di battaglia* | *Bottega: forgia e alchimia* |
 
 La telecamera ruota, si inclina e cambia stile di resa:
 

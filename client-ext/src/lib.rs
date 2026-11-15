@@ -392,10 +392,14 @@ impl TacticaEngine {
                     "bag": u.bag.iter().map(|i| i.map(|i| json!({
                         "key": i.key(), "name": i.name(),
                     }))).collect::<Vec<_>>(),
+                    "people": u.people.key(),
+                    "people_name": u.people.name(),
+                    // Movimento e salto effettivi (status, popolo, classe, armatura).
                     "stats": {
                         "atk": u.stats.atk, "def": u.stats.def, "mag": u.stats.mag,
-                        "res": u.stats.res, "spd": u.stats.spd, "mov": u.stats.mov,
-                        "jump": u.stats.jump, "evade": u.stats.evade,
+                        "res": u.stats.res, "spd": u.stats.spd, "mov": u.move_points(),
+                        "jump": u.jump_points(), "evade": u.stats.evade,
+                        "base_mov": u.stats.mov, "base_jump": u.stats.jump,
                     },
                 })
             })
@@ -442,6 +446,17 @@ impl TacticaEngine {
         self.battle
             .as_ref()
             .map_or(GString::new(), |b| gs(b.map.biome.name()))
+    }
+
+    /// Popoli giocabili: `[{"key","name","traits"}]`.
+    #[func]
+    fn peoples_json() -> GString {
+        use tactica_core::people::People;
+        let v: Vec<Value> = People::ALL
+            .iter()
+            .map(|p| json!({"key": p.key(), "name": p.name(), "traits": p.traits()}))
+            .collect();
+        gs(Value::Array(v).to_string())
     }
 
     /// Scheda di un oggetto qualsiasi (del catalogo o generato) dalla sua chiave,

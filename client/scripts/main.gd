@@ -68,7 +68,15 @@ func _make_theme() -> Theme:
 
 func _frame(name: String, margin: int, content: int) -> StyleBoxTexture:
 	var s := StyleBoxTexture.new()
-	s.texture = load("res://assets/%s.png" % name)
+	s.texture = preload("res://scripts/art.gd").tex(name)
+	# La finestra PixelLab ha angoli decorati più ampi della cornice generata.
+	if name == "ui_window" and s.texture.get_width() > 32:
+		margin = 18
+		content = 20
+	elif name != "ui_window" and ResourceLoader.exists("res://assets/override/%s.png" % name):
+		# Cornici PixelLab dei pulsanti: angoli arrotondati di 9 pixel.
+		margin = 9
+		content = 10
 	for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
 		s.set_texture_margin(side, margin)
 		s.set_content_margin(side, content)

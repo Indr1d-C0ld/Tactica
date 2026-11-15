@@ -4,7 +4,8 @@ use crate::ability::AbilityId;
 use crate::class::{Class, MAX_LEVEL, Stats};
 use crate::gear::{GearEffects, ItemRef};
 use crate::item::sanitize_loadout;
-use crate::map::{Dir, Pos};
+use crate::map::{Dir, Pos, Terrain};
+use crate::people::People;
 use crate::status::Status;
 
 pub type UnitId = u32;
@@ -52,6 +53,9 @@ pub struct UnitSetup {
     /// Borsa di battaglia: consumabili (al massimo `BAG_SLOTS`).
     #[cfg_attr(feature = "serde", serde(default))]
     pub bag: Vec<ItemRef>,
+    /// Popolo (statistiche, movimento, terreni).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub people: People,
 }
 
 impl UnitSetup {
@@ -65,6 +69,7 @@ impl UnitSetup {
             equipment: Vec::new(),
             mastered: Vec::new(),
             bag: Vec::new(),
+            people: People::Human,
         }
     }
 
@@ -88,6 +93,8 @@ pub struct Unit {
     /// Consumabili ancora nella borsa (`None` = già usato).
     #[cfg_attr(feature = "serde", serde(default))]
     pub bag: Vec<Option<ItemRef>>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub people: People,
     pub stats: Stats,
     pub hp: i32,
     pub mp: i32,
@@ -107,7 +114,9 @@ impl Unit {
     pub fn new(id: UnitId, setup: &UnitSetup, pos: Pos, facing: Dir) -> Self {
         let level = setup.level.clamp(1, MAX_LEVEL);
         let equipment = sanitize_loadout(setup.class, &setup.equipment);
-        let stats = stats_with(setup.class, level, &equipment);
+        let stats = setup
+            .people
+            .apply(stats_with(setup.class, level, &equipment));
         Unit {
             id,
             name: setup.name.clone(),
@@ -124,6 +133,7 @@ impl Unit {
                 .take(crate::consumable::bag_slots(setup.class))
                 .map(|&i| Some(i))
                 .collect(),
+            people: setup.people,
             stats,
             hp: stats.max_hp,
             mp: stats.max_mp,
@@ -197,6 +207,77 @@ impl Unit {
     }
 
     /// Velocità effettiva per l'iniziativa.
+    /// Movimento effettivo: Rapidità +1, Lentezza −1, Zavorra −2; Radici blocca.
+    pub fn move_points(&self) -> i32 {
+        if self.has(Status::Root) {
+            return 0;
+        }
+        let mut m = self.stats.mov;
+        if self.has(Status::Haste) {
+            m += 1;
+        }
+        if self.has(Status::Slow) {
+            m -= 1;
+        }
+        if self.has(Status::Burden) {
+            m -= 2;
+        }
+        m.max(1)
+    }
+
+    /// Salto effettivo: armatura a piastre −1. Non scende sotto 2, lo scalino
+    /// che il generatore di mappe garantisce sempre percorribile; solo la
+    /// Zavorra (temporanea) può portarlo a 1.
+    pub fn jump_points(&self) -> i32 {
+        let mut j = self.stats.jump;
+        if self.heavy_armor() {
+            j -= 1;
+        }
+        j = j.max(2);
+        if self.has(Status::Burden) {
+            j -= 1;
+        }
+        j
+    }
+
+    /// Indossa una corazza a piastre?
+    pub fn heavy_armor(&self) -> bool {
+        use crate::gear::ItemRef as I;
+        use crate::item::ItemId;
+        self.equipment.iter().any(|i| match i {
+            I::Fixed(f) => matches!(f, ItemId::WardenPlate),
+            I::Gen(g) => g.base().code == "cpi",
+            I::Use(_) => false,
+        })
+    }
+
+    /// Costo per entrare in una casella di questo terreno.
+    pub fn terrain_cost(&self, t: Terrain) -> i32 {
+        if self.has(Status::Flight) {
+            return 1;
+        }
+        // Il Geomante conosce ogni terreno; Esploratore e Lama d'ombra non affondano nella sabbia.
+        if self.class == Class::Geomancer {
+            return 1;
+        }
+        if t == Terrain::Sand && matches!(self.class, Class::Scout | Class::Shadowblade) {
+            return 1;
+        }
+        self.people.terrain_cost(t).unwrap_or_else(|| t.move_cost())
+    }
+
+    /// Può passare da una casella alta `from` a una alta `to`?
+    pub fn can_step(&self, from: i32, to: i32) -> bool {
+        if self.has(Status::Flight) {
+            return true;
+        }
+        // Il Dragone si lascia cadere da qualsiasi altezza.
+        if self.class == Class::Dragoon && to < from {
+            return true;
+        }
+        (to - from).abs() <= self.jump_points()
+    }
+
     pub fn effective_speed(&self) -> i32 {
         let mut spd = self.stats.spd.max(1);
         if self.has(Status::Haste) {
@@ -224,7 +305,9 @@ impl Unit {
             self.xp -= XP_PER_LEVEL;
             self.level += 1;
             gained += 1;
-            let new = stats_with(self.class, self.level, &self.equipment);
+            let new = self
+                .people
+                .apply(stats_with(self.class, self.level, &self.equipment));
             self.hp += new.max_hp - self.stats.max_hp;
             self.mp += new.max_mp - self.stats.max_mp;
             self.stats = new;

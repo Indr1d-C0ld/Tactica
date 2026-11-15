@@ -197,6 +197,8 @@ fn status_value(t: &Unit, s: Status) -> i32 {
         Status::Root => 12,
         Status::Haste => 26,
         Status::Aegis => 20,
+        Status::Burden => 16,
+        Status::Flight => 14,
         Status::Regen => {
             if t.hp < t.stats.max_hp {
                 18

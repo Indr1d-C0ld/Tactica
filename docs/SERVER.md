@@ -47,7 +47,7 @@ Le rotte indicate con 🔒 richiedono l'header `Authorization: Bearer <token>`.
 | `GET /api/classes` | classi con requisiti di sblocco, statistiche al livello 1, abilità innate e imparabili (con soglia RP e oggetti che le insegnano) |
 | `GET /api/items` | catalogo degli oggetti: slot, classi, bonus, abilità insegnata, prezzo, disponibilità al negozio |
 | `GET /api/roster` 🔒 | elenco delle unità del roster |
-| `POST /api/roster` 🔒 `{name, class}` | recluta un'unità di classe base (massimo 8), già equipaggiata con il kit iniziale. Classi base: `vanguard`, `scout`, `arcanist`, `mender` |
+| `POST /api/roster` 🔒 `{name, class, people?}` | recluta un'unità di classe base (massimo 8), già equipaggiata con il kit iniziale. Classi base: `vanguard`, `scout`, `arcanist`, `mender` |
 | `DELETE /api/roster/{id}` 🔒 | congeda un'unità; il suo equipaggiamento torna nell'inventario |
 | `PUT /api/roster/{id}/equipment` 🔒 `{items:[...]}` | imposta l'intero equipaggiamento (al massimo un oggetto per slot, adatto alla classe). Tutto o niente: i vecchi oggetti tornano nell'inventario, i nuovi ne vengono prelevati |
 | `PUT /api/roster/{id}/bag` 🔒 `{items:[...]}` | prepara la borsa di battaglia (al massimo 2 consumabili, presi dall'inventario; i precedenti vi tornano) |

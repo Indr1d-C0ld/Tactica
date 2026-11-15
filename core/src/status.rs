@@ -20,6 +20,10 @@ pub enum Status {
     Aegis,
     /// Recupera l'8% degli HP massimi a fine turno.
     Regen,
+    /// Appesantito: −2 movimento e −1 salto.
+    Burden,
+    /// In volo: ignora dislivelli e costi del terreno.
+    Flight,
 }
 
 /// Effetto di un'abilità: status, probabilità (%) e durata (turni).
@@ -34,7 +38,7 @@ pub struct StatusEffect {
 pub const TICK_PCT: i32 = 8;
 
 impl Status {
-    pub const ALL: [Status; 8] = [
+    pub const ALL: [Status; 10] = [
         Status::Poison,
         Status::Sleep,
         Status::Silence,
@@ -43,6 +47,8 @@ impl Status {
         Status::Haste,
         Status::Aegis,
         Status::Regen,
+        Status::Burden,
+        Status::Flight,
     ];
 
     pub fn name(self) -> &'static str {
@@ -55,6 +61,8 @@ impl Status {
             Status::Haste => "Rapidità",
             Status::Aegis => "Egida",
             Status::Regen => "Rigenerazione",
+            Status::Burden => "Zavorra",
+            Status::Flight => "Volo",
         }
     }
 
@@ -68,13 +76,20 @@ impl Status {
             Status::Haste => "haste",
             Status::Aegis => "aegis",
             Status::Regen => "regen",
+            Status::Burden => "burden",
+            Status::Flight => "flight",
         }
     }
 
     pub fn is_negative(self) -> bool {
         matches!(
             self,
-            Status::Poison | Status::Sleep | Status::Silence | Status::Slow | Status::Root
+            Status::Poison
+                | Status::Sleep
+                | Status::Silence
+                | Status::Slow
+                | Status::Root
+                | Status::Burden
         )
     }
 
@@ -83,6 +98,8 @@ impl Status {
         match self {
             Status::Haste => Some(Status::Slow),
             Status::Slow => Some(Status::Haste),
+            Status::Flight => Some(Status::Burden),
+            Status::Burden => Some(Status::Flight),
             _ => None,
         }
     }

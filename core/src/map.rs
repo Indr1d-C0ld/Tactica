@@ -76,7 +76,7 @@ pub enum Terrain {
 impl Terrain {
     pub fn move_cost(self) -> i32 {
         match self {
-            Terrain::Water | Terrain::Sand => 2,
+            Terrain::Water | Terrain::Sand | Terrain::Thicket => 2,
             _ => 1,
         }
     }

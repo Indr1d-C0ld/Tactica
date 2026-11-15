@@ -110,6 +110,8 @@ ICONS: dict[str, str] = {
     "use_gelo": "a frosted glass vial with icy pale blue liquid and frost crystals",
     "use_tossina": "a green glass vial with bubbling toxic poison and a skull label",
     "use_sonno": "a small purple pouch of glittering sleep powder with sparkles",
+    "use_piombo": "a heavy dull grey lead flask vial with a metal stopper and weight symbol",
+    "use_piuma": "a single glowing white and pale blue wind feather with small air swirls",
     "use_p_fiamma": "a rolled parchment scroll tied with a ribbon and wax seal, with a glowing red flame rune symbol",
     "use_p_gelo": "a rolled parchment scroll tied with a ribbon and wax seal, with a glowing light blue snowflake rune symbol",
     "use_p_folgore": "a rolled parchment scroll tied with a ribbon and wax seal, with a glowing yellow lightning bolt rune symbol",

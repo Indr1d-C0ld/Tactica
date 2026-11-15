@@ -177,7 +177,7 @@ impl Class {
             Class::Runeblade => &[DrainBlade, FrostEdge, FlameEdge, StormEdge, RuneSeal],
             Class::Warden => &[Sanctuary, Judgment, Chains, ShieldWall, LightHammer, Vow],
             Class::Shadowblade => &[SleepBlade, VenomFang, BladeDance, ShadowVeil],
-            Class::Dragoon => &[DiveStrike, DragonLance, Roar],
+            Class::Dragoon => &[DiveStrike, DragonLance, Roar, DragonWings],
             Class::Bard => &[WarSong, Lullaby, Dirge, Hymn],
             Class::Alchemist => &[Blastmix, ToxicFumes, Panacea, Tonic],
             Class::Geomancer => &[Quicksand, Earthquake, Stoneskin, Sap],

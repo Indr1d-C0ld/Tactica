@@ -115,7 +115,10 @@ pub fn mission(seed: u64, allies: &[UnitSetup], difficulty: u8) -> Mission {
                 GRUNTS[rng.below(GRUNTS.len() as u32) as usize],
                 i + 1
             );
-            UnitSetup::new(name, 1, class, level).with_equipment(&class_kit(class))
+            let mut u = UnitSetup::new(name, 1, class, level).with_equipment(&class_kit(class));
+            u.people = crate::people::People::ALL
+                [rng.below(crate::people::People::ALL.len() as u32) as usize];
+            u
         })
         .collect();
     let place = PLACES[rng.below(PLACES.len() as u32) as usize];

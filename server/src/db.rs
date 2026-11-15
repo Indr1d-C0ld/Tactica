@@ -66,6 +66,7 @@ struct RosterRow {
     xp: i64,
     equipment: String,
     bag: String,
+    people: String,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -92,6 +93,13 @@ pub struct RosterUnit {
     pub equipment: Vec<String>,
     /// Chiavi dei consumabili nella borsa di battaglia.
     pub bag: Vec<String>,
+    pub people: &'static str,
+    pub people_name: &'static str,
+    /// Tratti del popolo in italiano.
+    pub people_traits: &'static str,
+    /// Movimento e salto con classe, popolo ed equipaggiamento.
+    pub mov: i32,
+    pub jump: i32,
     /// Abilità usabili in battaglia con la configurazione attuale.
     pub usable: Vec<&'static str>,
     /// Abilità con progressi (in addestramento o padroneggiate), di ogni scuola.
@@ -137,6 +145,7 @@ impl RosterUnit {
             equipment: self.items(),
             mastered: self.mastered(),
             bag: self.bag_items(),
+            people: tactica_core::people::People::from_key(self.people).unwrap_or_default(),
         }
     }
 }
@@ -151,6 +160,10 @@ pub fn parse_items(json: &str) -> Vec<ItemRef> {
 
 pub fn items_json(items: &[ItemRef]) -> String {
     serde_json::to_string(&items.iter().map(|i| i.key()).collect::<Vec<_>>()).expect("json")
+}
+
+fn people_of(key: &str) -> tactica_core::people::People {
+    tactica_core::people::People::from_key(key).unwrap_or_default()
 }
 
 fn build_unit(row: RosterRow, progress: &[(i64, String, i64, bool)]) -> RosterUnit {
@@ -193,12 +206,11 @@ fn build_unit(row: RosterRow, progress: &[(i64, String, i64, bool)]) -> RosterUn
         equipment: equipment.clone(),
         mastered: mastered.clone(),
         bag: Vec::new(),
+        people: people_of(&row.people),
     };
-    let usable = Unit::new(0, &setup, Pos::new(0, 0), Dir::E)
-        .abilities()
-        .iter()
-        .map(|a| a.key())
-        .collect();
+    let probe = Unit::new(0, &setup, Pos::new(0, 0), Dir::E);
+    let usable = probe.abilities().iter().map(|a| a.key()).collect();
+    let people = people_of(&row.people);
     RosterUnit {
         id: row.id,
         name: row.name,
@@ -208,6 +220,11 @@ fn build_unit(row: RosterRow, progress: &[(i64, String, i64, bool)]) -> RosterUn
         xp: row.xp,
         equipment: equipment.iter().map(|i| i.key().to_string()).collect(),
         bag: parse_items(&row.bag).iter().map(|i| i.key()).collect(),
+        people: people.key(),
+        people_name: people.name(),
+        people_traits: people.traits(),
+        mov: probe.move_points(),
+        jump: probe.jump_points(),
         usable,
         abilities,
         unlocked_classes: Class::ALL
@@ -220,7 +237,7 @@ fn build_unit(row: RosterRow, progress: &[(i64, String, i64, bool)]) -> RosterUn
 
 pub async fn roster(db: &SqlitePool, account: i64) -> sqlx::Result<Vec<RosterUnit>> {
     let rows: Vec<RosterRow> = sqlx::query_as(
-        "SELECT id, name, class, level, xp, equipment, bag FROM roster WHERE account_id = ? ORDER BY id",
+        "SELECT id, name, class, level, xp, equipment, bag, people FROM roster WHERE account_id = ? ORDER BY id",
     )
     .bind(account)
     .fetch_all(db)

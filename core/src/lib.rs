@@ -11,6 +11,7 @@ pub mod craft;
 pub mod gear;
 pub mod item;
 pub mod map;
+pub mod people;
 pub mod presets;
 pub mod progression;
 pub mod rng;

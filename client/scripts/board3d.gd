@@ -17,7 +17,8 @@ const VFX_ROWS := ["slash", "arrow", "impact", "fire", "ice", "thunder", "holy",
 const VFX_LEN := {"slash": 4, "arrow": 1, "impact": 4, "fire": 6, "ice": 5, "thunder": 4, "holy": 5, "heal": 6,
 	"buff": 5, "debuff": 5, "poison": 6, "drain": 5}
 
-const C := 16.0
+## Lato di una cella dell'atlante dei terreni (16 per il generato, 32 per PixelLab).
+var C := 16.0
 const LEVEL := 0.5
 const PX := 0.05  # dimensione di un pixel degli sprite in unità di mondo
 const TERRAIN_ROW := {"Grass": 0, "Stone": 1, "Sand": 2, "Water": 3, "Lava": 4, "Thicket": 5}
@@ -81,6 +82,7 @@ var _loot_nodes: Array = []
 
 
 func _ready() -> void:
+	C = TEX.get_width() / 5.0
 	cam = Camera3D.new()
 	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
 	cam.size = zoom
@@ -225,7 +227,7 @@ func _build_terrain() -> void:
 					# Il segmento più alto usa la variante col bordo della sommità che ricade.
 					var col := 4 if yb == top else 3
 					var su0 := Vector2(col * C, row * C) / Vector2(tw, th)
-					var su1 := su0 + Vector2(C, 8.0 * (yb - ya) / LEVEL) / Vector2(tw, th)
+					var su1 := su0 + Vector2(C, C / 2.0 * (yb - ya) / LEVEL) / Vector2(tw, th)
 					_quad(st, _side(x, y, d, ya, yb), su0, su1, Color(shade, shade, shade))
 					yb = ya
 			_decorate(x, y, terrain, top)
@@ -256,8 +258,10 @@ func _decorate(x: int, y: int, terrain: String, top: float) -> void:
 		cells = [[3, Vector2(0.3 + (hsh % 5) * 0.1, 0.35 + (hsh % 7) * 0.05)]]
 	for c in cells:
 		var s := _sprite(TEX, Rect2(int(c[0]) * C, 6 * C, C, C))
+		# Le decorazioni restano della stessa altezza nel mondo qualunque sia la cella.
+		s.pixel_size = PX * 16.0 / C * (1.4 if C > 16.0 else 1.0)
 		var off: Vector2 = c[1]
-		s.position = Vector3(x + off.x, top + C * PX / 2.0 - PX, y + off.y)
+		s.position = Vector3(x + off.x, top + C * s.pixel_size / 2.0 - s.pixel_size, y + off.y)
 		_decor.add_child(s)
 
 
