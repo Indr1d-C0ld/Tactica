@@ -91,6 +91,11 @@ pub enum ServerMsg {
         coins: i64,
         /// Chiave dell'oggetto ottenuto come bottino.
         loot: Option<String>,
+        /// Punteggio stagionale prima/dopo (solo PvP classificato).
+        season_before: Option<i64>,
+        season_after: Option<i64>,
+        /// Punti guadagnati per il proprio clan.
+        clan_points: i64,
         rewards: Vec<Reward>,
     },
 }

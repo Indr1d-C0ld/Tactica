@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import palette as P  # noqa: E402
 import tiles  # noqa: E402
+import tiles3d  # noqa: E402
 import units  # noqa: E402
 from pixlib import hexc  # noqa: E402
 
@@ -79,7 +80,8 @@ def build_ui():
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     tiles.atlas().save(OUT / "terrain.png")
-    print("terrain.png")
+    tiles3d.atlas().save(OUT / "terrain3d.png")
+    print("terrain.png, terrain3d.png")
     build_units()
     build_ui()
 

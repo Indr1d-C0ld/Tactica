@@ -2,16 +2,25 @@
 
 Il progetto Godot 4.7 è in `client/`; l'estensione Rust (GDExtension) che porta `tactica-core` dentro Godot è in `client-ext/`.
 
-La grafica è pixel-art originale in stile tattico portatile, generata da `tools/pixelart` (vedi il suo README):
+La battaglia è in **3D ruotabile** con estetica **VGA/SVGA**:
 
-- **Personaggi:** chibi animati nelle 4 direzioni, con posa d'azione, KO, colori di squadra e aspetto variabile.
-- **Mappe:** caselle isometriche con fianchi stratificati, acqua e lava animate, vegetazione in rilievo.
-- **Interfaccia:** cornici dorate.
+- **Mappa:** colonne di caselle con texture pixel-art a 16×16; acqua e lava animate; cespugli e sassi come sprite.
+- **Personaggi:** sprite chibi verticali. A seconda dell'angolo da cui li guardi mostrano la vista frontale o posteriore, specchiata quando serve.
+- **Telecamera:** ortogonale e orbitale, con rotazione libera a 360°, inclinazione tra 20° e 70° e zoom limitato fra un primo piano e la mappa intera.
+- **Resa a bassa risoluzione:**
+  - **VGA:** 1/3 della finestra, circa 426×240, con 6 livelli per canale e retino di Bayer;
+  - **SVGA:** 1/2 della finestra, con 10 livelli;
+  - **Nitido:** senza filtro.
 
-La mappa si disegna in coordinate native e si ingrandisce per un fattore intero con filtro "nearest", così i pixel restano nitidi. La rotella cambia lo zoom e il tasto centrale trascinato sposta la mappa.
+  L'immagine viene ingrandita senza sfocatura; il tasto F2 o il pulsante dello stile passa da uno stile all'altro.
+- **Sopra la scena:** barre degli HP, colore di squadra e numeri fluttuanti, sempre leggibili.
+
+Le texture vengono da `tools/pixelart` (vedi il suo README).
 
 ![Battaglia](img/battaglia.png)
+![Battaglia ruotata](img/battaglia_ruotata.png)
 ![Roster](img/roster.png)
+![Clan](img/clan.png)
 
 ## Avvio
 
@@ -38,15 +47,23 @@ godot --path client --editor
   - **Gioca:** scelta di fino a 4 unità, coda PvE o PvP, annullamento della coda.
   - **Roster:** reclutamento; per ogni unità equipaggiamento per slot, abilità usabili, progressi di risonanza, cambio classe con i requisiti mancanti, congedo.
   - **Negozio:** acquisti e vendite.
+  - **Clan:** fondazione, adesione, inviti ricevuti, membri e ruoli, inviti, espulsioni, motto, apertura, uscita.
+  - **Stagione:** tempo rimanente, premi, il tuo punteggio, classifiche di giocatori e clan, stagioni passate.
   - **Statistiche:** profilo, classifica, statistiche globali.
 - **Battaglia:**
   - **Mappa:** isometrica, scalata alla finestra.
   - **Pannello sinistro:** scheda dell'unità attiva (o di quella sotto il mouse) e azioni: muovi, abilità con costo in MP, fine turno con scelta della direzione, suggerimento dell'IA, abbandono.
   - **Anteprima al passaggio sul bersaglio:** area d'effetto, danni e probabilità di colpire per ogni unità, avviso se l'azione viola uno statuto.
   - **Registro degli eventi** in italiano, con numeri fluttuanti per danni, cure, mancati, sanzioni e livelli.
-  - **Fine partita:** risultato, ELO, monete, bottino, esperienza e punti risonanza per unità.
+  - **Fine partita:** risultato, ELO, punteggio stagionale, monete (con il bonus del clan), punti clan, bottino, esperienza e punti risonanza per unità.
 
-Comandi: clic sinistro per scegliere la casella, clic destro per annullare la modalità corrente, rotella per lo zoom, tasto centrale per spostare la mappa.
+Comandi:
+
+- clic sinistro per scegliere la casella, clic destro per annullare;
+- Q/E o i pulsanti ⟲/⟳ ruotano di 45°; R o "Vista" riporta la vista iniziale;
+- rotella per lo zoom;
+- tasto centrale trascinato: orbita e inclinazione (con Maiusc sposta la vista);
+- F2 cambia stile grafico.
 
 ## Divisione dei compiti
 

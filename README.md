@@ -34,7 +34,9 @@ Gioco tattico fantasy originale, ispirato ai classici tattici a turni per consol
   - IA che subentra a chi si disconnette o va oltre il tempo;
   - replay verificabili;
   - statistiche personali e globali;
-  - backup automatici.
+  - backup automatici;
+  - clan con ruoli e inviti;
+  - stagioni classificate con titoli e premi.
 
   Dettagli in [docs/SERVER.md](docs/SERVER.md).
 - `deploy/`: unit systemd isolata e Caddyfile per TLS.
@@ -42,7 +44,8 @@ Gioco tattico fantasy originale, ispirato ai classici tattici a turni per consol
 - `client-ext/` e `client/`: client Godot 4.7 con estensione Rust sul core. Comprende:
   - accesso;
   - roster, negozio e statistiche;
-  - battaglia isometrica con anteprime e suggerimenti;
+  - battaglia in 3D ruotabile con estetica VGA/SVGA, anteprime e suggerimenti;
+  - clan e stagioni;
   - partite online e schermaglia offline;
   - modalità automatica per i test.
 
@@ -72,5 +75,5 @@ cargo build -p tactica-godot && godot --path client
 
 ## Prossimi passi
 
-1. **Clan e stagioni**, status alterati, matchmaking per ELO; rate limiting prima dell'apertura su Internet.
+1. **Missioni cooperative di clan** (2-6 giocatori contro l'IA), guerre fra clan, status alterati, matchmaking per ELO; rate limiting prima dell'apertura su Internet.
 2. **Audio ed effetti** originali (musiche, suoni, effetti delle abilità); font in pixel-art.

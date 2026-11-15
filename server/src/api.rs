@@ -14,6 +14,7 @@ use crate::db::{self, MAX_ROSTER, RosterUnit, items_json, now};
 use crate::error::{ApiError, ApiResult};
 use crate::stats;
 use crate::ws;
+use crate::{clans, seasons};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -35,6 +36,16 @@ pub fn routes() -> Router<AppState> {
         .route("/api/leaderboard", get(leaderboard))
         .route("/api/stats", get(global))
         .route("/api/matches/{id}", get(match_detail))
+        .route("/api/clans", get(clans::list).post(clans::create))
+        .route("/api/clans/leave", post(clans::leave))
+        .route("/api/clans/{tag}", get(clans::detail).put(clans::update))
+        .route("/api/clans/{tag}/join", post(clans::join))
+        .route("/api/clans/{tag}/invite", post(clans::invite))
+        .route("/api/clans/{tag}/kick", post(clans::kick))
+        .route("/api/clans/{tag}/role", post(clans::set_role))
+        .route("/api/seasons", get(season_list))
+        .route("/api/seasons/current", get(season_current))
+        .route("/api/seasons/{number}", get(season_by_number))
         .route("/ws", get(ws::upgrade))
 }
 
@@ -45,6 +56,20 @@ struct Me {
     elo: i64,
     coins: i64,
     roster: Vec<RosterUnit>,
+    clan: Option<clans::Membership>,
+    invites: Vec<String>,
+    titles: Vec<String>,
+    season: MySeason,
+}
+
+#[derive(Serialize)]
+struct MySeason {
+    number: i64,
+    name: String,
+    ends_at: i64,
+    rating: Option<i64>,
+    wins: i64,
+    losses: i64,
 }
 
 async fn me(State(s): State<AppState>, user: AuthUser) -> ApiResult<Json<Me>> {
@@ -52,8 +77,30 @@ async fn me(State(s): State<AppState>, user: AuthUser) -> ApiResult<Json<Me>> {
         .bind(user.id)
         .fetch_one(&s.db)
         .await?;
+    let mut conn = s.db.acquire().await?;
+    let clan = clans::membership(&mut conn, user.id).await?;
+    let season = seasons::current(&mut conn, s.config.season_days).await?;
+    let mine: Option<(i64, i64, i64)> = sqlx::query_as(
+        "SELECT rating, wins, losses FROM season_ratings WHERE season_id = ? AND account_id = ?",
+    )
+    .bind(season.id)
+    .bind(user.id)
+    .fetch_optional(&mut *conn)
+    .await?;
+    drop(conn);
     Ok(Json(Me {
         id: user.id,
+        clan,
+        invites: clans::invites(&s.db, user.id).await?,
+        titles: stats::titles(&s.db, user.id).await?,
+        season: MySeason {
+            number: season.number,
+            name: season.name,
+            ends_at: season.ends_at,
+            rating: mine.map(|m| m.0),
+            wins: mine.map_or(0, |m| m.1),
+            losses: mine.map_or(0, |m| m.2),
+        },
         username: user.username,
         elo,
         coins,
@@ -170,4 +217,28 @@ async fn match_detail(
         .map_err(ApiError::internal)?
         .map(Json)
         .ok_or_else(|| ApiError::not_found("partita non trovata"))
+}
+
+async fn season_current(State(s): State<AppState>) -> ApiResult<Json<seasons::SeasonView>> {
+    let mut conn = s.db.acquire().await?;
+    let season = seasons::current(&mut conn, s.config.season_days).await?;
+    drop(conn);
+    Ok(Json(seasons::view(&s.db, season, 50).await?))
+}
+
+async fn season_by_number(
+    State(s): State<AppState>,
+    Path(number): Path<i64>,
+) -> ApiResult<Json<seasons::SeasonView>> {
+    let season = seasons::by_number(&s.db, number)
+        .await?
+        .ok_or_else(|| ApiError::not_found("stagione non trovata"))?;
+    Ok(Json(seasons::view(&s.db, season, 100).await?))
+}
+
+async fn season_list(State(s): State<AppState>) -> ApiResult<Json<Vec<seasons::Season>>> {
+    let mut conn = s.db.acquire().await?;
+    seasons::current(&mut conn, s.config.season_days).await?;
+    drop(conn);
+    Ok(Json(seasons::all(&s.db).await?))
 }

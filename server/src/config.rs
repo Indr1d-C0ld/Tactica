@@ -16,6 +16,8 @@ pub struct Config {
     pub backup_dir: Option<String>,
     pub backup_every_hours: u64,
     pub backup_keep: usize,
+    /// Durata di una stagione classificata.
+    pub season_days: i64,
 }
 
 impl Config {
@@ -32,6 +34,7 @@ impl Config {
                 .filter(|s| !s.is_empty()),
             backup_every_hours: num("TACTICA_BACKUP_EVERY_HOURS", 24).max(1),
             backup_keep: num("TACTICA_BACKUP_KEEP", 14) as usize,
+            season_days: num("TACTICA_SEASON_DAYS", 28).max(1) as i64,
         }
     }
 }

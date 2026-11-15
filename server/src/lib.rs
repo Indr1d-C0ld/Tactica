@@ -4,12 +4,14 @@
 pub mod api;
 pub mod armory;
 pub mod auth;
+pub mod clans;
 pub mod config;
 pub mod db;
 pub mod error;
 pub mod game;
 pub mod lobby;
 pub mod protocol;
+pub mod seasons;
 pub mod stats;
 pub mod ws;
 

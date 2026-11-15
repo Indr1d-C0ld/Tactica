@@ -14,6 +14,7 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
 struct Server {
+    db: sqlx::SqlitePool,
     base: String,
     ws: String,
     http: reqwest::Client,
@@ -29,12 +30,15 @@ async fn start() -> Server {
         backup_dir: None,
         backup_every_hours: 24,
         backup_keep: 1,
+        season_days: 28,
     };
     let state = AppState::new(config).await.unwrap();
+    let db = state.db.clone();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, router(state)).await.unwrap() });
     Server {
+        db,
         base: format!("http://{addr}"),
         ws: format!("ws://{addr}/ws"),
         http: reqwest::Client::new(),
@@ -462,4 +466,220 @@ async fn full_flow() {
     assert_eq!(g["pvp_matches"].as_i64().unwrap(), 2);
     assert_eq!(g["classes"].as_array().unwrap().len(), 4);
     assert!(!g["statutes"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn clans_and_seasons() {
+    use tactica_server::seasons;
+
+    let srv = start().await;
+    let (alice, alice_units) = srv.player("alice").await;
+    let (bob, _) = srv.player("bob").await;
+    let (carol, _) = srv.player("carol").await;
+    let (dave, dave_units) = srv.player("dave").await;
+
+    // Fondazione (costa monete) e regole sui nomi.
+    let (st, _) = srv
+        .post(
+            "/api/clans",
+            Some(&alice),
+            json!({"name": "X", "tag": "LAME"}),
+        )
+        .await;
+    assert_eq!(st, 400);
+    let (st, c) = srv
+        .post(
+            "/api/clans",
+            Some(&alice),
+            json!({"name": "Lame d'Argento", "tag": "lame", "motto": "Insieme"}),
+        )
+        .await;
+    assert_eq!(st, 200, "{c}");
+    assert_eq!(c["tag"], "LAME");
+    let (_, me) = srv.get("/api/me", Some(&alice)).await;
+    assert_eq!(me["coins"].as_i64(), Some(200));
+    assert_eq!(me["clan"]["role"], "leader");
+    let (st, _) = srv
+        .post(
+            "/api/clans",
+            Some(&bob),
+            json!({"name": "Lame d'argento", "tag": "LA2"}),
+        )
+        .await;
+    assert_eq!(st, 409, "nome già in uso (maiuscole indifferenti)");
+
+    // Adesione libera, poi clan chiuso: serve un invito.
+    let (st, _) = srv
+        .post("/api/clans/LAME/join", Some(&bob), json!({}))
+        .await;
+    assert_eq!(st, 200);
+    let (st, _) = srv
+        .put("/api/clans/LAME", &alice, json!({"open": false}))
+        .await;
+    assert_eq!(st, 200);
+    let (st, _) = srv
+        .post("/api/clans/LAME/join", Some(&carol), json!({}))
+        .await;
+    assert_eq!(st, 403);
+    let (st, _) = srv
+        .post(
+            "/api/clans/LAME/invite",
+            Some(&bob),
+            json!({"username": "carol"}),
+        )
+        .await;
+    assert_eq!(st, 403, "un semplice membro non invita");
+    let (st, _) = srv
+        .post(
+            "/api/clans/LAME/invite",
+            Some(&alice),
+            json!({"username": "carol"}),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let (_, me) = srv.get("/api/me", Some(&carol)).await;
+    assert_eq!(me["invites"], json!(["LAME"]));
+    let (st, _) = srv
+        .post("/api/clans/LAME/join", Some(&carol), json!({}))
+        .await;
+    assert_eq!(st, 200);
+
+    // Ruoli ed espulsioni.
+    let (st, _) = srv
+        .post(
+            "/api/clans/LAME/role",
+            Some(&alice),
+            json!({"username": "bob", "role": "officer"}),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let (st, _) = srv
+        .post(
+            "/api/clans/LAME/kick",
+            Some(&carol),
+            json!({"username": "bob"}),
+        )
+        .await;
+    assert_eq!(st, 403);
+    let (st, _) = srv
+        .post(
+            "/api/clans/LAME/kick",
+            Some(&bob),
+            json!({"username": "alice"}),
+        )
+        .await;
+    assert_eq!(st, 403, "un ufficiale non espelle il capo");
+    let (st, _) = srv
+        .post(
+            "/api/clans/LAME/kick",
+            Some(&bob),
+            json!({"username": "carol"}),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let (_, list) = srv.get("/api/clans", None).await;
+    assert_eq!(list[0]["members"].as_i64(), Some(2));
+
+    // PvP classificato: punteggio stagionale, punti clan e bonus monete.
+    let a = tokio::spawn(play(
+        srv.ws.clone(),
+        alice.clone(),
+        Mode::Pvp,
+        alice_units.clone(),
+        None,
+    ));
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let d = tokio::spawn(play(
+        srv.ws.clone(),
+        dave.clone(),
+        Mode::Pvp,
+        dave_units.clone(),
+        Some(2),
+    ));
+    let (ea, ed) = (a.await.unwrap(), d.await.unwrap());
+    let ServerMsg::Ended {
+        result,
+        coins,
+        season_before,
+        season_after,
+        clan_points,
+        ..
+    } = ea
+    else {
+        unreachable!()
+    };
+    assert_eq!(result, "win", "dave si arrende");
+    assert_eq!(season_before, Some(1000));
+    assert!(season_after.unwrap() > 1000);
+    assert_eq!(clan_points, 3);
+    assert_eq!(coins, 132, "120 + 10% di bonus clan");
+    let ServerMsg::Ended {
+        coins: dave_coins,
+        clan_points: dave_clan,
+        ..
+    } = ed
+    else {
+        unreachable!()
+    };
+    assert_eq!((dave_coins, dave_clan), (40, 0));
+
+    let (_, cur) = srv.get("/api/seasons/current", None).await;
+    assert_eq!(cur["number"].as_i64(), Some(1));
+    assert_eq!(cur["players"][0]["username"], "alice");
+    assert_eq!(cur["players"][0]["clan"], "LAME");
+    assert_eq!(cur["clans"][0]["tag"], "LAME");
+    assert_eq!(cur["clans"][0]["points"].as_i64(), Some(3));
+    let alice_rating = cur["players"][0]["rating"].as_i64().unwrap();
+
+    // Chiusura della stagione: classifiche finali, titoli, premi, nuova stagione.
+    let (_, before) = srv.get("/api/me", Some(&alice)).await;
+    let closed = seasons::rollover_if_due(&srv.db, 28, tactica_server::db::now() + 30 * 86_400)
+        .await
+        .unwrap()
+        .expect("stagione chiusa");
+    assert_eq!(closed.number, 1);
+    let (_, list) = srv.get("/api/seasons", None).await;
+    assert_eq!(list.as_array().unwrap().len(), 2);
+    assert_eq!(list[0]["number"].as_i64(), Some(2));
+    let (_, s1) = srv.get("/api/seasons/1", None).await;
+    assert_eq!(s1["closed"], true);
+    let (_, p) = srv.get("/api/players/alice", None).await;
+    let titles: Vec<&str> = p["titles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t.as_str().unwrap())
+        .collect();
+    assert!(titles.contains(&"Campione della Stagione 1"), "{titles:?}");
+    assert!(
+        titles.contains(&"Clan campione della Stagione 1"),
+        "{titles:?}"
+    );
+    let (_, after) = srv.get("/api/me", Some(&alice)).await;
+    assert_eq!(
+        after["coins"].as_i64().unwrap() - before["coins"].as_i64().unwrap(),
+        1000 + 300,
+        "premio da primo classificato + clan campione"
+    );
+    assert_eq!(after["season"]["number"].as_i64(), Some(2));
+    // Reset morbido nella nuova stagione.
+    let mut conn = srv.db.acquire().await.unwrap();
+    let s2 = seasons::current(&mut conn, 28).await.unwrap();
+    let r2 = seasons::rating(&mut conn, &s2, after["id"].as_i64().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(r2, 1000 + (alice_rating - 1000) / 2);
+    drop(conn);
+
+    // Il capo esce: il comando passa all'ufficiale.
+    let (st, _) = srv.post("/api/clans/leave", Some(&alice), json!({})).await;
+    assert_eq!(st, 200);
+    let (_, c) = srv.get("/api/clans/LAME", None).await;
+    assert_eq!(c["members"][0]["username"], "bob");
+    assert_eq!(c["members"][0]["role"], "leader");
+    assert_eq!(c["history"][0]["rank"].as_i64(), Some(1));
+    let (st, _) = srv.post("/api/clans/leave", Some(&bob), json!({})).await;
+    assert_eq!(st, 200);
+    let (st, _) = srv.get("/api/clans/LAME", None).await;
+    assert_eq!(st, 404, "clan sciolto quando esce l'ultimo membro");
 }

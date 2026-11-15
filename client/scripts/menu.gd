@@ -14,6 +14,8 @@ var _play: VBoxContainer
 var _roster: VBoxContainer
 var _shop: VBoxContainer
 var _stats: VBoxContainer
+var _clan: VBoxContainer
+var _season: VBoxContainer
 var _status: Label
 var _picked := {}
 var _queued := false
@@ -43,6 +45,8 @@ func _ready() -> void:
 	_play = _tab("Gioca")
 	_roster = _tab("Roster")
 	_shop = _tab("Negozio")
+	_clan = _tab("Clan")
+	_season = _tab("Stagione")
 	_stats = _tab("Statistiche")
 	_status = UI.label("", 14, UI.MUTED)
 	root.add_child(_status)
@@ -101,10 +105,20 @@ func reload() -> void:
 	me = r.data
 	var inv := await Net.get_json("/api/inventory")
 	inventory = inv.data if int(inv.status) == 200 else {"coins": 0, "items": []}
-	_header.text = "%s · ELO %d · Monete %d" % [me["username"], int(me["elo"]), int(me["coins"])]
+	var tag := ""
+	if me.get("clan") != null:
+		tag = "[%s] " % me["clan"]["tag"]
+	var title := ""
+	if not (me.get("titles", []) as Array).is_empty():
+		title = " · «%s»" % me["titles"][0]
+	var srat := "—" if me["season"]["rating"] == null else str(int(me["season"]["rating"]))
+	_header.text = "%s%s%s · ELO %d · %s: %s · Monete %d" % [tag, me["username"], title, int(me["elo"]),
+		me["season"]["name"], srat, int(me["coins"])]
 	_build_play()
 	_build_roster()
 	_build_shop()
+	await _build_clan()
+	await _build_season()
 	await _build_stats()
 
 
@@ -401,6 +415,10 @@ func _autoplay() -> void:
 			await Net.post_json("/api/roster", {"name": "%s%d" % [me["username"], i], "class": c})
 			i += 1
 		await reload()
+	# Fonda un clan dimostrativo, se possibile.
+	if me.get("clan") == null and int(me["coins"]) >= 200:
+		await Net.post_json("/api/clans", {"name": "Compagnia di " + str(me["username"]), "tag": str(me["username"]).substr(0, 4).to_upper(), "motto": "Pixel e onore"})
+		await reload()
 	# Compra e equipaggia un oggetto che insegna un'abilità, se possibile.
 	for u in me["roster"]:
 		if str(u["class"]) == "arcanist" and not ("frost_rod" in u["equipment"]) and int(inventory.get("coins", 0)) >= 350:
@@ -408,7 +426,7 @@ func _autoplay() -> void:
 			await Net.put_json("/api/roster/%d/equipment" % int(u["id"]), {"items": ["frost_rod", "leather"]})
 			await reload()
 			break
-	for tab in [[1, "menu_roster"], [2, "menu_negozio"], [3, "menu_statistiche"]]:
+	for tab in [[1, "menu_roster"], [2, "menu_negozio"], [3, "menu_clan"], [4, "menu_stagione"], [5, "menu_statistiche"]]:
 		_tabs.current_tab = tab[0]
 		await get_tree().create_timer(0.3).timeout
 		await main.shot(tab[1])
@@ -421,3 +439,135 @@ func _autoplay() -> void:
 	_build_play()
 	await main.shot("menu_gioca")
 	_queue(str(main.opts.get("mode", "pve")))
+
+
+# ------------------------------------------------------------------ clan
+
+func _build_clan() -> void:
+	UI.clear(_clan)
+	if me.get("clan") != null:
+		await _build_my_clan(str(me["clan"]["tag"]), str(me["clan"]["role"]))
+		return
+	_clan.add_child(UI.label("Non fai parte di un clan. I membri guadagnano punti stagionali per il clan e il 10% di monete in più.", 15))
+	for tag in me.get("invites", []):
+		var row := UI.hbox()
+		row.add_child(UI.label("Invito dal clan [%s]" % tag, 0, UI.ACCENT))
+		row.add_child(UI.button("Unisciti", func() -> void: _clan_post("/api/clans/%s/join" % tag, {}, "Benvenuto nel clan")))
+		_clan.add_child(row)
+	var form := UI.hbox()
+	var name_e := UI.line_edit("Nome del clan")
+	var tag_e := UI.line_edit("Sigla (2-5)")
+	tag_e.custom_minimum_size = Vector2(110, 0)
+	var motto_e := UI.line_edit("Motto (facoltativo)")
+	var open_cb := CheckBox.new()
+	open_cb.text = "Aperto"
+	open_cb.button_pressed = true
+	for c in [name_e, tag_e, motto_e, open_cb]:
+		form.add_child(c)
+	form.add_child(UI.button("Fonda (200 monete)", func() -> void:
+		_clan_post("/api/clans", {"name": name_e.text, "tag": tag_e.text, "motto": motto_e.text, "open": open_cb.button_pressed}, "Clan fondato")))
+	_clan.add_child(form)
+	_clan.add_child(HSeparator.new())
+	_clan.add_child(UI.label("Clan esistenti (per punti stagionali)", 16))
+	var r := await Net.get_json("/api/clans")
+	if int(r.status) != 200:
+		return
+	for c in r.data:
+		var tag := str(c["tag"])
+		var row := UI.hbox()
+		row.add_child(UI.label("[%s] %s — %d membri — %d punti%s" % [tag, c["name"], int(c["members"]), int(c["season_points"]),
+			"" if bool(c["open"]) else " — su invito"]))
+		if bool(c["open"]):
+			row.add_child(UI.button("Unisciti", func() -> void: _clan_post("/api/clans/%s/join" % tag, {}, "Benvenuto nel clan")))
+		_clan.add_child(row)
+
+
+func _build_my_clan(tag: String, role: String) -> void:
+	var r := await Net.get_json("/api/clans/" + tag)
+	if int(r.status) != 200:
+		_clan.add_child(UI.label(Net.error_text(r), 0, UI.BAD))
+		return
+	var c: Dictionary = r.data
+	_clan.add_child(UI.label("[%s] %s" % [c["tag"], c["name"]], 22, UI.ACCENT))
+	if str(c["motto"]) != "":
+		_clan.add_child(UI.label("«%s»" % c["motto"], 0, UI.MUTED))
+	_clan.add_child(UI.label("Stagione in corso: %d punti, %d vittorie · %s" % [int(c["season_points"]), int(c["season_wins"]),
+		"aperto a tutti" if bool(c["open"]) else "su invito"]))
+	for h in c["history"]:
+		_clan.add_child(UI.label("   Stagione %d: %d punti, posizione %s" % [int(h["number"]), int(h["points"]),
+			"—" if h["rank"] == null else str(int(h["rank"]))], 13, UI.MUTED))
+	_clan.add_child(HSeparator.new())
+	var role_names := {"leader": "Capo", "officer": "Ufficiale", "member": "Membro"}
+	for m in c["members"]:
+		var row := UI.hbox()
+		var uname := str(m["username"])
+		row.add_child(UI.label("%s — %s — ELO %d" % [uname, role_names.get(m["role"], m["role"]), int(m["elo"])]))
+		if uname != str(me["username"]):
+			if role == "leader":
+				if str(m["role"]) == "member":
+					row.add_child(UI.button("Nomina ufficiale", func() -> void: _clan_post("/api/clans/%s/role" % tag, {"username": uname, "role": "officer"}, "Ruolo aggiornato")))
+				elif str(m["role"]) == "officer":
+					row.add_child(UI.button("Rendi membro", func() -> void: _clan_post("/api/clans/%s/role" % tag, {"username": uname, "role": "member"}, "Ruolo aggiornato")))
+				row.add_child(UI.button("Cedi il comando", func() -> void: _clan_post("/api/clans/%s/role" % tag, {"username": uname, "role": "leader"}, "Comando ceduto")))
+			if role == "leader" or (role == "officer" and str(m["role"]) == "member"):
+				row.add_child(UI.button("Espelli", func() -> void: _clan_post("/api/clans/%s/kick" % tag, {"username": uname}, "Membro espulso")))
+		_clan.add_child(row)
+	_clan.add_child(HSeparator.new())
+	if role != "member":
+		var inv := UI.hbox()
+		var who := UI.line_edit("Nome del giocatore da invitare")
+		inv.add_child(who)
+		inv.add_child(UI.button("Invita", func() -> void: _clan_post("/api/clans/%s/invite" % tag, {"username": who.text.strip_edges()}, "Invito inviato")))
+		_clan.add_child(inv)
+	if role == "leader":
+		var set_row := UI.hbox()
+		var motto_e := UI.line_edit("Nuovo motto", str(c["motto"]))
+		set_row.add_child(motto_e)
+		set_row.add_child(UI.button("Salva motto", func() -> void: _clan_put(tag, {"motto": motto_e.text})))
+		set_row.add_child(UI.button("Rendi su invito" if bool(c["open"]) else "Apri a tutti", func() -> void: _clan_put(tag, {"open": not bool(c["open"])})))
+		_clan.add_child(set_row)
+	_clan.add_child(UI.button("Lascia il clan", func() -> void: _clan_post("/api/clans/leave", {}, "Hai lasciato il clan")))
+
+
+func _clan_post(path: String, body: Dictionary, ok: String) -> void:
+	await _result(await Net.post_json(path, body), ok)
+
+
+func _clan_put(tag: String, body: Dictionary) -> void:
+	await _result(await Net.put_json("/api/clans/" + tag, body), "Clan aggiornato")
+
+
+# ------------------------------------------------------------------ stagione
+
+func _build_season() -> void:
+	UI.clear(_season)
+	var r := await Net.get_json("/api/seasons/current")
+	if int(r.status) != 200:
+		return
+	var s: Dictionary = r.data
+	var left := maxi(0, int(s["ends_at"]) - int(Time.get_unix_time_from_system()))
+	_season.add_child(UI.label(str(s["name"]), 22, UI.ACCENT))
+	_season.add_child(UI.label("Termina tra %d giorni e %d ore. A fine stagione: titoli e monete ai migliori (1° 1000, 2° 600, 3° 400, primi 10: 200, partecipanti: 50) e 300 ai membri del clan vincitore." % [left / 86400, (left % 86400) / 3600]))
+	var mine: Dictionary = me["season"]
+	if mine["rating"] != null:
+		_season.add_child(UI.label("Il tuo punteggio: %d (%d V / %d S)" % [int(mine["rating"]), int(mine["wins"]), int(mine["losses"])], 16, UI.GOOD))
+	else:
+		_season.add_child(UI.label("Gioca una partita classificata (PvP) per entrare in classifica.", 0, UI.MUTED))
+	var t := RichTextLabel.new()
+	t.bbcode_enabled = true
+	t.fit_content = true
+	var txt := "[b]Giocatori[/b]\n"
+	for p in s["players"]:
+		var ctag := "" if p["clan"] == null else "[%s] " % p["clan"]
+		txt += "%d. %s%s — %d (picco %d) · %d V / %d S\n" % [int(p["rank"]), ctag, p["username"], int(p["rating"]), int(p["peak"]), int(p["wins"]), int(p["losses"])]
+	txt += "\n[b]Clan[/b]\n"
+	for c in s["clans"]:
+		txt += "%d. [%s] %s — %d punti\n" % [int(c["rank"]), c["tag"], c["name"], int(c["points"])]
+	var hist := await Net.get_json("/api/seasons")
+	if int(hist.status) == 200 and (hist.data as Array).size() > 1:
+		txt += "\n[b]Stagioni passate[/b]\n"
+		for old in hist.data:
+			if bool(old["closed"]):
+				txt += "%s\n" % old["name"]
+	t.text = txt
+	_season.add_child(t)

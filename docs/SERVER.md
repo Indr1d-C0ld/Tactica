@@ -27,6 +27,7 @@ La configurazione si fa con variabili d'ambiente:
 | `TACTICA_BACKUP_DIR` | vuoto (backup disattivati) | cartella dei backup (`VACUUM INTO`, coerenti anche a server attivo) |
 | `TACTICA_BACKUP_EVERY_HOURS` | `24` | frequenza dei backup |
 | `TACTICA_BACKUP_KEEP` | `14` | quanti backup conservare |
+| `TACTICA_SEASON_DAYS` | `28` | durata di una stagione classificata |
 | `RUST_LOG` | `info,sqlx=warn` | livello dei log |
 
 ## API HTTP
@@ -53,6 +54,18 @@ Le rotte indicate con 🔒 richiedono l'header `Authorization: Bearer <token>`.
 | `GET /api/leaderboard?limit=20` | classifica ELO |
 | `GET /api/stats` | statistiche globali: classi (uso, % vittorie, medie), biomi, statuti |
 | `GET /api/matches/{id}` | replay: setup con seed, azioni, hash finale |
+| `GET /api/clans` | elenco dei clan con membri e punti della stagione |
+| `POST /api/clans` 🔒 `{name, tag, motto?, open?}` | fonda un clan (costa 200 monete; nome di 3-24 caratteri, sigla di 2-5) |
+| `GET /api/clans/{tag}` | dettaglio: membri e ruoli, punti stagionali, storico delle stagioni |
+| `PUT /api/clans/{tag}` 🔒 `{motto?, open?}` | modifica il clan (solo il capo) |
+| `POST /api/clans/{tag}/join` 🔒 | entra nel clan: libero se aperto, altrimenti serve un invito (massimo 20 membri) |
+| `POST /api/clans/{tag}/invite` 🔒 `{username}` | invita un giocatore (capo o ufficiali) |
+| `POST /api/clans/{tag}/kick` 🔒 `{username}` | espelle: il capo può espellere chiunque, gli ufficiali solo i membri |
+| `POST /api/clans/{tag}/role` 🔒 `{username, role}` | nomina ufficiali o membri; assegnando `leader` il capo cede il comando |
+| `POST /api/clans/leave` 🔒 | lascia il clan: il comando passa all'ufficiale più anziano, altrimenti al membro più anziano; l'ultimo che esce scioglie il clan |
+| `GET /api/seasons/current` | stagione in corso con classifica dei giocatori e dei clan |
+| `GET /api/seasons` | tutte le stagioni |
+| `GET /api/seasons/{number}` | classifica finale di una stagione |
 | `GET /health` | `ok` |
 
 Password: hash Argon2id. Token: nel database si salva solo il loro SHA-256.
@@ -88,6 +101,23 @@ Ogni unità del roster riporta anche:
   Il bottino si ricava in modo deterministico dal seed della partita e dall'account, quindi è verificabile.
 - **IA in PvE:** rispecchia classi, livelli, equipaggiamento e padronanze della squadra del giocatore.
 
+## Clan e stagioni
+
+- **Clan:**
+  - ogni account può far parte di un solo clan;
+  - i membri ricevono il 10% di monete in più;
+  - con le loro partite fanno guadagnare punti stagionali al clan: 3 per una vittoria e 1 per un pareggio in PvP, 1 per una vittoria in PvE.
+- **Stagioni:**
+  - ce n'è sempre una attiva, con un nome che ruota (Stagione 1 dell'Alba, delle Braci...);
+  - il PvP aggiorna, oltre all'ELO di carriera, un punteggio stagionale;
+  - alla prima partita di una nuova stagione il punteggio parte da un reset morbido: 1000 + (punteggio precedente - 1000) / 2.
+- **Fine stagione:** un controllo ogni minuto chiude le stagioni scadute.
+  - **Classifica:** finale per giocatori (solo chi ha giocato) e per clan.
+  - **Titoli:** Campione, Podio ed Élite della Stagione N; "Clan campione della Stagione N" ai membri del clan primo.
+  - **Monete:** 1000, 600 e 400 ai primi tre; 200 dal 4° al 10° posto; 50 agli altri partecipanti; 300 a ogni membro del clan primo.
+  - **Nuova stagione:** si apre subito dopo.
+- **`/api/me`:** riporta clan, inviti, titoli e il punteggio stagionale; il profilo pubblico mostra la sigla del clan e i titoli.
+
 ## Protocollo WebSocket
 
 Connessione a `GET /ws?token=<token>`. Tutti i messaggi sono JSON con il campo `type`.
@@ -111,7 +141,7 @@ Connessione a `GET /ws?token=<token>`. Tutti i messaggi sono JSON con il campo `
 - `matched {mode, team, opponent, snapshot}`
 - `update {events, snapshot}`: arriva dopo ogni azione, anche dell'IA o dell'avversario
 - `error {message}`
-- `ended {match_id, winner, result, elo_before, elo_after, coins, loot, rewards}`: ogni ricompensa contiene esperienza, livelli e i punti risonanza (`rp`) guadagnati, con `mastered_now` quando un'abilità viene padroneggiata
+- `ended {match_id, winner, result, elo_before, elo_after, season_before, season_after, clan_points, coins, loot, rewards}`: ogni ricompensa contiene esperienza, livelli e i punti risonanza (`rp`) guadagnati, con `mastered_now` quando un'abilità viene padroneggiata
 
 Lo `snapshot` è lo stato pubblico completo: mappa, unità, statuti, turno, unità attiva, `moved` e `acted`. Il client può ricostruire una `Battle::from_snapshot` per calcolare caselle raggiungibili, anteprime del danno e suggerimenti dell'IA. Non può risolvere le azioni, perché non conosce il seed.
 
@@ -157,4 +187,4 @@ Note sul deploy:
 - **Matchmaking:** una sola coda PvP a un posto. Mancano lo scarto ELO e la gestione di più livelli.
 - **Livelli in PvP:** il PvP usa i livelli reali del roster; si valuta una modalità classificata con livelli normalizzati.
 - **Rate limiting:** manca su login e registrazione; va aggiunto prima di aprire il server su Internet.
-- **Progressione:** mancano clan, stagioni, status alterati (veleno, sonno...) e una seconda scuola equipaggiabile.
+- **Contenuti mancanti:** missioni cooperative di clan (più giocatori nella stessa squadra), guerre fra clan, status alterati (veleno, sonno...), seconda scuola equipaggiabile.

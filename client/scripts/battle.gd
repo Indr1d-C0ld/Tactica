@@ -5,7 +5,14 @@ extends Control
 ## anteprime e suggerimenti; in locale risolve anche le azioni.
 
 const UI := preload("res://scripts/ui.gd")
-const Board := preload("res://scripts/board.gd")
+const Board3D := preload("res://scripts/board3d.gd")
+const VGA_SHADER := preload("res://shaders/vga.gdshader")
+## Stili grafici: fattore di ingrandimento della risoluzione interna e livelli di colore.
+const STYLES := [
+	{"name": "VGA", "scale": 3, "levels": 6.0, "dither": 0.75},
+	{"name": "SVGA", "scale": 2, "levels": 10.0, "dither": 0.8},
+	{"name": "Nitido", "scale": 2, "levels": 0.0, "dither": 0.0},
+]
 const DIR_NAMES := [["N", "Nord"], ["E", "Est"], ["S", "Sud"], ["W", "Ovest"]]
 const ANNOUNCE := {
 	"Damaged": [Color(1, 0.45, 0.4), "-%d"],
@@ -31,7 +38,11 @@ var ended := false
 var my_actions := 0
 var shots_taken := {}
 
-var board: Board
+var board: Board3D
+var _vp: SubViewport
+var _view: TextureRect
+var _hud: Control
+var _style := 0
 var _top: Label
 var _card: RichTextLabel
 var _actions: VBoxContainer
@@ -79,8 +90,28 @@ func _build_ui() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UI.full_rect(bg)
 	add_child(bg)
-	board = Board.new()
-	add_child(board)
+	_vp = SubViewport.new()
+	_vp.own_world_3d = true
+	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_vp.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	add_child(_vp)
+	board = Board3D.new()
+	_vp.add_child(board)
+	_view = TextureRect.new()
+	_view.texture = _vp.get_texture()
+	_view.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_view.stretch_mode = TextureRect.STRETCH_SCALE
+	_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = VGA_SHADER
+	_view.material = mat
+	add_child(_view)
+	_hud = Control.new()
+	_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	UI.full_rect(_hud)
+	_hud.draw.connect(func() -> void: board.draw_hud(_hud, float(STYLES[_style]["scale"]), ThemeDB.fallback_font))
+	add_child(_hud)
 
 	var top := UI.panel(UI.label(""), 8)
 	_top = top.get_child(0).get_child(0)
@@ -130,29 +161,47 @@ func _build_ui() -> void:
 	add_child(hp)
 
 
-var zoom := 0
-var pan := Vector2.ZERO
 var _dragging := false
 
 
+## Risoluzione interna = finestra / fattore dello stile; l'immagine viene
+## ingrandita senza sfocatura e passata nel filtro dei colori.
 func _fit_board() -> void:
-	if board == null or board.w == 0:
+	if _vp == null:
 		return
-	# Scala intera (pixel nitidi) adattata allo spazio tra i pannelli; rotella per lo zoom.
-	var avail := Rect2(Vector2(150, 44), size - Vector2(300, 44 + 40))
-	var ext := board.extent()
-	var fit := floori(minf(avail.size.x / ext.size.x, avail.size.y / ext.size.y))
-	var s := clampi(fit + zoom, 1, 6)
-	board.scale = Vector2(s, s)
-	board.position = (avail.get_center() - ext.get_center() * s + pan).round()
+	var st: Dictionary = STYLES[_style]
+	var k := int(st["scale"])
+	var vs := Vector2i(maxi(1, ceili(size.x / k)), maxi(1, ceili(size.y / k)))
+	_vp.size = vs
+	_view.position = Vector2.ZERO
+	_view.size = Vector2(vs * k)
+	var mat := _view.material as ShaderMaterial
+	mat.set_shader_parameter("source_size", Vector2(vs))
+	mat.set_shader_parameter("levels", float(st["levels"]))
+	mat.set_shader_parameter("dither", float(st["dither"]))
+	mat.set_shader_parameter("enabled", float(st["levels"]) > 0.0)
+
+
+func cycle_style() -> void:
+	_style = (_style + 1) % STYLES.size()
+	_fit_board()
+	_rebuild_actions()
+
+
+func _vp_mouse() -> Vector2:
+	return get_local_mouse_position() / float(STYLES[_style]["scale"])
+
+
+func _process(_delta: float) -> void:
+	if _hud != null:
+		_hud.queue_redraw()
 
 
 func refresh() -> void:
 	snapshot = JSON.parse_string(engine.snapshot_json())
 	units = JSON.parse_string(engine.units_view_json())
-	board.units = units
 	board.active = _active()
-	board.queue_redraw()
+	board.units = units
 	var turn_txt := "Turno %d" % int(snapshot["turn"])
 	_top.text = "%s · %s · Statuti: %s · Avversario: %s · Tu: squadra %s" % [
 		turn_txt, engine.biome_name(), ", ".join(engine.statute_names()), opponent,
@@ -190,6 +239,16 @@ func _show_card(i: int) -> void:
 
 func _rebuild_actions() -> void:
 	UI.clear(_actions)
+	var view := UI.hbox(4)
+	view.add_child(UI.button("⟲", func() -> void: board.rotate_by(-45.0)))
+	view.add_child(UI.button("⟳", func() -> void: board.rotate_by(45.0)))
+	view.add_child(UI.button("Vista", func() -> void: board.reset_view()))
+	view.add_child(UI.button(str(STYLES[_style]["name"]), cycle_style))
+	_actions.add_child(view)
+	var help := UI.label("Q/E ruota · rotella zoom · tasto centrale: orbita (Maiusc: sposta) · F2 stile", 11, UI.MUTED)
+	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	help.custom_minimum_size = Vector2(220, 0)
+	_actions.add_child(help)
 	if ended:
 		return
 	if not my_turn():
@@ -248,7 +307,6 @@ func _set_mode(m: String, ability := "") -> void:
 			_hint.text = "Scegli la direzione: gli attacchi alle spalle colpiscono più facilmente"
 		_:
 			_hint.text = ""
-	board.queue_redraw()
 
 
 func _preview(t: Vector2i) -> void:
@@ -270,29 +328,39 @@ func _preview(t: Vector2i) -> void:
 	if not v.is_empty():
 		txt += "\n[color=#f63][b]Viola lo statuto:[/b] %s → sanzione[/color]" % ", ".join(v)
 	_hint.text = txt
-	board.queue_redraw()
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if ended:
 		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		match event.keycode:
+			KEY_Q:
+				board.rotate_by(-45.0)
+			KEY_E:
+				board.rotate_by(45.0)
+			KEY_R:
+				board.reset_view()
+			KEY_F2:
+				cycle_style()
+		return
 	if event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
-		zoom += 1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else -1
-		zoom = clampi(zoom, -3, 3)
-		_fit_board()
+		board.zoom_by(1.0 if event.button_index == MOUSE_BUTTON_WHEEL_UP else -1.0)
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_MIDDLE:
 		_dragging = event.pressed
 		return
 	if event is InputEventMouseMotion and _dragging:
-		pan += event.relative
-		_fit_board()
+		if event.shift_pressed:
+			board.pan_by(event.relative / float(STYLES[_style]["scale"]))
+		else:
+			board.rotate_by(-event.relative.x * 0.4, false)
+			board.tilt_by(event.relative.y * 0.3)
 		return
 	if event is InputEventMouseMotion:
-		var t := board.pick(board.get_local_mouse_position())
+		var t := board.pick(_vp_mouse())
 		if t != board.hover:
 			board.hover = t
-			board.queue_redraw()
 			var under := _unit_at(t)
 			if under >= 0:
 				_show_card(under)
@@ -307,7 +375,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if event.button_index != MOUSE_BUTTON_LEFT or not my_turn() or busy:
 			return
-		var t := board.pick(board.get_local_mouse_position())
+		var t := board.pick(_vp_mouse())
 		if mode == "move" and reach.has(t):
 			_send(TacticaEngine.make_move(t.x, t.y))
 		elif mode == "ability" and targets.has(t):
@@ -399,7 +467,24 @@ func _autoplay_tick() -> void:
 		return
 	if not shots_taken.has("inizio"):
 		shots_taken["inizio"] = true
+		await get_tree().create_timer(0.3).timeout
 		await main.shot("battaglia_inizio")
+		if main.opts.has("shots"):
+			# Dimostrazione della telecamera: rotazione, inclinazione, zoom, stili.
+			board.rotate_by(135.0, false)
+			board.tilt_by(18.0)
+			await get_tree().create_timer(0.2).timeout
+			await main.shot("battaglia_ruotata")
+			board.zoom_by(4.0)
+			await get_tree().create_timer(0.6).timeout
+			await main.shot("battaglia_zoom")
+			cycle_style()
+			await get_tree().create_timer(0.2).timeout
+			await main.shot("battaglia_svga")
+			cycle_style()
+			cycle_style()
+			board.reset_view()
+			await get_tree().create_timer(0.6).timeout
 	await get_tree().create_timer(0.05).timeout
 	if not my_turn() or busy:
 		return
@@ -414,6 +499,8 @@ func _autoplay_tick() -> void:
 		_set_mode("ability", key)
 		board.hover = t
 		_preview(t)
+		await get_tree().process_frame
+		await get_tree().process_frame
 		await main.shot("battaglia_anteprima")
 	if my_actions == 30 and not shots_taken.has("meta"):
 		shots_taken["meta"] = true
@@ -458,7 +545,11 @@ func _show_end_online(msg: Dictionary) -> void:
 	lines.append("[font_size=30][b]%s[/b][/font_size]" % title)
 	if int(msg["elo_before"]) != int(msg["elo_after"]):
 		lines.append("ELO %d → %d" % [int(msg["elo_before"]), int(msg["elo_after"])])
+	if msg.get("season_after") != null:
+		lines.append("Punteggio stagionale %d → %d" % [int(msg["season_before"]), int(msg["season_after"])])
 	lines.append("Monete +%d" % int(msg["coins"]))
+	if int(msg.get("clan_points", 0)) > 0:
+		lines.append("[color=#8cf]Punti clan +%d[/color]" % int(msg["clan_points"]))
 	if msg.get("loot") != null:
 		var key := str(msg["loot"])
 		var name: String = Net.items.get(key, {}).get("name", key)

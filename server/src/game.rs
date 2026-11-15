@@ -238,6 +238,7 @@ async fn run(
         &seats,
         &roster_ids,
         started,
+        state.config.season_days,
     )
     .await
     {
@@ -251,6 +252,9 @@ async fn run(
                         elo_before: o.elo_before,
                         elo_after: o.elo_after,
                         coins: o.coins,
+                        season_before: o.season_before,
+                        season_after: o.season_after,
+                        clan_points: o.clan_points,
                         loot: o.loot.map(|i| i.key().to_string()),
                         rewards: o.rewards.clone(),
                     });

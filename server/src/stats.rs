@@ -10,6 +10,7 @@ use tactica_core::{Action, Battle, BattleSetup};
 use crate::db::{self, RosterUnit, now};
 use crate::game::Seat;
 use crate::protocol::{Mode, Reward, RpGain};
+use crate::{clans, seasons};
 
 pub const ELO_K: f64 = 32.0;
 pub const XP_WIN_BONUS: i32 = 30;
@@ -21,6 +22,9 @@ pub struct SeatOutcome {
     pub elo_after: i64,
     pub coins: i64,
     pub loot: Option<ItemId>,
+    pub season_before: Option<i64>,
+    pub season_after: Option<i64>,
+    pub clan_points: i64,
     pub rewards: Vec<Reward>,
 }
 
@@ -52,6 +56,7 @@ pub async fn save_match(
     seats: &[Seat; 2],
     roster_ids: &[Option<i64>],
     started: i64,
+    season_days: i64,
 ) -> anyhow::Result<SavedMatch> {
     let winner = battle.winner().flatten();
     let result = |team: u8| match winner {
@@ -100,23 +105,54 @@ pub async fn save_match(
         }
     }
     let ranked = mode == Mode::Pvp && seats.iter().all(|s| matches!(s, Seat::Human(_)));
+    let season = seasons::current(&mut tx, season_days).await?;
+    let mut season_rating = [0i64; 2];
+    if ranked {
+        for (team, seat) in seats.iter().enumerate() {
+            if let Seat::Human(e) = seat {
+                season_rating[team] = seasons::rating(&mut tx, &season, e.account_id).await?;
+            }
+        }
+    }
 
     let mut out: [Option<SeatOutcome>; 2] = [None, None];
     for (team, seat) in seats.iter().enumerate() {
         let Seat::Human(e) = seat else { continue };
         let r = result(team as u8);
+        let mr = match_result(r);
+        let clan = clans::membership(&mut tx, e.account_id).await?;
+        let mut coins = progression::coins(mr);
+        if clan.is_some() {
+            coins += coins * clans::COIN_BONUS_PCT / 100;
+        }
+        let score = match r {
+            "win" => 1.0,
+            "loss" => 0.0,
+            _ => 0.5,
+        };
+        let (season_before, season_after) = if ranked {
+            let before = season_rating[team];
+            let after = before + elo_delta(before, season_rating[1 - team], score);
+            seasons::record(&mut tx, &season, e.account_id, after, r).await?;
+            (Some(before), Some(after))
+        } else {
+            (None, None)
+        };
+        let clan_points = match (mode, r) {
+            (Mode::Pvp, "win") if ranked => seasons::CLAN_POINTS_PVP_WIN,
+            (Mode::Pvp, "draw") if ranked => seasons::CLAN_POINTS_PVP_DRAW,
+            (Mode::Pve, "win") => seasons::CLAN_POINTS_PVE_WIN,
+            _ => 0,
+        };
+        let clan_points = if clan.is_some() { clan_points } else { 0 };
         let after = if ranked {
-            let score = match r {
-                "win" => 1.0,
-                "loss" => 0.0,
-                _ => 0.5,
-            };
             elo[team] + elo_delta(elo[team], elo[1 - team], score)
         } else {
             elo[team]
         };
-        let mr = match_result(r);
-        let coins = progression::coins(mr);
+        if let Some(c) = &clan {
+            seasons::add_clan_points(&mut tx, &season, c.clan_id, clan_points, r == "win").await?;
+        }
         // Bottino deterministico: verificabile da seed della partita e account.
         let loot = progression::loot(setup.seed ^ e.account_id as u64, mr);
         sqlx::query("UPDATE accounts SET elo = ?, coins = coins + ? WHERE id = ?")
@@ -130,8 +166,8 @@ pub async fn save_match(
         }
         sqlx::query(
             "INSERT INTO match_players (match_id, team, account_id, result, elo_before, elo_after,
-                                        coins, loot)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                        coins, loot, season_id, clan_id, season_before, season_after)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(match_id)
         .bind(team as i64)
@@ -141,6 +177,10 @@ pub async fn save_match(
         .bind(after)
         .bind(coins)
         .bind(loot.map(ItemId::key))
+        .bind(season.id)
+        .bind(clan.as_ref().map(|c| c.clan_id))
+        .bind(season_before)
+        .bind(season_after)
         .execute(&mut *tx)
         .await?;
         out[team] = Some(SeatOutcome {
@@ -149,6 +189,9 @@ pub async fn save_match(
             elo_after: after,
             coins,
             loot,
+            season_before,
+            season_after,
+            clan_points,
             rewards: Vec::new(),
         });
     }
@@ -289,9 +332,20 @@ pub struct RecentMatch {
     pub ended_at: i64,
 }
 
+pub async fn titles(db: &SqlitePool, account: i64) -> sqlx::Result<Vec<String>> {
+    sqlx::query_scalar(
+        "SELECT title FROM titles WHERE account_id = ? ORDER BY awarded_at DESC, title",
+    )
+    .bind(account)
+    .fetch_all(db)
+    .await
+}
+
 #[derive(Serialize)]
 pub struct Profile {
     pub username: String,
+    pub clan: Option<String>,
+    pub titles: Vec<String>,
     pub elo: i64,
     pub created_at: i64,
     pub wins: i64,
@@ -373,7 +427,15 @@ pub async fn profile(db: &SqlitePool, username: &str) -> sqlx::Result<Option<Pro
     )
     .collect();
 
+    let clan: Option<String> = sqlx::query_scalar(
+        "SELECT c.tag FROM clan_members m JOIN clans c ON c.id = m.clan_id WHERE m.account_id = ?",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await?;
     Ok(Some(Profile {
+        clan,
+        titles: titles(db, id).await?,
         username,
         elo,
         created_at,

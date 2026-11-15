@@ -27,6 +27,22 @@ async fn main() -> anyhow::Result<()> {
             }
         });
     }
+    {
+        // Chiusura automatica delle stagioni scadute.
+        let (db, days) = (state.db.clone(), config.season_days);
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                tick.tick().await;
+                if let Err(e) =
+                    tactica_server::seasons::rollover_if_due(&db, days, tactica_server::db::now())
+                        .await
+                {
+                    tracing::error!("chiusura stagione fallita: {e}");
+                }
+            }
+        });
+    }
     let listener = TcpListener::bind(&config.addr).await?;
     tracing::info!(addr = %listener.local_addr()?, db = %config.db_url, "server in ascolto");
 
