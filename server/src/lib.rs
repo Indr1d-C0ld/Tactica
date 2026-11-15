@@ -4,6 +4,7 @@
 pub mod api;
 pub mod armory;
 pub mod auth;
+pub mod campaign;
 pub mod clans;
 pub mod config;
 pub mod db;

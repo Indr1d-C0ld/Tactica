@@ -431,3 +431,19 @@ mod statuses {
         }
     }
 }
+
+#[test]
+fn paths_follow_reachable_tiles() {
+    let (b, _) = Battle::new(&setup(31));
+    let idx = b.active_index().unwrap();
+    for dest in b.reachable(idx) {
+        let path = b.path(idx, dest).expect("percorso");
+        let mut prev = b.units[idx].pos;
+        for step in &path {
+            assert_eq!(prev.dist(*step), 1, "passi adiacenti");
+            prev = *step;
+        }
+        assert_eq!(prev, dest);
+    }
+    assert!(b.path(idx, Pos::new(-1, -1)).is_none());
+}

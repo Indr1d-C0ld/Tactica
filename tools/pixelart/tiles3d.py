@@ -271,3 +271,83 @@ if __name__ == "__main__":
     a.resize((a.width * 8, a.height * 8), Image.NEAREST).save(sys.argv[1])
     if len(sys.argv) > 2:
         backdrop().resize((960, 540), Image.NEAREST).save(sys.argv[2])
+
+
+def worldmap(w: int = 480, h: int = 270) -> Image.Image:
+    """Mappa del mondo su pergamena: cinque regioni da ovest a est, con
+    paesaggi a pixel (alberi, canneti, dune, vulcano, montagne) e mare ai bordi."""
+    import math
+
+    img = Image.new("RGBA", (w, h))
+    p = img.load()
+    parch = [(232, 214, 170), (220, 199, 152), (204, 180, 132), (176, 150, 104)]
+    tints = [(120, 168, 90), (96, 150, 140), (214, 176, 100), (170, 96, 70), (140, 150, 170)]
+    for y in range(h):
+        for x in range(w):
+            n = coarse(x // 2 % C, y // 2 % C, 300, 4)
+            t = 1 if n < 0.35 else 0
+            if hash2(x, y, 301) > 0.97:
+                t = 2
+            c = parch[t]
+            # Colore della regione, sfumato a retino.
+            r = min(4, int(x / w * 5))
+            fx = (x / w * 5) % 1
+            bayer = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]][y % 4][x % 4] / 16
+            if bayer < 0.35 or (fx > 0.85 and bayer < 0.15):
+                tint = tints[r]
+                c = tuple(int(c[k] * 0.55 + tint[k] * 0.45) for k in range(3))
+            # Mare e bordo.
+            coast = 10 + 6 * math.sin(x / 23.0) + 4 * math.sin(x / 7.0 + 1)
+            if y < coast * 0.6 or y > h - coast or x < 6 + 3 * math.sin(y / 9.0):
+                c = (84, 128, 168) if (x + y) % 3 else (110, 150, 186)
+            p[x, y] = c + (255,)
+    # Bordo scuro della pergamena.
+    for y in range(h):
+        for x in range(w):
+            d = min(x, y, w - 1 - x, h - 1 - y)
+            if d < 3:
+                p[x, y] = (110, 82, 52, 255) if d < 2 else (150, 116, 76, 255)
+
+    def tree(cx, cy):
+        for dy in range(5):
+            for dx in range(-2 + dy // 2, 3 - dy // 2):
+                p[cx + dx, cy - dy] = (52, 96, 52, 255) if dx < 1 else (36, 70, 40, 255)
+        p[cx, cy + 1] = (90, 60, 40, 255)
+
+    def reed(cx, cy):
+        for dy in range(4):
+            p[cx, cy - dy] = (60, 110, 96, 255)
+        p[cx + 1, cy - 3] = (140, 110, 60, 255)
+
+    def dune(cx, cy):
+        for dx in range(-5, 6):
+            hgt = int(3 * math.cos(dx / 5 * math.pi / 2))
+            for dy in range(hgt):
+                p[cx + dx, cy - dy] = (196, 150, 80, 255) if dx < 0 else (170, 126, 64, 255)
+
+    def mountain(cx, cy, size, snow=True):
+        for dy in range(size):
+            for dx in range(-dy, dy + 1):
+                col = (110, 110, 128, 255) if dx < 0 else (80, 80, 100, 255)
+                if snow and dy < size // 3:
+                    col = (236, 236, 244, 255)
+                p[cx + dx, cy - size + dy] = col
+
+    def volcano(cx, cy):
+        mountain(cx, cy, 14, snow=False)
+        for dx in range(-2, 3):
+            p[cx + dx, cy - 14] = (230, 90, 30, 255)
+        for k in range(4):
+            p[cx + k - 1, cy - 16 - k] = (90, 80, 80, 255)
+
+    for k in range(14):
+        tree(int(20 + hash2(k, 1, 7) * 70), int(80 + hash2(k, 2, 7) * 150))
+    for k in range(16):
+        reed(int(105 + hash2(k, 1, 8) * 80), int(70 + hash2(k, 2, 8) * 160))
+    for k in range(8):
+        dune(int(205 + hash2(k, 1, 9) * 70), int(80 + hash2(k, 2, 9) * 150))
+    volcano(330, 120)
+    volcano(355, 200)
+    for k in range(6):
+        mountain(int(400 + hash2(k, 1, 10) * 60), int(90 + hash2(k, 2, 10) * 140), 12 + k % 3 * 3)
+    return img

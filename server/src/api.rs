@@ -56,6 +56,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/tournaments/{id}/leave", post(tournaments::leave))
         .route("/api/tournaments/{id}/start", post(tournaments::start))
         .route("/api/tournaments/{id}/cancel", post(tournaments::cancel))
+        .route("/api/campaign", get(crate::campaign::view))
         .route("/api/seasons", get(season_list))
         .route("/api/seasons/current", get(season_current))
         .route("/api/seasons/{number}", get(season_by_number))

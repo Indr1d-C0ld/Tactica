@@ -368,6 +368,34 @@ impl TacticaEngine {
             .map_or(GString::new(), |b| gs(b.map.biome.name()))
     }
 
+    /// Effetto visivo di un'abilità (nome della variante, es. "Flame"):
+    /// `{"fx": ..., "projectile": bool, "aoe": n}`.
+    #[func]
+    fn ability_fx(variant: GString) -> GString {
+        use tactica_core::ability::{Element, Kind};
+        let Ok(a) = serde_json::from_value::<AbilityId>(Value::String(variant.to_string())) else {
+            return gs("{}");
+        };
+        let d = a.def();
+        let fx = match (d.kind, d.element) {
+            (Kind::Heal, _) => "heal",
+            (Kind::Support, _) if d.cleanse => "heal",
+            (Kind::Support, _) => match d.effect {
+                Some(e) if e.status.is_negative() => "debuff",
+                _ => "buff",
+            },
+            (_, Some(Element::Fire)) => "fire",
+            (_, Some(Element::Ice)) => "ice",
+            (_, Some(Element::Thunder)) => "thunder",
+            (_, Some(Element::Holy)) => "holy",
+            (Kind::Physical, None) if d.drain => "drain",
+            (Kind::Physical, None) if d.ranged => "impact",
+            (Kind::Physical, None) => "slash",
+            (Kind::Magic, None) => "debuff",
+        };
+        gs(json!({ "fx": fx, "projectile": d.ranged, "aoe": d.aoe }).to_string())
+    }
+
     #[func]
     fn state_hash(&self) -> i64 {
         self.battle.as_ref().map_or(0, |b| b.state_hash() as i64)

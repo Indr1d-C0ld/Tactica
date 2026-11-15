@@ -7,7 +7,11 @@
     "back_idle1",
     "front_act",
     "back_act",
-    "ko"
+    "ko",
+    "front_walk0",
+    "front_walk1",
+    "back_walk0",
+    "back_walk1"
   ],
   "classes": [
     "vanguard",

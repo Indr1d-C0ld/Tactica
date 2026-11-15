@@ -1,13 +1,15 @@
 extends RefCounted
 ## Accesso all'atlante degli sprite generato da tools/pixelart (units.png).
 
-const UNITS_TEX := preload("res://assets/units.png")
+const Art := preload("res://scripts/art.gd")
+static var UNITS_TEX: Texture2D = Art.tex("units")
 const CELL := 32
 const CLASS_ORDER := ["vanguard", "scout", "arcanist", "mender", "runeblade", "warden"]
 const HAIR_COUNT := 5
 const SKIN_COUNT := 3
 const FRAME := {"front_idle0": 0, "front_idle1": 1, "back_idle0": 2, "back_idle1": 3,
-	"front_act": 4, "back_act": 5, "ko": 6}
+	"front_act": 4, "back_act": 5, "ko": 6,
+	"front_walk0": 7, "front_walk1": 8, "back_walk0": 9, "back_walk1": 10}
 
 
 ## Riga dell'atlante: classe, squadra e aspetto (capelli e carnagione derivati dal nome).

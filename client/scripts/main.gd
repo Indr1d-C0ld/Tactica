@@ -13,6 +13,7 @@ const UI := preload("res://scripts/ui.gd")
 const LoginScreen := preload("res://scripts/login.gd")
 const MenuScreen := preload("res://scripts/menu.gd")
 const BattleScreen := preload("res://scripts/battle.gd")
+const WorldScreen := preload("res://scripts/worldmap.gd")
 
 var opts := {}
 var current: Control = null
@@ -106,6 +107,12 @@ func show_menu() -> void:
 	_switch(s)
 
 
+func show_world() -> void:
+	var s := WorldScreen.new()
+	s.main = self
+	_switch(s)
+
+
 func start_online_battle(matched: Dictionary, raw: String) -> void:
 	var s := BattleScreen.new()
 	s.main = self
@@ -138,6 +145,8 @@ func autoplay_after_battle(summary: String) -> void:
 	await get_tree().create_timer(1.0).timeout
 	if str(opts.get("mode", "")) in ["coop", "war"] and current != null:
 		current._tabs.current_tab = 3
+	if str(opts.get("mode", "")) == "campaign":
+		show_world()
 	await get_tree().create_timer(1.5).timeout
 	await shot("menu_dopo_partita")
 	finish(0, summary)

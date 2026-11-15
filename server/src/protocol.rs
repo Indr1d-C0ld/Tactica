@@ -20,6 +20,8 @@ pub enum Mode {
     Coop,
     /// Guerra fra clan.
     War,
+    /// Tappa della campagna in singolo.
+    Campaign,
 }
 
 impl Mode {
@@ -29,6 +31,7 @@ impl Mode {
             Mode::Pvp => "pvp",
             Mode::Coop => "coop",
             Mode::War => "war",
+            Mode::Campaign => "campaign",
         }
     }
 }
@@ -60,6 +63,8 @@ pub enum ClientMsg {
     WarLeave,
     /// Capo o ufficiale: il proprio schieramento è pronto (o non più).
     WarReady { ready: bool },
+    /// Gioca una tappa sbloccata della campagna.
+    Campaign { node: String, units: Vec<i64> },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

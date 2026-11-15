@@ -363,36 +363,65 @@ impl Battle {
         if u.has(Status::Root) {
             return vec![u.pos];
         }
+        let (best, _) = self.move_costs(idx);
+        let at = |p: Pos| (p.y * self.map.width + p.x) as usize;
+        self.map
+            .positions()
+            .filter(|&p| best[at(p)] <= u.stats.mov && (p == u.pos || self.unit_at(p).is_none()))
+            .collect()
+    }
+
+    /// Percorso (caselle successive, esclusa la partenza) verso `dest`, se raggiungibile.
+    pub fn path(&self, idx: usize, dest: Pos) -> Option<Vec<Pos>> {
+        if !self.reachable(idx).contains(&dest) {
+            return None;
+        }
+        let (_, parent) = self.move_costs(idx);
+        let at = |p: Pos| (p.y * self.map.width + p.x) as usize;
+        let start = self.units[idx].pos;
+        let mut out = Vec::new();
+        let mut p = dest;
+        while p != start {
+            out.push(p);
+            p = parent[at(p)]?;
+        }
+        out.reverse();
+        Some(out)
+    }
+
+    /// Costi minimi di movimento (Dijkstra su griglia) e predecessori.
+    fn move_costs(&self, idx: usize) -> (Vec<i32>, Vec<Option<Pos>>) {
+        let u = &self.units[idx];
         let w = self.map.width;
         let at = |p: Pos| (p.y * w + p.x) as usize;
-        let mut best = vec![i32::MAX; (w * self.map.height) as usize];
+        let n = (w * self.map.height) as usize;
+        let mut best = vec![i32::MAX; n];
+        let mut parent = vec![None; n];
         best[at(u.pos)] = 0;
         let mut q = VecDeque::from([u.pos]);
         while let Some(p) = q.pop_front() {
             let cost = best[at(p)];
             let h = self.map.tile(p).unwrap().height;
-            for n in p.neighbors() {
-                let Some(t) = self.map.tile(n) else { continue };
+            for nb in p.neighbors() {
+                let Some(t) = self.map.tile(nb) else { continue };
                 if (t.height - h).abs() > u.stats.jump {
                     continue;
                 }
                 if self
-                    .unit_at(n)
+                    .unit_at(nb)
                     .is_some_and(|o| self.units[o].team != u.team)
                 {
                     continue;
                 }
                 let c = cost + t.terrain.move_cost();
-                if c <= u.stats.mov && c < best[at(n)] {
-                    best[at(n)] = c;
-                    q.push_back(n);
+                if c <= u.stats.mov && c < best[at(nb)] {
+                    best[at(nb)] = c;
+                    parent[at(nb)] = Some(p);
+                    q.push_back(nb);
                 }
             }
         }
-        self.map
-            .positions()
-            .filter(|&p| best[at(p)] <= u.stats.mov && (p == u.pos || self.unit_at(p).is_none()))
-            .collect()
+        (best, parent)
     }
 
     /// L'unità, trovandosi in `from`, può usare `ability` sulla casella `target`?

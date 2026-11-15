@@ -30,6 +30,10 @@ static func button(text: String, action: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.pressed.connect(action)
+	b.pressed.connect(func() -> void:
+		var sfx := b.get_node_or_null("/root/Sfx")
+		if sfx != null:
+			sfx.play("click"))
 	return b
 
 

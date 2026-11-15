@@ -21,7 +21,7 @@ La configurazione si fa con variabili d'ambiente:
 |---|---|---|
 | `TACTICA_ADDR` | `127.0.0.1:7777` | indirizzo di ascolto |
 | `TACTICA_DB` | `sqlite://tactica.db` | database (`sqlite::memory:` per le prove) |
-| `TACTICA_TURN_SECS` | `60` | tempo per turno; alla scadenza l'IA completa il turno |
+| `TACTICA_TURN_SECS` | `60` | tempo per turno quando più umani sono in partita (PvP, cooperativa, guerre); alla scadenza l'IA completa il turno. Nelle partite in solitaria non c'è limite |
 | `TACTICA_AI_DELAY_MS` | `400` | pausa tra i turni dell'IA, perché il client possa seguirli |
 | `TACTICA_SESSION_DAYS` | `30` | durata dei token di accesso |
 | `TACTICA_BACKUP_DIR` | vuoto (backup disattivati) | cartella dei backup (`VACUUM INTO`, coerenti anche a server attivo) |
@@ -74,6 +74,7 @@ Le rotte indicate con 🔒 richiedono l'header `Authorization: Bearer <token>`.
 | `GET /api/tournaments/{id}` | iscritti con teste di serie e tabellone con turni, guerre e vincitori |
 | `POST /api/tournaments/{id}/join`, `POST /api/tournaments/{id}/leave` 🔒 | iscrive o ritira il proprio clan finché le iscrizioni sono aperte |
 | `POST /api/tournaments/{id}/start`, `POST /api/tournaments/{id}/cancel` 🔒 | il clan organizzatore avvia (almeno 2 clan) o annulla |
+| `GET /api/campaign` 🔒 | campagna: regioni, tappe con stato (vinta o sbloccata), storia; la chiusura di una regione compare quando la si completa |
 | `GET /api/seasons/current` | stagione in corso con classifica dei giocatori e dei clan |
 | `GET /api/seasons` | tutte le stagioni |
 | `GET /api/seasons/{number}` | classifica finale di una stagione |
@@ -224,6 +225,12 @@ In `matched` il campo `war` riporta id, sigle e nomi dei due clan.
   - **campioni:** titolo «Campioni del torneo "nome"», 500 monete a ogni membro e 15 punti stagionali al clan;
   - **finalisti:** titolo e 200 monete a ogni membro.
 - **Intestazione:** in battaglia il campo `war.tournament` riporta il nome del torneo.
+
+## Campagna
+
+- **Tappe:** 15 tappe fisse in 5 regioni (`server/src/campaign.rs`), sbloccate una alla volta.
+- **Avvio:** dal client si avvia una tappa con `{"type":"campaign","node":"r1n2","units":[...]}`. La battaglia usa il bioma della regione, con nemici dal generatore di missioni e livello pari alla media della squadra più il bonus della tappa. L'ultima tappa di ogni regione è la caccia a un campione; la prima è il tutorial, con 2 nemici e 1 statuto.
+- **Vittoria:** registra la tappa, dà le monete delle missioni (più il bonus del clan), il bottino al 75% e 1 punto al clan.
 
 ## Protocollo WebSocket
 

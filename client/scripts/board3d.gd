@@ -7,9 +7,14 @@ extends Node3D
 
 const UI := preload("res://scripts/ui.gd")
 const Sprites := preload("res://scripts/sprites.gd")
-const TEX := preload("res://assets/terrain3d.png")
-const OVERLAY_TEX := preload("res://assets/terrain.png")
+const Art := preload("res://scripts/art.gd")
+var TEX: Texture2D = Art.tex("terrain3d")
+var OVERLAY_TEX: Texture2D = Art.tex("terrain")
 const ANIM_SHADER := preload("res://shaders/animated_tile.gdshader")
+var VFX_TEX: Texture2D = Art.tex("vfx")
+const VFX_ROWS := ["slash", "arrow", "impact", "fire", "ice", "thunder", "holy", "heal", "buff", "debuff", "poison", "drain"]
+const VFX_LEN := {"slash": 4, "arrow": 1, "impact": 4, "fire": 6, "ice": 5, "thunder": 4, "holy": 5, "heal": 6,
+	"buff": 5, "debuff": 5, "poison": 6, "drain": 5}
 
 const C := 16.0
 const LEVEL := 0.5
@@ -39,6 +44,7 @@ var hover := Vector2i(-1, -1)
 var time := 0.0
 var anim := {}
 var floats: Array = []
+var _fx: Array = []
 
 var yaw := 45.0
 var yaw_target := 45.0
@@ -362,7 +368,18 @@ func _sync_units() -> void:
 			var start := tile_top(Vector2i(int(u["x"]), int(u["y"])))
 			_nodes[i] = {"sprite": s, "shadow": sh, "pos": start}
 		var node: Dictionary = _nodes[i]
-		node["target"] = tile_top(Vector2i(int(u["x"]), int(u["y"])))
+		var tile := Vector2i(int(u["x"]), int(u["y"]))
+		if node.has("tile") and node["tile"] != tile and bool(u["active"]):
+			# Nuova casella: si cammina lungo il percorso, casella per casella.
+			var jump := int(u["stats"]["jump"]) if u.has("stats") else 3
+			var waypoints: Array = []
+			for p in _grid_path(node["tile"], tile, jump):
+				waypoints.append(tile_top(p))
+			node["path"] = waypoints
+			node["seg_from"] = node["pos"]
+			node["seg_t"] = 0.0
+		node["tile"] = tile
+		node["target"] = tile_top(tile)
 		node["unit"] = u
 		(node["sprite"] as Sprite3D).visible = visible_unit
 		(node["shadow"] as MeshInstance3D).visible = visible_unit and bool(u["active"])
@@ -371,6 +388,95 @@ func _sync_units() -> void:
 			(_nodes[i]["sprite"] as Node).queue_free()
 			(_nodes[i]["shadow"] as Node).queue_free()
 			_nodes.erase(i)
+
+
+# ------------------------------------------------------------------ effetti
+
+func _fx_sprite(kind: String) -> Sprite3D:
+	var s := _sprite(VFX_TEX, Rect2(0, VFX_ROWS.find(kind) * 32, 32, 32))
+	s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	s.render_priority = 2
+	s.no_depth_test = true
+	add_child(s)
+	return s
+
+
+## Effetto animato su una casella (`delay` in secondi).
+func effect(kind: String, tile: Vector2i, delay := 0.0) -> void:
+	if not in_bounds(tile) or not (kind in VFX_ROWS):
+		return
+	var s := _fx_sprite(kind)
+	s.visible = false
+	s.position = tile_top(tile) + Vector3(0, 0.75, 0)
+	_fx.append({"sprite": s, "kind": kind, "t": -delay, "fps": 12.0})
+
+
+## Abilità: proiettile da chi agisce (se a distanza) ed effetto su bersaglio e area.
+func cast(user: int, fx: String, projectile: bool, target: Vector2i, aoe: int) -> void:
+	var delay := 0.0
+	if projectile and _nodes.has(user):
+		var from: Vector3 = (_nodes[user]["pos"] as Vector3) + Vector3(0, 0.9, 0)
+		var to := tile_top(target) + Vector3(0, 0.75, 0)
+		var s := _fx_sprite("arrow")
+		s.position = from
+		var screen_dx := screen_of(to).x - screen_of(from).x
+		s.flip_h = screen_dx < 0
+		_fx.append({"sprite": s, "kind": "arrow", "t": 0.0, "from": from, "to": to, "dur": 0.28})
+		delay = 0.28
+	for y in range(target.y - aoe, target.y + aoe + 1):
+		for x in range(target.x - aoe, target.x + aoe + 1):
+			var p := Vector2i(x, y)
+			if absi(p.x - target.x) + absi(p.y - target.y) <= aoe:
+				effect(fx, p, delay + 0.05 * (absi(p.x - target.x) + absi(p.y - target.y)))
+
+
+func _update_fx(delta: float) -> void:
+	for e in _fx:
+		e["t"] += delta
+		var s: Sprite3D = e["sprite"]
+		if e["kind"] == "arrow":
+			var k := clampf(float(e["t"]) / float(e["dur"]), 0.0, 1.0)
+			var from: Vector3 = e["from"]
+			var to: Vector3 = e["to"]
+			s.position = from.lerp(to, k) + Vector3(0, sin(PI * k) * 0.6, 0)
+			e["done"] = k >= 1.0
+			continue
+		if float(e["t"]) < 0.0:
+			continue
+		s.visible = true
+		var f := int(float(e["t"]) * float(e["fps"]))
+		var n: int = VFX_LEN[e["kind"]]
+		if f >= n:
+			e["done"] = true
+			continue
+		s.region_rect = Rect2(f * 32, VFX_ROWS.find(e["kind"]) * 32, 32, 32)
+	for e in _fx:
+		if e.get("done", false):
+			(e["sprite"] as Node).queue_free()
+	_fx = _fx.filter(func(e: Dictionary) -> bool: return not e.get("done", false))
+
+
+## Percorso a passi di una casella (BFS sull'altezza superabile); se non c'è, salto diretto.
+func _grid_path(a: Vector2i, b: Vector2i, jump: int) -> Array[Vector2i]:
+	var prev := {a: a}
+	var queue: Array[Vector2i] = [a]
+	while not queue.is_empty():
+		var p: Vector2i = queue.pop_front()
+		if p == b:
+			break
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: Vector2i = p + d
+			if in_bounds(n) and not prev.has(n) and absi(height_at(n.x, n.y) - height_at(p.x, p.y)) <= jump:
+				prev[n] = p
+				queue.append(n)
+	if not prev.has(b):
+		return [b]
+	var out: Array[Vector2i] = []
+	var c := b
+	while c != a:
+		out.push_front(c)
+		c = prev[c]
+	return out
 
 
 func play(unit: int, kind: String, duration := 0.45) -> void:
@@ -404,17 +510,39 @@ func _process(delta: float) -> void:
 		var u: Dictionary = node["unit"]
 		var target: Vector3 = node["target"]
 		var pos: Vector3 = node["pos"]
-		pos = pos.move_toward(target, delta * 6.0)
+		var walking := false
+		var walk_dir := Vector3.ZERO
+		var path: Array = node.get("path", [])
+		if not path.is_empty():
+			walking = true
+			var from: Vector3 = node["seg_from"]
+			var to: Vector3 = path[0]
+			walk_dir = Vector3(to.x - from.x, 0, to.z - from.z).normalized()
+			var t: float = float(node["seg_t"]) + delta * 5.0
+			if t >= 1.0:
+				pos = to
+				path.pop_front()
+				node["seg_from"] = to
+				node["seg_t"] = 0.0
+			else:
+				pos = from.lerp(to, t)
+				# Piccolo salto, più alto se si cambia livello.
+				pos.y = lerpf(from.y, to.y, t) + sin(PI * t) * (0.12 + 0.6 * absf(to.y - from.y))
+				node["seg_t"] = t
+		else:
+			pos = pos.move_toward(target, delta * 6.0)
 		node["pos"] = pos
 		var s: Sprite3D = node["sprite"]
 		var ko := str(u["condition"]) == "Defeated"
-		var d: Vector3 = DIR_VEC.get(str(u["facing"]), Vector3(1, 0, 0))
+		var d: Vector3 = walk_dir if walking else DIR_VEC.get(str(u["facing"]), Vector3(1, 0, 0))
 		var front := d.dot(toward) >= 0.0
 		var frame: String
 		if ko:
 			frame = "ko"
 		elif _anim_on(i, "act"):
 			frame = "front_act" if front else "back_act"
+		elif walking:
+			frame = ("front_walk" if front else "back_walk") + str(int(time * 8.0) % 2)
 		else:
 			frame = ("front_idle" if front else "back_idle") + str(int(time * 2.2 + i * 0.37) % 2)
 		s.region_rect = Sprites.region(str(u["class"]), int(u["team"]), str(u["name"]), frame)
@@ -435,6 +563,7 @@ func _process(delta: float) -> void:
 	for f in floats:
 		f["t"] += delta
 	floats = floats.filter(func(f: Dictionary) -> bool: return f["t"] < 1.4)
+	_update_fx(delta)
 	_draw_overlay()
 
 

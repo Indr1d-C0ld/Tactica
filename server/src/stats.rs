@@ -148,7 +148,9 @@ pub async fn save_match(
         let mr = match_result(r);
         let clan = clans::membership(&mut tx, e.account_id).await?;
         let mut coins = match (mode, mr, mission) {
-            (Mode::Coop, MatchResult::Win, Some(m)) => coop_win_coins(m.difficulty),
+            (Mode::Coop | Mode::Campaign, MatchResult::Win, Some(m)) => {
+                coop_win_coins(m.difficulty)
+            }
             (Mode::War, MatchResult::Win, _) => wars::WAR_WIN_COINS,
             (Mode::War, MatchResult::Loss, _) => wars::WAR_LOSS_COINS,
             (Mode::War, MatchResult::Draw, _) => wars::WAR_DRAW_COINS,
@@ -178,7 +180,7 @@ pub async fn save_match(
         let clan_points = match (mode, r) {
             (Mode::Pvp, "win") if ranked => seasons::CLAN_POINTS_PVP_WIN,
             (Mode::Pvp, "draw") if ranked => seasons::CLAN_POINTS_PVP_DRAW,
-            (Mode::Pve, "win") => seasons::CLAN_POINTS_PVE_WIN,
+            (Mode::Pve | Mode::Campaign, "win") => seasons::CLAN_POINTS_PVE_WIN,
             (Mode::Coop, "win") => {
                 seasons::CLAN_POINTS_COOP_WIN
                     + if mission.is_some_and(|m| m.hunt) {
@@ -201,7 +203,7 @@ pub async fn save_match(
         }
         // Bottino deterministico: verificabile da seed della partita e account.
         let loot_seed = setup.seed ^ e.account_id as u64;
-        let loot = if mode == Mode::Coop {
+        let loot = if matches!(mode, Mode::Coop | Mode::Campaign) {
             progression::loot_with_chance(loot_seed, mr, COOP_LOOT_CHANCE)
         } else {
             progression::loot(loot_seed, mr)
@@ -344,6 +346,14 @@ pub async fn save_match(
 
     if let Some(w) = war {
         wars::record_result(&mut tx, w, winner, match_id, &season).await?;
+    }
+    if let (Mode::Campaign, Some(0), Some(node)) =
+        (mode, winner, mission.and_then(|m| m.node.as_deref()))
+    {
+        for &i in &humans {
+            let acc = players[i].human().unwrap().account_id;
+            crate::campaign::record_clear(&mut tx, acc, node, battle.turn() as i64).await?;
+        }
     }
     tx.commit().await?;
     Ok(SavedMatch {

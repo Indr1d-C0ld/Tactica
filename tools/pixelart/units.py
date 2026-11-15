@@ -18,7 +18,13 @@ from pixlib import Canvas, Mat
 W, H = 32, 32
 OX = 4  # scostamento orizzontale del disegno (progettato su 24 colonne)
 
-FRAMES = ["front_idle0", "front_idle1", "back_idle0", "back_idle1", "front_act", "back_act", "ko"]
+FRAMES = [
+    "front_idle0", "front_idle1", "back_idle0", "back_idle1", "front_act", "back_act", "ko",
+    "front_walk0", "front_walk1", "back_walk0", "back_walk1",
+]
+
+# Passo della camminata corrente: 0 fermo, +1/-1 gamba vicina avanti/indietro.
+STEP = 0
 
 
 @dataclass
@@ -64,10 +70,13 @@ GLOW, ROSE, WHITE = M(P.GLOW_BLUE), M(P.GLOW_ROSE), M(P.WHITE)
 # ------------------------------------------------------------------ parti comuni
 
 def legs(c: C, pants: Mat, boots: Mat):
-    c.r(9, 25, 11, 28, pants)
-    c.r(9, 28, 12, 30, boots)
-    c.r(13, 25, 15, 28, pants)
-    c.r(13, 28, 16, 30, boots)
+    # Nel passo una gamba avanza (verso destra) e l'altra arretra sollevandosi.
+    far = -STEP
+    near = STEP
+    c.r(9 + far, 25, 11 + far, 28 - (1 if far < 0 else 0), pants)
+    c.r(9 + far, 28 - (1 if far < 0 else 0), 12 + far, 30 - (1 if far < 0 else 0), boots)
+    c.r(13 + near, 25, 15 + near, 28 - (1 if near < 0 else 0), pants)
+    c.r(13 + near, 28 - (1 if near < 0 else 0), 16 + near, 30 - (1 if near < 0 else 0), boots)
 
 
 def far_arm(x: Ctx, c: C, sleeve: Mat):
@@ -330,7 +339,9 @@ CLASSES = {
 }
 
 
-def frame(cls: str, team: int, hair: str, skin: str, view: str, bob: int, act: bool) -> Image.Image:
+def frame(cls: str, team: int, hair: str, skin: str, view: str, bob: int, act: bool, step: int = 0) -> Image.Image:
+    global STEP
+    STEP = step
     c = C()
     x = Ctx(
         team=Mat(P.TEAM[team]),
@@ -363,6 +374,10 @@ def sheet_row(cls: str, team: int, hair: str, skin: str) -> Image.Image:
         crop = ko.crop(bbox)
         ko_cell.paste(crop, ((W - crop.width) // 2, H - 2 - crop.height), crop)
     imgs.append(ko_cell)
+    for view in ("front", "back"):
+        for st in (1, -1):
+            # Durante il passo il busto si abbassa di un pixel.
+            imgs.append(frame(cls, team, hair, skin, view, 1 if st == 1 else 0, False, st))
     for i, im in enumerate(imgs):
         row.paste(im, (i * W, 0), im)
     return row

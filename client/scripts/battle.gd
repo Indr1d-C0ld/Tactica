@@ -29,6 +29,15 @@ var mine := {}
 var allies: Array = []
 var mission: Dictionary = {}
 var war: Dictionary = {}
+var tutorial_step := -1
+var _tutorial: PanelContainer
+var _tutorial_text: RichTextLabel
+const TUTORIAL := [
+	"1/4 · Tocca a una tua unità (la freccia dorata). Premi «Muovi» e scegli una casella blu: sono quelle che può raggiungere.",
+	"2/4 · Scegli un'abilità e passa il mouse sulle caselle rosse: vedi danni, probabilità di colpire ed eventuali statuti violati. Clicca per agire.",
+	"3/4 · Premi «Fine turno» e scegli dove guardare: chi attacca alle spalle o di fianco colpisce più facilmente.",
+	"4/4 · In alto ci sono gli Statuti di questa battaglia: se li violi l'unità viene sospesa, alla seconda volta espulsa. Ora tocca a te: buona fortuna!",
+]
 var engine: TacticaEngine
 var snapshot: Dictionary = {}
 var units: Array = []
@@ -65,6 +74,8 @@ func setup_online(matched: Dictionary, raw: String) -> void:
 	allies = matched.get("allies", [])
 	if matched.get("mission") is Dictionary:
 		mission = matched["mission"]
+		if bool(mission.get("tutorial", false)):
+			tutorial_step = 0
 	if matched.get("war") is Dictionary:
 		war = matched["war"]
 	engine = TacticaEngine.new()
@@ -82,6 +93,7 @@ func setup_local(seed: int) -> void:
 
 
 func _ready() -> void:
+	Sfx.music("battle")
 	_build_ui()
 	if online:
 		Net.ws_message.connect(_on_ws)
@@ -91,6 +103,19 @@ func _ready() -> void:
 	_fit_board()
 	resized.connect(_fit_board)
 	_log_line("[b]Statuti:[/b] " + ", ".join(engine.statute_names()))
+	if tutorial_step >= 0:
+		_tutorial_text = RichTextLabel.new()
+		_tutorial_text.bbcode_enabled = true
+		_tutorial_text.fit_content = true
+		_tutorial_text.custom_minimum_size = Vector2(560, 0)
+		_tutorial = UI.panel(_tutorial_text, 10)
+		_tutorial.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+		_tutorial.offset_top = 56
+		_tutorial.offset_left = -290
+		_tutorial.offset_right = 290
+		_tutorial.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(_tutorial)
+		_tutorial_update()
 	_after_change()
 
 
@@ -103,7 +128,7 @@ func _build_ui() -> void:
 	UI.full_rect(bg)
 	add_child(bg)
 	var backdrop := TextureRect.new()
-	backdrop.texture = preload("res://assets/backdrop.png")
+	backdrop.texture = preload("res://scripts/art.gd").tex("backdrop")
 	backdrop.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -258,6 +283,36 @@ func my_turn() -> bool:
 	if not mine.is_empty():
 		return mine.has(a)
 	return int(units[a]["team"]) == my_team
+
+
+func _tutorial_update() -> void:
+	if _tutorial == null:
+		return
+	if tutorial_step >= TUTORIAL.size():
+		_tutorial.visible = false
+		return
+	_tutorial_text.text = "[color=#fc6]Tutorial[/color]  " + TUTORIAL[tutorial_step]
+
+
+## Avanza il tutorial in base agli eventi delle proprie unità.
+func _tutorial_events(msg: Dictionary) -> void:
+	if tutorial_step < 0:
+		return
+	for e in msg.get("events", []):
+		if not (e is Dictionary) or e.is_empty():
+			continue
+		var kind: String = e.keys()[0]
+		var v: Variant = e[kind]
+		var own: bool = v is Dictionary and v.has("unit") and mine.has(int(v["unit"]))
+		if tutorial_step == 0 and kind == "Moved" and own:
+			tutorial_step = 1
+		elif tutorial_step == 1 and kind == "AbilityUsed" and own:
+			tutorial_step = 2
+		elif tutorial_step == 2 and kind == "TurnStarted" and not own:
+			tutorial_step = 3
+		elif tutorial_step == 3 and kind == "TurnStarted" and own:
+			tutorial_step = 4
+	_tutorial_update()
 
 
 func _show_card(i: int) -> void:
@@ -495,22 +550,35 @@ func _announce(msg: Dictionary, raw: String) -> void:
 		var at := Vector2i(int(u["x"]), int(u["y"]))
 		if kind == "AbilityUsed":
 			board.play(int(v["unit"]), "act")
+			var fx: Dictionary = JSON.parse_string(TacticaEngine.ability_fx(str(v["ability"])))
+			if not fx.is_empty():
+				var t := Vector2i(int(v["target"]["x"]), int(v["target"]["y"]))
+				board.cast(int(v["unit"]), str(fx["fx"]), bool(fx["projectile"]), t, int(fx["aoe"]))
+				Sfx.play_fx(str(fx["fx"]))
 		elif kind == "Damaged" or kind == "TerrainDamage":
 			board.play(int(v["unit"]), "hurt", 0.3)
+		if kind == "Damaged":
+			Sfx.play("hit")
+		elif kind == "Moved":
+			Sfx.play("step")
 		if ANNOUNCE.has(kind) and int(v.get("amount", 1)) == 0:
 			pass
 		elif ANNOUNCE.has(kind):
 			board.add_float(at, ANNOUNCE[kind][1] % int(v["amount"]), ANNOUNCE[kind][0])
 		elif kind == "Missed":
 			board.add_float(at, "mancato", Color(0.8, 0.8, 0.8))
+			Sfx.play("miss")
 		elif kind == "StatuteViolated":
 			board.add_float(at, "Sanzione!", Color(1, 0.55, 0.2))
 		elif kind == "LevelUp":
 			board.add_float(at, "Livello %d!" % int(v["level"]), UI.ACCENT)
+			Sfx.play("levelup")
 		elif kind == "Defeated":
 			board.add_float(at, "KO", UI.BAD)
+			Sfx.play("ko")
 		elif kind == "StatusApplied":
 			var neg := str(v["status"]) in ["Poison", "Sleep", "Silence", "Slow", "Root"]
+			board.effect("debuff" if neg else "buff", at)
 			board.add_float(at, _status_name(str(v["status"])), Color(0.85, 0.55, 1.0) if neg else Color(0.5, 1.0, 0.85))
 		elif kind == "StatusResisted":
 			board.add_float(at, "resiste", Color(0.8, 0.8, 0.8))
@@ -518,6 +586,7 @@ func _announce(msg: Dictionary, raw: String) -> void:
 			board.add_float(at, "Zzz", Color(0.6, 0.75, 1.0))
 		elif kind == "StatusDamage":
 			board.add_float(at, "-%d" % int(v["amount"]), Color(0.6, 0.95, 0.4))
+			board.effect("poison", at)
 
 
 func _after_change() -> void:
@@ -606,6 +675,7 @@ func _on_ws(msg: Dictionary, raw: String) -> void:
 			busy = false
 			refresh()
 			_announce(msg, raw)
+			_tutorial_events(msg)
 			_after_change()
 		"error":
 			busy = false
@@ -619,6 +689,7 @@ func _on_ws(msg: Dictionary, raw: String) -> void:
 
 func _show_end_online(msg: Dictionary) -> void:
 	ended = true
+	Sfx.jingle("victory" if str(msg["result"]) == "win" else "defeat")
 	_rebuild_actions()
 	var result := str(msg["result"])
 	var title: String = str({"win": "Vittoria", "loss": "Sconfitta", "draw": "Pareggio"}.get(result, result))
@@ -656,6 +727,8 @@ func _show_end_local() -> void:
 	if ended:
 		return
 	ended = true
+	var lw: Variant = snapshot.get("winner")
+	Sfx.jingle("victory" if lw != null and int(lw) == my_team else "defeat")
 	_rebuild_actions()
 	var w: Variant = snapshot.get("winner")
 	var title := "Pareggio" if w == null else ("Vittoria" if int(w) == my_team else "Sconfitta")

@@ -1345,3 +1345,79 @@ async fn clan_tournament() {
     let (_, list) = srv.get("/api/tournaments", None).await;
     assert_eq!(list[0]["winner"], "AQUI");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn campaign_progress() {
+    let srv = start().await;
+    let (alice, units) = srv.player("alice").await;
+    let (_, c) = srv.get("/api/campaign", Some(&alice)).await;
+    assert_eq!(c["total"].as_i64(), Some(15));
+    assert_eq!(c["regions"][0]["nodes"][0]["unlocked"], true);
+    assert_eq!(c["regions"][0]["nodes"][1]["unlocked"], false);
+    assert!(
+        c["regions"][0]["outro"].is_null(),
+        "la chiusura si legge solo a regione finita"
+    );
+
+    // Tappa bloccata: rifiutata.
+    let mut ws = connect(&srv.ws, &alice).await;
+    ws.send(text(ClientMsg::Campaign {
+        node: "r1n2".into(),
+        units: units.clone(),
+    }))
+    .await
+    .unwrap();
+    loop {
+        match next_msg(&mut ws).await {
+            ServerMsg::Error { message } => {
+                assert!(message.contains("sbloccata"), "{message}");
+                break;
+            }
+            ServerMsg::Welcome { .. } => {}
+            other => panic!("inatteso: {other:?}"),
+        }
+    }
+
+    // Tutorial: si ripete finché non si vince (2 nemici più deboli).
+    let mut won = false;
+    for _ in 0..4 {
+        ws.send(text(ClientMsg::Campaign {
+            node: "r1n1".into(),
+            units: units.clone(),
+        }))
+        .await
+        .unwrap();
+        let (mission, biome, enemies) = loop {
+            if let ServerMsg::Matched {
+                mode,
+                mission,
+                snapshot,
+                ..
+            } = next_msg(&mut ws).await
+            {
+                assert_eq!(mode, Mode::Campaign);
+                let enemies = snapshot.units.iter().filter(|u| u.team == 1).count();
+                break (mission.unwrap(), snapshot.map.biome, enemies);
+            }
+        };
+        assert!(mission.tutorial);
+        assert_eq!(mission.node.as_deref(), Some("r1n1"));
+        assert_eq!(biome, tactica_core::Biome::Meadow);
+        assert_eq!(enemies, 2);
+        let ServerMsg::Ended { result, .. } = game_loop_with(&mut ws, (0..4).collect(), None).await
+        else {
+            unreachable!()
+        };
+        if result == "win" {
+            won = true;
+            break;
+        }
+    }
+    assert!(won, "il tutorial dovrebbe essere vincibile");
+    let (_, c) = srv.get("/api/campaign", Some(&alice)).await;
+    assert_eq!(c["cleared"].as_i64(), Some(1));
+    assert_eq!(c["regions"][0]["nodes"][0]["cleared"], true);
+    assert_eq!(c["regions"][0]["nodes"][1]["unlocked"], true);
+    let (_, p) = srv.get("/api/players/alice", None).await;
+    assert_eq!(p["recent"][0]["mode"], "campaign");
+}

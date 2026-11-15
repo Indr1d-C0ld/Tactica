@@ -46,6 +46,11 @@ func _ready() -> void:
 	_header = UI.label("", 16)
 	_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(_header)
+	var audio := UI.button("Audio: sì" if Sfx.enabled else "Audio: no", func() -> void: pass)
+	audio.pressed.connect(func() -> void:
+		Sfx.set_enabled(not Sfx.enabled)
+		audio.text = "Audio: sì" if Sfx.enabled else "Audio: no")
+	head.add_child(audio)
 	head.add_child(UI.button("Esci", _logout))
 	root.add_child(head)
 
@@ -63,6 +68,7 @@ func _ready() -> void:
 	root.add_child(_status)
 
 	Net.ws_message.connect(_on_ws)
+	Sfx.music("menu")
 	await _load_catalogs()
 	await reload()
 	if main.autoplay() and not main.opts.get("autoplay_menu_done", false):
@@ -143,6 +149,10 @@ func _logout() -> void:
 
 func _build_play() -> void:
 	UI.clear(_play)
+	var world := UI.button("Campagna: le Terre di Velmara", func() -> void: main.show_world())
+	world.custom_minimum_size = Vector2(0, 54)
+	_play.add_child(world)
+	_play.add_child(HSeparator.new())
 	_play.add_child(UI.label("Scegli fino a %d unità e una modalità." % MAX_PARTY, 16))
 	var roster: Array = me["roster"]
 	if roster.is_empty():
@@ -463,6 +473,9 @@ func _autoplay() -> void:
 		return
 	if str(main.opts.get("mode", "")) == "war":
 		await _autoplay_war_setup()
+		return
+	if str(main.opts.get("mode", "")) == "campaign":
+		main.show_world()
 		return
 	_tabs.current_tab = 0
 	var n := 0

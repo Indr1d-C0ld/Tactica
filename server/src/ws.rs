@@ -190,6 +190,24 @@ async fn handle(state: &AppState, conn: &mut Conn, msg: ClientMsg) {
             conn.send(ServerMsg::WarRoom { room: None });
         }
         ClientMsg::WarReady { ready } => war_ready(state, conn, ready).await,
+        ClientMsg::Campaign { node, units } => {
+            let e = match entrant(state, conn, &units).await {
+                Ok(e) => e,
+                Err(m) => return conn.error(m),
+            };
+            if state.lobby.lock().unwrap().is_engaged(conn.id) {
+                return conn.error("esci prima dalla coda, dalla stanza o dallo schieramento");
+            }
+            let mut c = match state.db.acquire().await {
+                Ok(c) => c,
+                Err(_) => return conn.error("errore interno"),
+            };
+            match crate::campaign::unlocked(&mut c, conn.user.id, &node).await {
+                Ok(true) => game::start_campaign(state.clone(), e, &node),
+                Ok(false) => conn.error("tappa non ancora sbloccata"),
+                Err(_) => conn.error("errore interno"),
+            }
+        }
         ClientMsg::RoomList => {
             let mut c = match state.db.acquire().await {
                 Ok(c) => c,
@@ -301,6 +319,7 @@ async fn queue(state: &AppState, conn: &mut Conn, mode: Mode, ids: Vec<i64>) {
         }
         Mode::Coop => conn.error("le missioni si avviano da una stanza di clan"),
         Mode::War => conn.error("le guerre si combattono dallo schieramento del clan"),
+        Mode::Campaign => conn.error("le tappe della campagna si avviano dalla mappa del mondo"),
     }
 }
 

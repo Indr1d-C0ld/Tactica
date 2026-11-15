@@ -18,6 +18,7 @@ import tiles  # noqa: E402
 import tiles3d  # noqa: E402
 import units  # noqa: E402
 import font  # noqa: E402
+import vfx  # noqa: E402
 from pixlib import hexc  # noqa: E402
 
 OUT = Path(__file__).resolve().parents[2] / "client" / "assets"
@@ -102,6 +103,8 @@ def main():
     tiles.atlas().save(OUT / "terrain.png")
     tiles3d.atlas().save(OUT / "terrain3d.png")
     tiles3d.backdrop().save(OUT / "backdrop.png")
+    tiles3d.worldmap().save(OUT / "worldmap.png")
+    vfx.atlas().save(OUT / "vfx.png")
     print("terrain.png, terrain3d.png")
     build_units()
     build_ui()

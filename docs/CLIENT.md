@@ -29,6 +29,19 @@ Le texture vengono da `tools/pixelart` (vedi il suo README). Tutto è pixel-art 
 ![Tornei](img/tornei.png)
 ![Clan](img/clan.png)
 
+## Campagna, audio ed effetti
+
+- **Campagna:** «Le Terre di Velmara», dal pulsante nella scheda Gioca. Ha una mappa del mondo su pergamena con 5 regioni e 15 tappe; l'ultima tappa di ogni regione è la caccia a un campione. Si sblocca una tappa alla volta e la storia si legge nel pannello laterale. La prima tappa è un tutorial: un riquadro spiega movimento, abilità e anteprime, fine turno e direzione, statuti.
+- **Movimento:** le unità camminano casella per casella lungo il percorso, con i passi animati e un piccolo salto nei cambi di altezza.
+- **Effetti delle abilità:** fendenti, frecce in volo, fiamme, ghiaccio, fulmini, luce, cure, potenziamenti e alterazioni, veleno, risucchio.
+- **Audio:**
+  - musiche chiptune originali per menu, battaglia e mappa del mondo;
+  - fanfare di vittoria e sconfitta;
+  - effetti sonori per colpi, mancati, magie, passi e interfaccia.
+
+  Il pulsante «Audio» nel menu attiva o disattiva tutto; con `--mute` il gioco parte senza audio.
+- **Turni:** il gioco è a turni. Nelle partite in solitaria non c'è limite di tempo; il limite per turno vale solo quando altri giocatori aspettano.
+
 ## Avvio
 
 ```bash

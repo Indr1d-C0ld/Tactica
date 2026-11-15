@@ -44,7 +44,9 @@ Gioco tattico fantasy originale, ispirato ai classici tattici a turni per consol
 
   Dettagli in [docs/SERVER.md](docs/SERVER.md).
 - `deploy/`: unit systemd isolata e Caddyfile per TLS.
-- `tools/pixelart/`: generatore della pixel-art originale del client (personaggi chibi, caselle isometriche, cornici).
+- `tools/pixelart/`: generatore della pixel-art originale del client: personaggi chibi con camminata, terreni, effetti, font, mappa del mondo, kit per il pixel artist.
+- `tools/audio/`: sintetizzatore chiptune delle musiche (menu, battaglia, mappa del mondo, fanfare) e degli effetti sonori.
+- Campagna in singolo: «Le Terre di Velmara», con 5 regioni, 15 tappe, una storia originale e un tutorial guidato.
 - `client-ext/` e `client/`: client Godot 4.7 con estensione Rust sul core. Comprende:
   - accesso;
   - roster, negozio e statistiche;
@@ -80,4 +82,4 @@ cargo build -p tactica-godot && godot --path client
 ## Prossimi passi
 
 1. **Matchmaking per ELO**, scadenze per gli incontri di torneo; rate limiting prima dell'apertura su Internet.
-2. **Audio ed effetti** originali (musiche, suoni, effetti delle abilità); font in pixel-art.
+2. **Grafica definitiva** di un pixel artist (kit pronto: [docs/ARTE.md](docs/ARTE.md)).

@@ -58,6 +58,12 @@ pub struct MissionInfo {
     pub difficulty: u8,
     pub difficulty_name: String,
     pub hunt: bool,
+    /// Tappa della campagna (chiave), se è una battaglia di campagna.
+    #[serde(default)]
+    pub node: Option<String>,
+    /// Prima battaglia guidata.
+    #[serde(default)]
+    pub tutorial: bool,
 }
 
 pub const STATUTES_PER_BATTLE: usize = 2;
@@ -161,6 +167,8 @@ pub fn start_mission(state: AppState, members: Vec<Entrant>, difficulty: u8) {
         difficulty: mission.difficulty,
         difficulty_name: presets::difficulty_name(mission.difficulty).to_string(),
         hunt: mission.champion.is_some(),
+        node: None,
+        tutorial: false,
     };
     let setup = BattleSetup {
         seed,
@@ -172,6 +180,89 @@ pub fn start_mission(state: AppState, members: Vec<Entrant>, difficulty: u8) {
     launch(
         state,
         Mode::Coop,
+        setup,
+        players,
+        roster_ids,
+        Some(info),
+        None,
+    );
+}
+
+/// Tappa della campagna: la squadra del giocatore contro nemici generati dal
+/// seed, nel bioma della regione e con livelli crescenti lungo la storia.
+pub fn start_campaign(state: AppState, entrant: Entrant, key: &str) {
+    use tactica_core::MapParams;
+    use tactica_core::rng::Rng;
+    let Some((r, i)) = crate::campaign::find(key) else {
+        return;
+    };
+    let region = &crate::campaign::REGIONS[r];
+    let def = &region.nodes[i];
+    let seed = random_seed();
+    let mut allies: Vec<UnitSetup> = Vec::new();
+    let mut roster_ids = Vec::new();
+    for u in &entrant.units {
+        allies.push(u.to_setup(0));
+        roster_ids.push(Some(u.id));
+    }
+    let avg = allies.iter().map(|u| u.level).sum::<i32>() / allies.len().max(1) as i32;
+    let mission = presets::mission(seed, &allies, def.difficulty);
+    let mut enemies = mission.enemies.clone();
+    if def.tutorial {
+        enemies.truncate(2);
+    }
+    let base = (avg + def.level_bonus).clamp(1, tactica_core::class::MAX_LEVEL);
+    for (k, e) in enemies.iter_mut().enumerate() {
+        e.level = base;
+        e.xp = 0;
+        if def.champion && k == 0 {
+            e.name = def.name.to_string();
+            e.level = (base + 3).min(tactica_core::class::MAX_LEVEL);
+        }
+    }
+    let enemy_start = allies.len();
+    let objective = if def.champion {
+        Objective::Champion(enemy_start as u32)
+    } else {
+        Objective::Rout
+    };
+    let mut units = allies;
+    units.extend(enemies.iter().cloned());
+    roster_ids.extend(std::iter::repeat_n(None, enemies.len()));
+    let players = vec![
+        Player {
+            team: 0,
+            units: (0..enemy_start).collect(),
+            connected: true,
+            entrant: Some(entrant),
+        },
+        Player {
+            team: 1,
+            units: (enemy_start..units.len()).collect(),
+            connected: false,
+            entrant: None,
+        },
+    ];
+    let mut params = MapParams::random(&mut Rng::new(seed ^ 0x006d_6170));
+    params.biome = region.biome;
+    let info = MissionInfo {
+        name: def.name.to_string(),
+        difficulty: def.difficulty,
+        difficulty_name: presets::difficulty_name(def.difficulty).to_string(),
+        hunt: def.champion,
+        node: Some(def.key.to_string()),
+        tutorial: def.tutorial,
+    };
+    let setup = BattleSetup {
+        seed,
+        map: Some(params),
+        units,
+        statutes: if def.tutorial { 1 } else { mission.statutes },
+        objective,
+    };
+    launch(
+        state,
+        Mode::Campaign,
         setup,
         players,
         roster_ids,
@@ -362,7 +453,15 @@ async fn run(
         }
 
         let turn = battle.turn();
-        let deadline = Instant::now() + turn_time;
+        // Il gioco è a turni: chi gioca da solo ha tutto il tempo che vuole.
+        // Il limite serve solo quando altri umani aspettano la mossa.
+        let humans = players.iter().filter(|p| p.human().is_some()).count();
+        let limit = if humans > 1 {
+            turn_time
+        } else {
+            Duration::from_secs(7 * 86_400)
+        };
+        let deadline = Instant::now() + limit;
         loop {
             match timeout_at(deadline, rx.recv()).await {
                 Err(_) => {
