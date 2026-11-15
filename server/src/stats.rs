@@ -2,12 +2,14 @@
 
 use serde::Serialize;
 use sqlx::SqlitePool;
+use tactica_core::item::ItemId;
+use tactica_core::progression::{self, MatchResult};
 use tactica_core::unit::Unit;
 use tactica_core::{Action, Battle, BattleSetup};
 
-use crate::db::{RosterUnit, now};
+use crate::db::{self, RosterUnit, now};
 use crate::game::Seat;
-use crate::protocol::{Mode, Reward};
+use crate::protocol::{Mode, Reward, RpGain};
 
 pub const ELO_K: f64 = 32.0;
 pub const XP_WIN_BONUS: i32 = 30;
@@ -17,12 +19,22 @@ pub struct SeatOutcome {
     pub result: &'static str,
     pub elo_before: i64,
     pub elo_after: i64,
+    pub coins: i64,
+    pub loot: Option<ItemId>,
     pub rewards: Vec<Reward>,
 }
 
 pub struct SavedMatch {
     pub match_id: i64,
     pub seats: [Option<SeatOutcome>; 2],
+}
+
+fn match_result(r: &str) -> MatchResult {
+    match r {
+        "win" => MatchResult::Win,
+        "loss" => MatchResult::Loss,
+        _ => MatchResult::Draw,
+    }
 }
 
 fn elo_delta(mine: i64, theirs: i64, score: f64) -> i64 {
@@ -103,14 +115,23 @@ pub async fn save_match(
         } else {
             elo[team]
         };
-        sqlx::query("UPDATE accounts SET elo = ? WHERE id = ?")
+        let mr = match_result(r);
+        let coins = progression::coins(mr);
+        // Bottino deterministico: verificabile da seed della partita e account.
+        let loot = progression::loot(setup.seed ^ e.account_id as u64, mr);
+        sqlx::query("UPDATE accounts SET elo = ?, coins = coins + ? WHERE id = ?")
             .bind(after)
+            .bind(coins)
             .bind(e.account_id)
             .execute(&mut *tx)
             .await?;
+        if let Some(item) = loot {
+            db::add_item(&mut tx, e.account_id, item, 1).await?;
+        }
         sqlx::query(
-            "INSERT INTO match_players (match_id, team, account_id, result, elo_before, elo_after)
-             VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO match_players (match_id, team, account_id, result, elo_before, elo_after,
+                                        coins, loot)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(match_id)
         .bind(team as i64)
@@ -118,12 +139,16 @@ pub async fn save_match(
         .bind(r)
         .bind(elo[team])
         .bind(after)
+        .bind(coins)
+        .bind(loot.map(ItemId::key))
         .execute(&mut *tx)
         .await?;
         out[team] = Some(SeatOutcome {
             result: r,
             elo_before: elo[team],
             elo_after: after,
+            coins,
+            loot,
             rewards: Vec::new(),
         });
     }
@@ -179,6 +204,39 @@ pub async fn save_match(
                 .bind(acc)
                 .execute(&mut *tx)
                 .await?;
+            // Risonanza: RP alle abilità insegnate dall'equipaggiamento schierato.
+            let su = &setup.units[i];
+            let gained = progression::rp_award(u, match_result(result(u.team)));
+            let mut rp = Vec::new();
+            for a in progression::training(su.class, &su.equipment, &su.mastered) {
+                let current: i64 = sqlx::query_scalar(
+                    "SELECT COALESCE((SELECT rp FROM roster_abilities WHERE roster_id = ? AND ability = ?), 0)",
+                )
+                .bind(rid)
+                .bind(a.key())
+                .fetch_one(&mut *tx)
+                .await?;
+                let (new_rp, mastered_now) = progression::add_rp(a, current as i32, gained);
+                sqlx::query(
+                    "INSERT INTO roster_abilities (roster_id, ability, rp, mastered) VALUES (?, ?, ?, ?)
+                     ON CONFLICT(roster_id, ability) DO UPDATE SET rp = excluded.rp,
+                         mastered = MAX(mastered, excluded.mastered)",
+                )
+                .bind(rid)
+                .bind(a.key())
+                .bind(new_rp as i64)
+                .bind(new_rp >= a.def().master_rp)
+                .execute(&mut *tx)
+                .await?;
+                rp.push(RpGain {
+                    ability: a.key().to_string(),
+                    name: a.def().name.to_string(),
+                    gained: (new_rp as i64 - current).max(0),
+                    rp: new_rp as i64,
+                    master_rp: a.def().master_rp as i64,
+                    mastered_now,
+                });
+            }
             if let Some(o) = out[u.team as usize].as_mut() {
                 o.rewards.push(Reward {
                     roster_id: rid,
@@ -186,6 +244,7 @@ pub async fn save_match(
                     level_before: level_start,
                     level_after: progressed.level as i64,
                     xp: progressed.tally.xp_gained as i64,
+                    rp,
                 });
             }
         }

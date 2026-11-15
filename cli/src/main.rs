@@ -5,8 +5,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tactica_core::ai;
-use tactica_core::class::Class;
-use tactica_core::{Battle, BattleSetup, Event, UnitSetup};
+use tactica_core::presets;
+use tactica_core::{Battle, BattleSetup, Event};
 
 const NAMES: [[&str; 4]; 2] = [
     ["Alda", "Brenno", "Cora", "Dario"],
@@ -100,20 +100,8 @@ fn main() {
 }
 
 fn demo_setup(seed: u64) -> BattleSetup {
-    let units = (0..2u8)
-        .flat_map(|team| {
-            Class::ALL
-                .iter()
-                .enumerate()
-                .map(move |(i, &class)| UnitSetup {
-                    name: NAMES[team as usize][i].to_string(),
-                    team,
-                    class,
-                    level: 3,
-                    xp: 0,
-                })
-        })
-        .collect();
+    let mut units = presets::demo_party(0, 3, NAMES[0]);
+    units.extend(presets::demo_party(1, 3, NAMES[1]));
     BattleSetup {
         seed,
         map: None,

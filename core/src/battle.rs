@@ -228,7 +228,8 @@ impl Battle {
         let statutes = Statute::draw(&mut rng.fork(), setup.statutes);
 
         let mut next = [0usize; 2];
-        let units = setup
+        let mut init_rng = rng.fork();
+        let units: Vec<Unit> = setup
             .units
             .iter()
             .enumerate()
@@ -239,7 +240,10 @@ impl Battle {
                 let pos = spawns[next[team] % spawns.len()];
                 next[team] += 1;
                 let facing = if team == 0 { Dir::E } else { Dir::W };
-                Unit::new(i as UnitId, s, pos, facing)
+                let mut u = Unit::new(i as UnitId, s, pos, facing);
+                // Iniziativa casuale: nessuna squadra parte sempre per prima.
+                u.ct = init_rng.range(0, 30);
+                u
             })
             .collect();
 
@@ -345,7 +349,7 @@ impl Battle {
         target: Pos,
     ) -> Result<(), ActionError> {
         let u = &self.units[idx];
-        if !u.class.abilities().contains(&ability) {
+        if !u.can_use(ability) {
             return Err(ActionError::UnknownAbility);
         }
         let ab = ability.def();
@@ -412,14 +416,17 @@ impl Battle {
                 }
                 Kind::Magic => {
                     let raw = u.stats.mag * ab.power / 100 * 2;
-                    let mut dmg = raw * 100 / (100 + 5 * t.stats.res);
-                    match (ab.element, tile.terrain) {
-                        (Some(Element::Thunder), Terrain::Water) => dmg = dmg * 3 / 2,
-                        (Some(Element::Ice), Terrain::Lava) => dmg /= 2,
-                        (Some(Element::Fire), Terrain::Water) => dmg /= 2,
-                        _ => {}
-                    }
-                    (100, dmg, false)
+                    (100, raw * 100 / (100 + 5 * t.stats.res), false)
+                }
+            };
+            let amount = if heal {
+                amount
+            } else {
+                match (ab.element, tile.terrain) {
+                    (Some(Element::Thunder), Terrain::Water) => amount * 3 / 2,
+                    (Some(Element::Ice), Terrain::Lava) => amount / 2,
+                    (Some(Element::Fire), Terrain::Water) => amount / 2,
+                    _ => amount,
                 }
             };
             out.push(Outcome {
@@ -574,6 +581,19 @@ impl Battle {
                 if enemy {
                     self.units[idx].tally.kills += 1;
                     xp += 20;
+                }
+            }
+            if ab.drain && o.target != idx && self.units[idx].is_active() {
+                let u = &mut self.units[idx];
+                let gain = (amount / 2).min(u.stats.max_hp - u.hp);
+                if gain > 0 {
+                    u.hp += gain;
+                    ev.push(Event::Healed {
+                        unit: uid,
+                        by: uid,
+                        amount: gain,
+                        hp: u.hp,
+                    });
                 }
             }
         }

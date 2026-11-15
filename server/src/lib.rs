@@ -2,6 +2,7 @@
 //! WebSocket, replay e statistiche personali/globali su SQLite (WAL).
 
 pub mod api;
+pub mod armory;
 pub mod auth;
 pub mod config;
 pub mod db;

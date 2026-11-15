@@ -23,7 +23,7 @@ pub fn plan_turn(b: &Battle) -> Vec<Action> {
     if !b.has_acted() {
         for &from in &froms {
             let lava = if is_lava(b, from) { 15 } else { 0 };
-            for &ability in u.class.abilities() {
+            for ability in u.abilities() {
                 let r = ability.def().range_max;
                 for dy in -r..=r {
                     for dx in -r..=r {
@@ -116,6 +116,9 @@ fn score(
                 s -= expected * 2 + if lethal { 100 } else { 0 };
             } else {
                 s += expected + if lethal { 40 * o.hit_pct / 100 } else { 0 };
+                if ability.def().drain {
+                    s += (expected / 2).min(u.stats.max_hp - u.hp);
+                }
             }
         }
     }
@@ -145,7 +148,7 @@ fn position_for(b: &Battle, idx: usize, froms: &[Pos]) -> Pos {
             Some(p) => (Some(p), 2),
             None => (nearest_enemy(b, idx, u.pos), 4),
         },
-        Class::Vanguard => (nearest_enemy(b, idx, u.pos), 1),
+        Class::Vanguard | Class::Runeblade | Class::Warden => (nearest_enemy(b, idx, u.pos), 1),
         Class::Scout | Class::Arcanist => (nearest_enemy(b, idx, u.pos), 3),
     };
     let Some(anchor) = anchor else { return u.pos };

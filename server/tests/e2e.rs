@@ -52,6 +52,19 @@ impl Server {
         (status, res.json().await.unwrap_or(Value::Null))
     }
 
+    async fn put(&self, path: &str, token: &str, body: Value) -> (u16, Value) {
+        let res = self
+            .http
+            .put(format!("{}{path}", self.base))
+            .bearer_auth(token)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        let status = res.status().as_u16();
+        (status, res.json().await.unwrap_or(Value::Null))
+    }
+
     async fn get(&self, path: &str, token: Option<&str>) -> (u16, Value) {
         let mut req = self.http.get(format!("{}{path}", self.base));
         if let Some(t) = token {
@@ -195,6 +208,115 @@ async fn full_flow() {
     assert!(got_error);
     drop(ws);
 
+    // Progressione: kit iniziale, negozio, equipaggiamento, classi.
+    let (_, me) = srv.get("/api/me", Some(&alice)).await;
+    assert_eq!(me["coins"].as_i64(), Some(400));
+    let arcanist = &me["roster"][2];
+    assert_eq!(arcanist["class"], "arcanist");
+    assert_eq!(arcanist["equipment"], json!(["rod", "leather"]));
+    assert_eq!(arcanist["usable"], json!(["strike", "flame"]));
+    let arc_id = alice_units[2];
+    let vanguard_id = alice_units[0];
+
+    let (st, _) = srv
+        .post(
+            "/api/shop/buy",
+            Some(&alice),
+            json!({"item": "cinder_staff"}),
+        )
+        .await;
+    assert_eq!(st, 400, "oggetto solo da bottino");
+    let (st, inv) = srv
+        .post("/api/shop/buy", Some(&alice), json!({"item": "frost_rod"}))
+        .await;
+    assert_eq!(st, 200, "{inv}");
+    assert_eq!(inv["coins"].as_i64(), Some(50));
+    let (st, _) = srv
+        .post("/api/shop/buy", Some(&alice), json!({"item": "storm_rod"}))
+        .await;
+    assert_eq!(st, 409, "monete insufficienti");
+
+    let path = |id: i64, what: &str| format!("/api/roster/{id}/{what}");
+    let (st, _) = srv
+        .put(
+            &path(vanguard_id, "equipment"),
+            &alice,
+            json!({"items": ["frost_rod"]}),
+        )
+        .await;
+    assert_eq!(st, 400, "oggetto non adatto alla classe");
+    let (st, _) = srv
+        .put(
+            &path(arc_id, "equipment"),
+            &alice,
+            json!({"items": ["storm_rod"]}),
+        )
+        .await;
+    assert_eq!(st, 409, "oggetto non posseduto");
+    let (st, u) = srv
+        .put(
+            &path(arc_id, "equipment"),
+            &alice,
+            json!({"items": ["frost_rod", "leather"]}),
+        )
+        .await;
+    assert_eq!(st, 200, "{u}");
+    assert_eq!(u["usable"], json!(["strike", "flame", "frost"]));
+    assert_eq!(u["abilities"][0]["key"], "frost");
+    assert_eq!(u["abilities"][0]["training"], true);
+    // La verga iniziale è tornata nell'inventario: si può vendere.
+    let (st, inv) = srv
+        .post("/api/shop/sell", Some(&alice), json!({"item": "rod"}))
+        .await;
+    assert_eq!(st, 200, "{inv}");
+    assert_eq!(inv["coins"].as_i64(), Some(100));
+
+    let (st, _) = srv
+        .put(
+            &path(vanguard_id, "class"),
+            &alice,
+            json!({"class": "runeblade"}),
+        )
+        .await;
+    assert_eq!(st, 403, "classe avanzata non ancora sbloccata");
+    let (st, _) = srv
+        .post(
+            "/api/roster",
+            Some(&alice),
+            json!({"name": "X", "class": "warden"}),
+        )
+        .await;
+    assert_eq!(st, 400, "niente reclute in classe avanzata");
+    let (st, u) = srv
+        .put(
+            &path(vanguard_id, "class"),
+            &alice,
+            json!({"class": "scout"}),
+        )
+        .await;
+    assert_eq!(st, 200, "{u}");
+    assert_eq!(
+        u["equipment"],
+        json!(["leather"]),
+        "la spada torna nell'inventario"
+    );
+    let (st, _) = srv
+        .put(
+            &path(vanguard_id, "class"),
+            &alice,
+            json!({"class": "vanguard"}),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let (st, _) = srv
+        .put(
+            &path(vanguard_id, "equipment"),
+            &alice,
+            json!({"items": ["iron_sword", "leather"]}),
+        )
+        .await;
+    assert_eq!(st, 200);
+
     // PvE: alice contro l'IA.
     let ended = play(
         srv.ws.clone(),
@@ -209,6 +331,7 @@ async fn full_flow() {
         rewards,
         elo_before,
         elo_after,
+        coins,
         ..
     } = ended
     else {
@@ -236,8 +359,18 @@ async fn full_flow() {
         m["winner_team"].as_i64()
     );
 
-    // Il roster è progredito.
+    // Risonanza: il Gelo dell'Arcanista ha accumulato RP; monete accreditate.
+    let arc_reward = rewards.iter().find(|r| r.roster_id == arc_id).unwrap();
+    assert_eq!(arc_reward.rp.len(), 1);
+    assert_eq!(arc_reward.rp[0].ability, "frost");
+    assert!(arc_reward.rp[0].gained >= 20);
+    assert!(coins >= 40);
     let (_, me) = srv.get("/api/me", Some(&alice)).await;
+    assert_eq!(me["coins"].as_i64(), Some(100 + coins));
+    let frost = &me["roster"][2]["abilities"][0];
+    assert_eq!(frost["rp"].as_i64(), Some(arc_reward.rp[0].rp));
+
+    // Il roster è progredito.
     let xp_or_level: i64 = me["roster"]
         .as_array()
         .unwrap()

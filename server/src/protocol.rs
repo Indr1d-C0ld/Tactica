@@ -44,6 +44,19 @@ pub struct Reward {
     pub level_before: i64,
     pub level_after: i64,
     pub xp: i64,
+    /// Punti risonanza guadagnati dalle abilità in addestramento.
+    pub rp: Vec<RpGain>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RpGain {
+    pub ability: String,
+    pub name: String,
+    pub gained: i64,
+    pub rp: i64,
+    pub master_rp: i64,
+    /// Padroneggiata con questa partita.
+    pub mastered_now: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -75,6 +88,9 @@ pub enum ServerMsg {
         result: String,
         elo_before: i64,
         elo_after: i64,
+        coins: i64,
+        /// Chiave dell'oggetto ottenuto come bottino.
+        loot: Option<String>,
         rewards: Vec<Reward>,
     },
 }

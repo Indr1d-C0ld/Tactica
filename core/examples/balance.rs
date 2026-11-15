@@ -4,8 +4,8 @@
 use std::collections::BTreeMap;
 
 use tactica_core::ai;
-use tactica_core::class::Class;
-use tactica_core::{Battle, BattleSetup, UnitSetup};
+use tactica_core::presets;
+use tactica_core::{Battle, BattleSetup};
 
 fn main() {
     let n: u64 = std::env::args()
@@ -18,17 +18,8 @@ fn main() {
     let mut by_biome: BTreeMap<&str, [u32; 3]> = BTreeMap::new();
 
     for seed in 0..n {
-        let units = (0..2u8)
-            .flat_map(|team| {
-                Class::ALL.iter().map(move |&class| UnitSetup {
-                    name: String::new(),
-                    team,
-                    class,
-                    level: 3,
-                    xp: 0,
-                })
-            })
-            .collect();
+        let mut units = presets::demo_party(0, 3, ["", "", "", ""]);
+        units.extend(presets::demo_party(1, 3, ["", "", "", ""]));
         let (mut b, _) = Battle::new(&BattleSetup {
             seed,
             map: None,

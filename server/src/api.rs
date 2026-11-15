@@ -1,14 +1,16 @@
 //! Rotte HTTP: account, roster, profili, classifiche, statistiche, replay.
 
 use axum::extract::{Path, Query, State};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use tactica_core::class::Class;
+use tactica_core::item::starter_kit;
 
 use crate::AppState;
+use crate::armory;
 use crate::auth::{self, AuthUser};
-use crate::db::{self, MAX_ROSTER, RosterUnit, now};
+use crate::db::{self, MAX_ROSTER, RosterUnit, items_json, now};
 use crate::error::{ApiError, ApiResult};
 use crate::stats;
 use crate::ws;
@@ -20,9 +22,15 @@ pub fn routes() -> Router<AppState> {
         .route("/api/login", post(auth::login))
         .route("/api/logout", post(auth::logout))
         .route("/api/me", get(me))
-        .route("/api/classes", get(classes))
+        .route("/api/classes", get(armory::classes))
+        .route("/api/items", get(armory::items))
+        .route("/api/inventory", get(armory::inventory))
+        .route("/api/shop/buy", post(armory::buy))
+        .route("/api/shop/sell", post(armory::sell))
         .route("/api/roster", get(roster).post(recruit))
         .route("/api/roster/{id}", delete(dismiss))
+        .route("/api/roster/{id}/equipment", put(armory::equip))
+        .route("/api/roster/{id}/class", put(armory::change_class))
         .route("/api/players/{name}", get(player))
         .route("/api/leaderboard", get(leaderboard))
         .route("/api/stats", get(global))
@@ -35,11 +43,12 @@ struct Me {
     id: i64,
     username: String,
     elo: i64,
+    coins: i64,
     roster: Vec<RosterUnit>,
 }
 
 async fn me(State(s): State<AppState>, user: AuthUser) -> ApiResult<Json<Me>> {
-    let elo = sqlx::query_scalar("SELECT elo FROM accounts WHERE id = ?")
+    let (elo, coins): (i64, i64) = sqlx::query_as("SELECT elo, coins FROM accounts WHERE id = ?")
         .bind(user.id)
         .fetch_one(&s.db)
         .await?;
@@ -47,28 +56,9 @@ async fn me(State(s): State<AppState>, user: AuthUser) -> ApiResult<Json<Me>> {
         id: user.id,
         username: user.username,
         elo,
+        coins,
         roster: db::roster(&s.db, user.id).await?,
     }))
-}
-
-#[derive(Serialize)]
-struct ClassInfo {
-    key: &'static str,
-    name: &'static str,
-    abilities: Vec<&'static str>,
-}
-
-async fn classes() -> Json<Vec<ClassInfo>> {
-    Json(
-        Class::ALL
-            .iter()
-            .map(|c| ClassInfo {
-                key: c.key(),
-                name: c.name(),
-                abilities: c.abilities().iter().map(|a| a.def().name).collect(),
-            })
-            .collect(),
-    )
 }
 
 async fn roster(State(s): State<AppState>, user: AuthUser) -> ApiResult<Json<Vec<RosterUnit>>> {
@@ -92,6 +82,11 @@ async fn recruit(
     }
     let class =
         Class::from_key(&r.class).ok_or_else(|| ApiError::bad_request("classe sconosciuta"))?;
+    if !class.is_base() {
+        return Err(ApiError::bad_request(
+            "le reclute partono da una classe base; le avanzate si sbloccano con la padronanza",
+        ));
+    }
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM roster WHERE account_id = ?")
         .bind(user.id)
         .fetch_one(&s.db)
@@ -101,37 +96,41 @@ async fn recruit(
             "massimo {MAX_ROSTER} unità nel roster"
         )));
     }
-    let id =
-        sqlx::query("INSERT INTO roster (account_id, name, class, created_at) VALUES (?, ?, ?, ?)")
-            .bind(user.id)
-            .bind(&name)
-            .bind(class.key())
-            .bind(now())
-            .execute(&s.db)
-            .await?
-            .last_insert_rowid();
-    Ok(Json(RosterUnit {
-        id,
-        name,
-        class: class.key().to_string(),
-        level: 1,
-        xp: 0,
-    }))
+    let id = sqlx::query(
+        "INSERT INTO roster (account_id, name, class, equipment, created_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(user.id)
+    .bind(&name)
+    .bind(class.key())
+    .bind(items_json(&starter_kit(class)))
+    .bind(now())
+    .execute(&s.db)
+    .await?
+    .last_insert_rowid();
+    db::roster_unit(&s.db, user.id, id)
+        .await?
+        .map(Json)
+        .ok_or_else(|| ApiError::internal("recluta appena creata non trovata"))
 }
 
 async fn dismiss(State(s): State<AppState>, user: AuthUser, Path(id): Path<i64>) -> ApiResult<()> {
     if s.busy.lock().unwrap().contains(&user.id) {
         return Err(ApiError::conflict("non durante una partita"));
     }
-    let n = sqlx::query("DELETE FROM roster WHERE id = ? AND account_id = ?")
+    let unit = db::roster_unit(&s.db, user.id, id)
+        .await?
+        .ok_or_else(|| ApiError::not_found("unità non trovata"))?;
+    // L'equipaggiamento torna nell'inventario.
+    let mut tx = s.db.begin().await?;
+    for item in unit.items() {
+        db::add_item(&mut tx, user.id, item, 1).await?;
+    }
+    sqlx::query("DELETE FROM roster WHERE id = ? AND account_id = ?")
         .bind(id)
         .bind(user.id)
-        .execute(&s.db)
-        .await?
-        .rows_affected();
-    if n == 0 {
-        return Err(ApiError::not_found("unità non trovata"));
-    }
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
     Ok(())
 }
 

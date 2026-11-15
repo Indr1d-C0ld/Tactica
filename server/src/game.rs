@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use tactica_core::ai;
-use tactica_core::{Action, Battle, BattleSetup, Event, UnitSetup};
+use tactica_core::{Action, Battle, BattleSetup, Event};
 use tokio::sync::mpsc;
 use tokio::time::{Instant, sleep, timeout_at};
 
@@ -50,33 +50,24 @@ fn random_seed() -> u64 {
 
 /// Avvia una partita in un task dedicato.
 pub fn start_match(state: AppState, mode: Mode, seats: [Seat; 2]) {
-    // Squadre: umani dal roster; l'IA rispecchia classi e livelli dell'avversario.
+    // Squadre: umani dal roster; l'IA rispecchia classi, livelli ed equipaggiamento dell'avversario.
     let mut units = Vec::new();
     let mut roster_ids = Vec::new();
     for team in 0..2u8 {
         match &seats[team as usize] {
             Seat::Human(e) => {
                 for r in &e.units {
-                    units.push(UnitSetup {
-                        name: r.name.clone(),
-                        team,
-                        class: r.class(),
-                        level: r.level as i32,
-                        xp: r.xp as i32,
-                    });
+                    units.push(r.to_setup(team));
                     roster_ids.push(Some(r.id));
                 }
             }
             Seat::Ai => {
                 let other = seats[1 - team as usize].human().expect("almeno un umano");
                 for (i, r) in other.units.iter().enumerate() {
-                    units.push(UnitSetup {
-                        name: AI_NAMES[i % AI_NAMES.len()].to_string(),
-                        team,
-                        class: r.class(),
-                        level: r.level as i32,
-                        xp: 0,
-                    });
+                    let mut u = r.to_setup(team);
+                    u.name = AI_NAMES[i % AI_NAMES.len()].to_string();
+                    u.xp = 0;
+                    units.push(u);
                     roster_ids.push(None);
                 }
             }
@@ -259,6 +250,8 @@ async fn run(
                         result: o.result.to_string(),
                         elo_before: o.elo_before,
                         elo_after: o.elo_after,
+                        coins: o.coins,
+                        loot: o.loot.map(|i| i.key().to_string()),
                         rewards: o.rewards.clone(),
                     });
                 }

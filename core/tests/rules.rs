@@ -2,22 +2,14 @@ use tactica_core::ability::AbilityId;
 use tactica_core::ai;
 use tactica_core::class::Class;
 use tactica_core::map::{Biome, Map, MapParams};
+use tactica_core::presets;
 use tactica_core::rng::Rng;
 use tactica_core::statute::Statute;
 use tactica_core::{Action, ActionError, Battle, BattleSetup, Event, Pos, UnitSetup};
 
 fn setup(seed: u64) -> BattleSetup {
-    let units = (0..2u8)
-        .flat_map(|team| {
-            Class::ALL.iter().map(move |&class| UnitSetup {
-                name: format!("{team}-{}", class.name()),
-                team,
-                class,
-                level: 3,
-                xp: 0,
-            })
-        })
-        .collect();
+    let mut units = presets::demo_party(0, 3, ["A", "B", "C", "D"]);
+    units.extend(presets::demo_party(1, 3, ["a", "b", "c", "d"]));
     BattleSetup {
         seed,
         map: None,
@@ -113,20 +105,8 @@ fn violating_a_statute_suspends_then_expels() {
         spawns_per_team: 2,
     };
     let units = vec![
-        UnitSetup {
-            name: "M".into(),
-            team: 0,
-            class: Class::Mender,
-            level: 1,
-            xp: 0,
-        },
-        UnitSetup {
-            name: "X".into(),
-            team: 1,
-            class: Class::Vanguard,
-            level: 1,
-            xp: 0,
-        },
+        UnitSetup::new("M", 0, Class::Mender, 1),
+        UnitSetup::new("X", 1, Class::Vanguard, 1),
     ];
     // Cerca un seed in cui lo statuto estratto è NoHealing e tocca al Guaritore.
     let (mut b, _) = (0..10_000)
@@ -219,4 +199,74 @@ fn concede_ends_battle_and_replays() {
         r.apply(a).unwrap();
     }
     assert_eq!(r.state_hash(), b.state_hash());
+}
+
+#[test]
+fn equipment_teaches_and_boosts() {
+    use tactica_core::item::ItemId;
+    use tactica_core::unit::{Unit, stats_with};
+    use tactica_core::{Dir, Pos};
+    let bare = UnitSetup::new("A", 0, Class::Arcanist, 5);
+    let geared = bare
+        .clone()
+        .with_equipment(&[ItemId::FrostRod, ItemId::Robe]);
+    let u0 = Unit::new(0, &bare, Pos::new(0, 0), Dir::E);
+    let u1 = Unit::new(0, &geared, Pos::new(0, 0), Dir::E);
+    assert!(!u0.can_use(AbilityId::Frost));
+    assert!(u1.can_use(AbilityId::Frost));
+    assert_eq!(u1.stats.mag, u0.stats.mag + 4);
+    assert_eq!(
+        u1.stats,
+        stats_with(Class::Arcanist, 5, &[ItemId::FrostRod, ItemId::Robe])
+    );
+    // Padroneggiata: resta anche senza l'oggetto, ma solo nella propria classe.
+    let mut m = bare.clone();
+    m.mastered = vec![AbilityId::Frost];
+    assert!(Unit::new(0, &m, Pos::new(0, 0), Dir::E).can_use(AbilityId::Frost));
+    m.class = Class::Mender;
+    assert!(!Unit::new(0, &m, Pos::new(0, 0), Dir::E).can_use(AbilityId::Frost));
+    // Oggetti non adatti alla classe vengono ignorati.
+    let wrong = UnitSetup::new("V", 0, Class::Vanguard, 1).with_equipment(&[ItemId::FrostRod]);
+    assert!(
+        Unit::new(0, &wrong, Pos::new(0, 0), Dir::E)
+            .equipment
+            .is_empty()
+    );
+}
+
+#[test]
+fn advanced_classes_fight() {
+    use tactica_core::item::ItemId;
+    let units = vec![
+        UnitSetup::new("R", 0, Class::Runeblade, 6)
+            .with_equipment(&[ItemId::RuneSaber, ItemId::Chainmail]),
+        UnitSetup::new("W", 0, Class::Warden, 6)
+            .with_equipment(&[ItemId::VotiveMace, ItemId::WardenPlate]),
+        UnitSetup::new("V", 1, Class::Vanguard, 6).with_equipment(&[ItemId::Greatblade]),
+        UnitSetup::new("S", 1, Class::Scout, 6).with_equipment(&[ItemId::Hailbow]),
+    ];
+    let mut used = std::collections::HashSet::new();
+    for seed in 0..30 {
+        let (mut b, _) = Battle::new(&BattleSetup {
+            seed,
+            map: None,
+            units: units.clone(),
+            statutes: 1,
+        });
+        let (_, ev) = ai::autoplay(&mut b, 10_000);
+        assert!(b.is_over());
+        for e in ev {
+            if let Event::AbilityUsed { ability, .. } = e {
+                used.insert(ability);
+            }
+        }
+    }
+    for a in [
+        AbilityId::DrainBlade,
+        AbilityId::RuneEdge,
+        AbilityId::Judgment,
+        AbilityId::Volley,
+    ] {
+        assert!(used.contains(&a), "{a:?} mai usata");
+    }
 }
