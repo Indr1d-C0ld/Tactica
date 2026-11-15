@@ -12,6 +12,7 @@ use tactica_core::{Action, Battle, BattleSetup};
 use crate::db::{self, RosterUnit, now};
 use crate::game::{MissionInfo, Player};
 use crate::protocol::{Mode, Reward, RpGain};
+use crate::wars::{self, WarInfo};
 use crate::{clans, seasons};
 
 pub const ELO_K: f64 = 32.0;
@@ -68,6 +69,7 @@ pub async fn save_match(
     started: i64,
     season_days: i64,
     mission: Option<&MissionInfo>,
+    war: Option<&WarInfo>,
 ) -> anyhow::Result<SavedMatch> {
     let winner = battle.winner().flatten();
     let result = |team: u8| match winner {
@@ -146,6 +148,9 @@ pub async fn save_match(
         let clan = clans::membership(&mut tx, e.account_id).await?;
         let mut coins = match (mode, mr, mission) {
             (Mode::Coop, MatchResult::Win, Some(m)) => coop_win_coins(m.difficulty),
+            (Mode::War, MatchResult::Win, _) => wars::WAR_WIN_COINS,
+            (Mode::War, MatchResult::Loss, _) => wars::WAR_LOSS_COINS,
+            (Mode::War, MatchResult::Draw, _) => wars::WAR_DRAW_COINS,
             _ => progression::coins(mr),
         };
         if clan.is_some() {
@@ -181,12 +186,14 @@ pub async fn save_match(
                         0
                     }
             }
+            (Mode::War, "win") => wars::CLAN_POINTS_WAR_WIN,
             _ => 0,
         };
         let clan_points = if clan.is_some() { clan_points } else { 0 };
         if let Some(c) = &clan {
             // In cooperativa il clan prende i punti una volta sola per partita.
-            if mode != Mode::Coop || clans_awarded.insert(c.clan_id) {
+            // In guerra i punti li assegna `wars::record_result`, una volta per clan.
+            if mode != Mode::War && (mode != Mode::Coop || clans_awarded.insert(c.clan_id)) {
                 seasons::add_clan_points(&mut tx, &season, c.clan_id, clan_points, r == "win")
                     .await?;
             }
@@ -334,6 +341,9 @@ pub async fn save_match(
         }
     }
 
+    if let Some(w) = war {
+        wars::record_result(&mut tx, w, winner, match_id, &season).await?;
+    }
     tx.commit().await?;
     Ok(SavedMatch {
         match_id,

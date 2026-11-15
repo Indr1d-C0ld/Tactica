@@ -20,6 +20,8 @@ pub struct Config {
     pub season_days: i64,
     /// Giocatori minimi per avviare una missione cooperativa.
     pub coop_min_players: usize,
+    /// Giocatori minimi per lato in una guerra fra clan.
+    pub war_min_players: usize,
 }
 
 impl Config {
@@ -38,6 +40,7 @@ impl Config {
             backup_keep: num("TACTICA_BACKUP_KEEP", 14) as usize,
             season_days: num("TACTICA_SEASON_DAYS", 28).max(1) as i64,
             coop_min_players: num("TACTICA_COOP_MIN_PLAYERS", 2).clamp(1, 6) as usize,
+            war_min_players: num("TACTICA_WAR_MIN_PLAYERS", 1).clamp(1, 6) as usize,
         }
     }
 }

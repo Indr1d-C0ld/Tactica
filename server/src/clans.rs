@@ -75,16 +75,20 @@ pub struct ClanSummary {
     open: bool,
     members: i64,
     season_points: i64,
+    rating: i64,
+    war_wins: i64,
+    war_losses: i64,
 }
 
 pub async fn list(State(s): State<AppState>) -> ApiResult<Json<Vec<ClanSummary>>> {
     let mut conn = s.db.acquire().await?;
     let season = seasons::current(&mut conn, s.config.season_days).await?;
-    let rows = sqlx::query_as::<_, (String, String, String, bool, i64, i64)>(
+    let rows = sqlx::query_as::<_, (String, String, String, bool, i64, i64, i64, i64, i64)>(
         "SELECT c.tag, c.name, c.motto, c.open,
                 (SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = c.id),
-                COALESCE((SELECT points FROM clan_season_points p WHERE p.clan_id = c.id AND p.season_id = ?), 0) AS pts
-         FROM clans c ORDER BY pts DESC, c.name LIMIT 100",
+                COALESCE((SELECT points FROM clan_season_points p WHERE p.clan_id = c.id AND p.season_id = ?), 0) AS pts,
+                c.rating, c.war_wins, c.war_losses
+         FROM clans c ORDER BY pts DESC, c.rating DESC, c.name LIMIT 100",
     )
     .bind(season.id)
     .fetch_all(&mut *conn)
@@ -92,13 +96,18 @@ pub async fn list(State(s): State<AppState>) -> ApiResult<Json<Vec<ClanSummary>>
     Ok(Json(
         rows.into_iter()
             .map(
-                |(tag, name, motto, open, members, season_points)| ClanSummary {
-                    tag,
-                    name,
-                    motto,
-                    open,
-                    members,
-                    season_points,
+                |(tag, name, motto, open, members, season_points, rating, war_wins, war_losses)| {
+                    ClanSummary {
+                        tag,
+                        name,
+                        motto,
+                        open,
+                        members,
+                        season_points,
+                        rating,
+                        war_wins,
+                        war_losses,
+                    }
                 },
             )
             .collect(),
@@ -131,14 +140,19 @@ pub struct ClanDetail {
     season_points: i64,
     season_wins: i64,
     history: Vec<PastSeason>,
+    rating: i64,
+    war_wins: i64,
+    war_losses: i64,
+    war_draws: i64,
 }
 
 pub async fn detail(
     State(s): State<AppState>,
     Path(tag): Path<String>,
 ) -> ApiResult<Json<ClanDetail>> {
-    let row = sqlx::query_as::<_, (i64, String, String, String, bool, i64)>(
-        "SELECT id, tag, name, motto, open, created_at FROM clans WHERE tag = ?",
+    let row = sqlx::query_as::<_, (i64, String, String, String, bool, i64, i64, i64, i64, i64)>(
+        "SELECT id, tag, name, motto, open, created_at, rating, war_wins, war_losses, war_draws
+         FROM clans WHERE tag = ?",
     )
     .bind(&tag)
     .fetch_optional(&s.db)
@@ -185,6 +199,10 @@ pub async fn detail(
         season_points,
         season_wins,
         history,
+        rating: row.6,
+        war_wins: row.7,
+        war_losses: row.8,
+        war_draws: row.9,
     }))
 }
 

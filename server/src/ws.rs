@@ -14,7 +14,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::game::{self, InputKind, MatchInput, Seat};
 use crate::lobby::{Entrant, ToConn};
 use crate::protocol::{ClientMsg, Mode, ServerMsg};
-use crate::{clans, db};
+use crate::{clans, db, wars};
 
 pub const MAX_PARTY: usize = 4;
 
@@ -118,6 +118,9 @@ fn leave_lobby(state: &AppState, conn_id: u64) {
     if let Some(room) = lobby.leave_room(conn_id) {
         room.notify(state.config.coop_min_players);
     }
+    if let Some(room) = lobby.leave_war(conn_id) {
+        room.notify(state.config.war_min_players);
+    }
 }
 
 async fn handle(state: &AppState, conn: &mut Conn, msg: ClientMsg) {
@@ -178,6 +181,15 @@ async fn handle(state: &AppState, conn: &mut Conn, msg: ClientMsg) {
                 Err(e) => conn.error(e),
             }
         }
+        ClientMsg::WarJoin { war, units } => war_join(state, conn, war, units).await,
+        ClientMsg::WarLeave => {
+            let mut lobby = state.lobby.lock().unwrap();
+            if let Some(room) = lobby.leave_war(conn.id) {
+                room.notify(state.config.war_min_players);
+            }
+            conn.send(ServerMsg::WarRoom { room: None });
+        }
+        ClientMsg::WarReady { ready } => war_ready(state, conn, ready).await,
         ClientMsg::RoomList => {
             let mut c = match state.db.acquire().await {
                 Ok(c) => c,
@@ -251,8 +263,8 @@ async fn room_enter(
     let min = state.config.coop_min_players;
     let mut lobby = state.lobby.lock().unwrap();
     lobby.cancel(conn.id);
-    if lobby.room_of(conn.id).is_some() {
-        return conn.error("sei già in una stanza");
+    if lobby.is_engaged(conn.id) {
+        return conn.error("sei già in una stanza o in uno schieramento");
     }
     match room {
         None => lobby
@@ -270,8 +282,11 @@ async fn queue(state: &AppState, conn: &mut Conn, mode: Mode, ids: Vec<i64>) {
         Ok(e) => e,
         Err(m) => return conn.error(m),
     };
-    if state.lobby.lock().unwrap().room_of(conn.id).is_some() {
-        return conn.error("esci prima dalla stanza di missione");
+    {
+        let lobby = state.lobby.lock().unwrap();
+        if lobby.room_of(conn.id).is_some() || lobby.war_room_of(conn.id).is_some() {
+            return conn.error("esci prima dalla stanza o dallo schieramento");
+        }
     }
     match mode {
         Mode::Pve => game::start_match(state.clone(), mode, [Seat::Human(entrant), Seat::Ai]),
@@ -285,5 +300,76 @@ async fn queue(state: &AppState, conn: &mut Conn, mode: Mode, ids: Vec<i64>) {
             }
         }
         Mode::Coop => conn.error("le missioni si avviano da una stanza di clan"),
+        Mode::War => conn.error("le guerre si combattono dallo schieramento del clan"),
+    }
+}
+
+async fn war_join(state: &AppState, conn: &mut Conn, war: i64, ids: Vec<i64>) {
+    let e = match entrant(state, conn, &ids).await {
+        Ok(e) => e,
+        Err(m) => return conn.error(m),
+    };
+    let mut c = match state.db.acquire().await {
+        Ok(c) => c,
+        Err(_) => return conn.error("errore interno"),
+    };
+    let (info, side, _role) = match wars::for_join(&mut c, war, conn.user.id).await {
+        Ok(v) => v,
+        Err(m) => return conn.error(m),
+    };
+    let min = state.config.war_min_players;
+    let mut lobby = state.lobby.lock().unwrap();
+    lobby.cancel(conn.id);
+    if lobby.is_engaged(conn.id) {
+        return conn.error("sei già in una stanza o in uno schieramento");
+    }
+    match lobby.join_war(info, side, e) {
+        Ok(room) => room.notify(min),
+        Err(m) => conn.error(m),
+    }
+}
+
+async fn war_ready(state: &AppState, conn: &mut Conn, ready: bool) {
+    let war = state.lobby.lock().unwrap().war_room_of(conn.id);
+    let Some(war) = war else {
+        return conn.error("non sei schierato");
+    };
+    let mut c = match state.db.acquire().await {
+        Ok(c) => c,
+        Err(_) => return conn.error("errore interno"),
+    };
+    match wars::for_join(&mut c, war, conn.user.id).await {
+        Ok((_, _, role)) if role != "member" => {}
+        Ok(_) => return conn.error("solo capo e ufficiali danno il via"),
+        Err(m) => return conn.error(m),
+    }
+    let min = state.config.war_min_players;
+    let started = {
+        let mut lobby = state.lobby.lock().unwrap();
+        match lobby.war_ready(conn.id, ready, min) {
+            Ok(Some(room)) => Some(room),
+            Ok(None) => {
+                if let Some(r) = lobby.war_room(war) {
+                    r.notify(min);
+                }
+                None
+            }
+            Err(m) => return conn.error(m),
+        }
+    };
+    if let Some(room) = started {
+        let busy = state.busy.lock().unwrap().clone();
+        let sides = room.sides.map(|side| {
+            side.into_iter()
+                .filter(|m| !busy.contains(&m.account_id))
+                .collect::<Vec<_>>()
+        });
+        if sides.iter().any(Vec::is_empty) {
+            return conn.error("uno schieramento è rimasto vuoto");
+        }
+        for m in sides.iter().flatten() {
+            m.send(ServerMsg::WarRoom { room: None });
+        }
+        game::start_war(state.clone(), room.info, sides);
     }
 }

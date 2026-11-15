@@ -19,6 +19,7 @@ use crate::db::now;
 use crate::lobby::{Entrant, ToConn};
 use crate::protocol::{Mode, ServerMsg};
 use crate::stats;
+use crate::wars::{self, WarInfo};
 
 pub struct MatchInput {
     pub seat: usize,
@@ -115,7 +116,7 @@ pub fn start_match(state: AppState, mode: Mode, seats: [Seat; 2]) {
         statutes: STATUTES_PER_BATTLE,
         objective: Objective::Rout,
     };
-    launch(state, mode, setup, players, roster_ids, None);
+    launch(state, mode, setup, players, roster_ids, None, None);
 }
 
 /// Missione cooperativa: i membri della stanza (stesso clan) contro l'IA.
@@ -168,7 +169,63 @@ pub fn start_mission(state: AppState, members: Vec<Entrant>, difficulty: u8) {
         statutes: mission.statutes,
         objective,
     };
-    launch(state, Mode::Coop, setup, players, roster_ids, Some(info));
+    launch(
+        state,
+        Mode::Coop,
+        setup,
+        players,
+        roster_ids,
+        Some(info),
+        None,
+    );
+}
+
+/// Guerra fra clan: squadra 0 = sfidante, squadra 1 = sfidato; 6 posti per lato.
+pub fn start_war(state: AppState, info: WarInfo, sides: [Vec<Entrant>; 2]) {
+    let mut units: Vec<UnitSetup> = Vec::new();
+    let mut roster_ids = Vec::new();
+    let mut players = Vec::new();
+    for (team, side) in sides.into_iter().enumerate() {
+        let quota = (COOP_SLOTS / side.len().max(1)).max(1);
+        for mut e in side {
+            e.units.truncate(quota);
+            let start = units.len();
+            for r in &e.units {
+                units.push(r.to_setup(team as u8));
+                roster_ids.push(Some(r.id));
+            }
+            players.push(Player {
+                team: team as u8,
+                units: (start..units.len()).collect(),
+                connected: true,
+                entrant: Some(e),
+            });
+        }
+    }
+    let setup = BattleSetup {
+        seed: random_seed(),
+        map: None,
+        units,
+        statutes: STATUTES_PER_BATTLE,
+        objective: Objective::Rout,
+    };
+    let db = state.db.clone();
+    let war_id = info.id;
+    tokio::spawn(async move {
+        if let Err(e) = wars::set_status(&db, war_id, "live").await {
+            tracing::error!("stato guerra: {e}");
+        }
+    });
+    tracing::info!(war = war_id, "guerra iniziata");
+    launch(
+        state,
+        Mode::War,
+        setup,
+        players,
+        roster_ids,
+        None,
+        Some(info),
+    );
 }
 
 fn launch(
@@ -178,6 +235,7 @@ fn launch(
     players: Vec<Player>,
     roster_ids: Vec<Option<i64>>,
     mission: Option<MissionInfo>,
+    war: Option<WarInfo>,
 ) {
     let (tx, rx) = mpsc::channel(64);
     {
@@ -194,7 +252,9 @@ fn launch(
         }
     }
     drop(tx);
-    tokio::spawn(run(state, mode, players, setup, roster_ids, mission, rx));
+    tokio::spawn(run(
+        state, mode, players, setup, roster_ids, mission, war, rx,
+    ));
 }
 
 fn broadcast(players: &[Player], msg: &ServerMsg) {
@@ -236,6 +296,7 @@ fn owner_of(players: &[Player], unit: usize) -> usize {
         .unwrap_or(0)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run(
     state: AppState,
     mode: Mode,
@@ -243,6 +304,7 @@ async fn run(
     setup: BattleSetup,
     roster_ids: Vec<Option<i64>>,
     mission: Option<MissionInfo>,
+    war: Option<WarInfo>,
     mut rx: mpsc::Receiver<MatchInput>,
 ) {
     let started = now();
@@ -273,6 +335,7 @@ async fn run(
                 allies: names(true),
                 mine: p.units.clone(),
                 mission: mission.clone(),
+                war: war.clone(),
                 snapshot: battle.snapshot(),
             });
         }
@@ -347,6 +410,7 @@ async fn run(
         started,
         state.config.season_days,
         mission.as_ref(),
+        war.as_ref(),
     )
     .await;
     match saved {
@@ -417,9 +481,9 @@ fn handle_input(
         InputKind::Leave => {
             players[seat].connected = false;
             let humans_left = players.iter().any(|p| p.team == team && p.connected);
-            // In cooperativa le unità passano all'IA; la squadra si arrende solo
-            // quando non resta nessun umano. Altrove abbandonare è una resa.
-            if mode != Mode::Coop || !humans_left {
+            // In cooperativa e in guerra le unità passano all'IA; la squadra si
+            // arrende solo quando non resta nessun umano. Altrove abbandonare è una resa.
+            if !matches!(mode, Mode::Coop | Mode::War) || !humans_left {
                 let a = Action::Concede(team);
                 if let Ok(ev) = battle.apply(a) {
                     actions.push(a);

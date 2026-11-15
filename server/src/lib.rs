@@ -13,6 +13,7 @@ pub mod lobby;
 pub mod protocol;
 pub mod seasons;
 pub mod stats;
+pub mod wars;
 pub mod ws;
 
 use std::collections::HashSet;
@@ -37,6 +38,7 @@ pub struct AppState {
 impl AppState {
     pub async fn new(config: Config) -> anyhow::Result<Self> {
         let db = db::connect(&config.db_url).await?;
+        wars::recover(&db).await?;
         Ok(AppState {
             db,
             config: Arc::new(config),

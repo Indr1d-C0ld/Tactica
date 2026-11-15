@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use tactica_core::{Action, Event, Snapshot};
 
 pub use crate::game::MissionInfo;
+pub use crate::wars::WarInfo;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -17,6 +18,8 @@ pub enum Mode {
     Pvp,
     /// Missione cooperativa di clan contro l'IA.
     Coop,
+    /// Guerra fra clan.
+    War,
 }
 
 impl Mode {
@@ -25,6 +28,7 @@ impl Mode {
             Mode::Pve => "pve",
             Mode::Pvp => "pvp",
             Mode::Coop => "coop",
+            Mode::War => "war",
         }
     }
 }
@@ -50,6 +54,28 @@ pub enum ClientMsg {
     RoomStart,
     /// Stanze aperte del proprio clan.
     RoomList,
+    /// Si schiera in una guerra accettata del proprio clan.
+    WarJoin { war: i64, units: Vec<i64> },
+    /// Lascia lo schieramento.
+    WarLeave,
+    /// Capo o ufficiale: il proprio schieramento è pronto (o non più).
+    WarReady { ready: bool },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WarSide {
+    pub tag: String,
+    pub name: String,
+    pub members: Vec<RoomMember>,
+    pub ready: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WarRoomView {
+    pub war: i64,
+    /// 0: clan sfidante, 1: clan sfidato.
+    pub sides: Vec<WarSide>,
+    pub min_players: usize,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -94,6 +120,7 @@ pub struct RpGain {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
 pub enum ServerMsg {
     Welcome {
         username: String,
@@ -113,7 +140,13 @@ pub enum ServerMsg {
         mine: Vec<usize>,
         #[serde(default)]
         mission: Option<MissionInfo>,
+        #[serde(default)]
+        war: Option<WarInfo>,
         snapshot: Snapshot,
+    },
+    /// Stato dello schieramento di guerra (`None`: non sei schierato).
+    WarRoom {
+        room: Option<WarRoomView>,
     },
     /// Stato della propria stanza di missione (`None`: non sei in una stanza).
     Room {

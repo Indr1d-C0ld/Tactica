@@ -22,6 +22,10 @@ var _room: Dictionary = {}
 var _rooms: Array = []
 var _coop: VBoxContainer
 var _difficulty := 1
+var _war_room: Dictionary = {}
+var _wars_box: VBoxContainer
+var _my_clan: Dictionary = {}
+var _my_role := ""
 var _queued := false
 
 
@@ -198,6 +202,11 @@ func _on_ws(msg: Dictionary, raw: String) -> void:
 			_render_coop()
 			if main.autoplay():
 				_autoplay_room()
+		"war_room":
+			_war_room = msg["room"] if msg.get("room") is Dictionary else {}
+			_render_war_room()
+			if main.autoplay():
+				_autoplay_war_room()
 		"rooms":
 			_rooms = msg.get("rooms", [])
 			_render_coop()
@@ -430,13 +439,13 @@ func _autoplay() -> void:
 			i += 1
 		await reload()
 	# Fonda un clan dimostrativo, se possibile.
-	if me.get("clan") == null and int(me["coins"]) >= 200 and str(main.opts.get("mode", "")) != "coop":
+	if me.get("clan") == null and int(me["coins"]) >= 200 and not (str(main.opts.get("mode", "")) in ["coop", "war"]):
 		await Net.post_json("/api/clans", {"name": "Compagnia di " + str(me["username"]), "tag": str(me["username"]).substr(0, 4).to_upper(), "motto": "Pixel e onore"})
 		await reload()
 	# Compra e equipaggia un oggetto che insegna un'abilità, se possibile.
 	for u in me["roster"]:
 		if str(u["class"]) == "arcanist" and not ("frost_rod" in u["equipment"]) and int(inventory.get("coins", 0)) >= 350 \
-				and str(main.opts.get("mode", "")) != "coop":
+				and not (str(main.opts.get("mode", "")) in ["coop", "war"]):
 			await Net.post_json("/api/shop/buy", {"item": "frost_rod"})
 			await Net.put_json("/api/roster/%d/equipment" % int(u["id"]), {"items": ["frost_rod", "leather"]})
 			await reload()
@@ -447,6 +456,9 @@ func _autoplay() -> void:
 		await main.shot(tab[1])
 	if str(main.opts.get("mode", "")) == "coop":
 		await _autoplay_coop_setup()
+		return
+	if str(main.opts.get("mode", "")) == "war":
+		await _autoplay_war_setup()
 		return
 	_tabs.current_tab = 0
 	var n := 0
@@ -606,7 +618,10 @@ func _build_my_clan(tag: String, role: String) -> void:
 		set_row.add_child(UI.button("Rendi su invito" if bool(c["open"]) else "Apri a tutti", func() -> void: _clan_put(tag, {"open": not bool(c["open"])})))
 		_clan.add_child(set_row)
 	_clan.add_child(UI.button("Lascia il clan", func() -> void: _clan_post("/api/clans/leave", {}, "Hai lasciato il clan")))
+	_my_clan = c
+	_my_role = role
 	_coop_section()
+	await _war_section()
 
 
 func _clan_post(path: String, body: Dictionary, ok: String) -> void:
@@ -689,3 +704,147 @@ func _autoplay_room() -> void:
 			Net.ws_send({"type": "room_list"})
 		else:
 			Net.ws_send({"type": "room_join", "room": int(_rooms[0]["id"]), "units": _picked_ids()})
+
+
+# ------------------------------------------------------------------ guerre fra clan
+
+func _war_section() -> void:
+	_clan.add_child(HSeparator.new())
+	_clan.add_child(UI.label("Guerre fra clan", 18, UI.ACCENT))
+	_clan.add_child(UI.label("ELO del clan %d · guerre vinte %d, perse %d, pari %d. Le guerre cambiano l'ELO dei clan, non quello personale; il vincitore prende 5 punti stagionali e ogni partecipante monete (200 se vince, 60 se perde)." % [
+		int(_my_clan.get("rating", 1000)), int(_my_clan.get("war_wins", 0)), int(_my_clan.get("war_losses", 0)), int(_my_clan.get("war_draws", 0))], 13, UI.MUTED))
+	var captain := _my_role != "member"
+	if captain:
+		var r := await Net.get_json("/api/clans")
+		var targets := []
+		if int(r.status) == 200:
+			for c in r.data:
+				if str(c["tag"]) != str(_my_clan["tag"]):
+					targets.append(["[%s] %s — ELO %d" % [c["tag"], c["name"], int(c["rating"])], str(c["tag"])])
+		if not targets.is_empty():
+			var row := UI.hbox()
+			var ob := UI.option(targets)
+			row.add_child(ob)
+			row.add_child(UI.button("Dichiara guerra", func() -> void:
+				_clan_post("/api/wars", {"tag": str(ob.get_selected_metadata())}, "Guerra dichiarata")))
+			_clan.add_child(row)
+	_wars_box = UI.vbox(4)
+	_clan.add_child(_wars_box)
+	await _render_wars()
+
+
+func _render_wars() -> void:
+	if _wars_box == null or not is_instance_valid(_wars_box):
+		return
+	UI.clear(_wars_box)
+	var r := await Net.get_json("/api/wars")
+	if int(r.status) != 200:
+		return
+	var mine := str(_my_clan.get("tag", ""))
+	var captain := _my_role != "member"
+	var status_names := {"pending": "in attesa di risposta", "accepted": "accettata: schieratevi", "live": "in corso",
+		"done": "conclusa", "declined": "rifiutata", "cancelled": "annullata"}
+	for w in r.data:
+		var id := int(w["id"])
+		var st := str(w["status"])
+		var defending := str(w["defender_tag"]) == mine
+		var row := UI.hbox()
+		var txt := "[%s] contro [%s] — %s" % [w["challenger_tag"], w["defender_tag"], status_names.get(st, st)]
+		if st == "done":
+			var mine_before: Variant = w["defender_before"] if defending else w["challenger_before"]
+			var mine_after: Variant = w["defender_after"] if defending else w["challenger_after"]
+			var who := "pareggio" if w["winner_tag"] == null else "vince [%s]" % w["winner_tag"]
+			txt += " — %s — ELO clan %d → %d" % [who, int(mine_before), int(mine_after)]
+		row.add_child(UI.label(txt))
+		if st == "pending" and defending and captain:
+			row.add_child(UI.button("Accetta", func() -> void: _clan_post("/api/wars/%d/accept" % id, {}, "Guerra accettata")))
+			row.add_child(UI.button("Rifiuta", func() -> void: _clan_post("/api/wars/%d/decline" % id, {}, "Guerra rifiutata")))
+		if st == "accepted":
+			row.add_child(UI.button("Schierati", func() -> void: Net.ws_send({"type": "war_join", "war": id, "units": _picked_ids()})))
+		if st in ["pending", "accepted"] and captain and not (st == "pending" and defending):
+			row.add_child(UI.button("Annulla", func() -> void: _clan_post("/api/wars/%d/cancel" % id, {}, "Guerra annullata")))
+		_wars_box.add_child(row)
+	_render_war_room()
+
+
+func _render_war_room() -> void:
+	if _wars_box == null or not is_instance_valid(_wars_box):
+		return
+	var old := _wars_box.get_node_or_null("WarRoom")
+	if old != null:
+		_wars_box.remove_child(old)
+		old.queue_free()
+	if _war_room.is_empty():
+		return
+	var box := UI.vbox(4)
+	box.name = "WarRoom"
+	box.add_child(UI.label("Schieramento della guerra #%d" % int(_war_room["war"]), 16, UI.ACCENT))
+	for side in _war_room["sides"]:
+		var names: Array[String] = []
+		for m in side["members"]:
+			names.append("%s (%d)" % [m["username"], int(m["units"])])
+		box.add_child(UI.label("[%s] %s — %s — %s" % [side["tag"], side["name"],
+			", ".join(names) if not names.is_empty() else "nessuno", "PRONTI" if bool(side["ready"]) else "non pronti"],
+			0, UI.GOOD if bool(side["ready"]) else Color.WHITE))
+	var row := UI.hbox()
+	if _my_role != "member":
+		var my_side: Dictionary = {}
+		for side in _war_room["sides"]:
+			if str(side["tag"]) == str(_my_clan.get("tag", "")):
+				my_side = side
+		var ready := bool(my_side.get("ready", false))
+		row.add_child(UI.button("Non pronti" if ready else "Pronti!", func() -> void: Net.ws_send({"type": "war_ready", "ready": not ready})))
+	row.add_child(UI.button("Lascia lo schieramento", func() -> void: Net.ws_send({"type": "war_leave"})))
+	box.add_child(row)
+	_wars_box.add_child(box)
+
+
+# Modalità automatica: --mode=war --role=host|guest --clan=SIGLA --enemy=SIGLA
+func _autoplay_war_setup() -> void:
+	var tag := str(main.opts.get("clan", "LUPI"))
+	var enemy := str(main.opts.get("enemy", "CORV"))
+	var host := str(main.opts.get("role", "host")) == "host"
+	if me.get("clan") == null:
+		await Net.post_json("/api/clans", {"name": "Clan " + tag, "tag": tag, "motto": "Alla carica"})
+		await reload()
+	var war_id := -1
+	for i in 120:
+		var r := await Net.get_json("/api/wars")
+		var wars: Array = r.data if int(r.status) == 200 else []
+		var open := wars.filter(func(w: Dictionary) -> bool: return str(w["status"]) in ["pending", "accepted"])
+		if host and open.is_empty():
+			await Net.post_json("/api/wars", {"tag": enemy})
+		elif not host and not open.is_empty() and str(open[0]["status"]) == "pending":
+			await Net.post_json("/api/wars/%d/accept" % int(open[0]["id"]), {})
+		elif not open.is_empty() and str(open[0]["status"]) == "accepted":
+			war_id = int(open[0]["id"])
+			break
+		await get_tree().create_timer(0.5).timeout
+	if war_id < 0:
+		main.finish(1, "guerra non avviata")
+		return
+	await reload()
+	_tabs.current_tab = 3
+	Net.ws_send({"type": "war_join", "war": war_id, "units": _picked_ids()})
+
+
+var _autoplay_war_shot := false
+
+
+func _autoplay_war_room() -> void:
+	if _war_room.is_empty():
+		return
+	var both := true
+	for side in _war_room["sides"]:
+		if (side["members"] as Array).is_empty():
+			both = false
+	if not both:
+		return
+	for side in _war_room["sides"]:
+		if str(side["tag"]) == str(main.opts.get("clan", "")) and bool(side["ready"]):
+			return
+	if not _autoplay_war_shot and str(main.opts.get("role", "host")) == "host":
+		_autoplay_war_shot = true
+		await get_tree().create_timer(0.5).timeout
+		await main.shot("menu_guerra")
+	Net.ws_send({"type": "war_ready", "ready": true})

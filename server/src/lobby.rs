@@ -7,7 +7,8 @@ use tokio::sync::mpsc;
 
 use crate::db::RosterUnit;
 use crate::game::{COOP_SLOTS, MatchInput};
-use crate::protocol::{RoomMember, RoomView, ServerMsg};
+use crate::protocol::{RoomMember, RoomView, ServerMsg, WarRoomView, WarSide};
+use crate::wars::WarInfo;
 
 /// Messaggi dal resto del server verso una connessione WebSocket.
 #[allow(clippy::large_enum_variant)]
@@ -86,11 +87,57 @@ impl Room {
     }
 }
 
+/// Schieramento di una guerra: un lato per clan.
+pub struct WarRoom {
+    pub info: WarInfo,
+    pub sides: [Vec<Entrant>; 2],
+    pub ready: [bool; 2],
+}
+
+impl WarRoom {
+    pub fn view(&self, min_players: usize) -> WarRoomView {
+        let side = |i: usize| {
+            let quota = (COOP_SLOTS / self.sides[i].len().max(1)).max(1);
+            WarSide {
+                tag: self.info.tags[i].clone(),
+                name: self.info.names[i].clone(),
+                members: self.sides[i]
+                    .iter()
+                    .map(|m| RoomMember {
+                        username: m.username.clone(),
+                        units: m.units.len().min(quota),
+                    })
+                    .collect(),
+                ready: self.ready[i],
+            }
+        };
+        WarRoomView {
+            war: self.info.id,
+            sides: vec![side(0), side(1)],
+            min_players,
+        }
+    }
+
+    pub fn notify(&self, min_players: usize) {
+        let v = self.view(min_players);
+        for m in self.sides.iter().flatten() {
+            m.send(ServerMsg::WarRoom {
+                room: Some(v.clone()),
+            });
+        }
+    }
+
+    fn side_of(&self, conn_id: u64) -> Option<usize> {
+        (0..2).find(|&i| self.sides[i].iter().any(|m| m.conn_id == conn_id))
+    }
+}
+
 #[derive(Default)]
 pub struct Lobby {
     waiting: Option<Entrant>,
     rooms: BTreeMap<u64, Room>,
     next_room: u64,
+    wars: BTreeMap<i64, WarRoom>,
 }
 
 impl Lobby {
@@ -189,5 +236,86 @@ impl Lobby {
             .filter(|r| r.clan_id == clan_id)
             .map(|r| r.view(min_players))
             .collect()
+    }
+
+    pub fn war_room_of(&self, conn_id: u64) -> Option<i64> {
+        self.wars
+            .values()
+            .find(|w| w.side_of(conn_id).is_some())
+            .map(|w| w.info.id)
+    }
+
+    /// Ci si può impegnare in una sola cosa alla volta: coda, stanza o schieramento.
+    pub fn is_engaged(&self, conn_id: u64) -> bool {
+        self.room_of(conn_id).is_some()
+            || self.war_room_of(conn_id).is_some()
+            || self.waiting.as_ref().is_some_and(|w| w.conn_id == conn_id)
+    }
+
+    pub fn join_war(
+        &mut self,
+        info: WarInfo,
+        side: usize,
+        e: Entrant,
+    ) -> Result<&WarRoom, &'static str> {
+        let id = info.id;
+        let room = self.wars.entry(id).or_insert_with(|| WarRoom {
+            info,
+            sides: [Vec::new(), Vec::new()],
+            ready: [false; 2],
+        });
+        if room.sides[side]
+            .iter()
+            .any(|m| m.account_id == e.account_id)
+        {
+            return Err("sei già schierato");
+        }
+        if room.sides[side].len() >= COOP_SLOTS {
+            return Err("lo schieramento è al completo");
+        }
+        room.sides[side].push(e);
+        room.ready = [false; 2];
+        Ok(room)
+    }
+
+    pub fn leave_war(&mut self, conn_id: u64) -> Option<&WarRoom> {
+        let id = self.war_room_of(conn_id)?;
+        let room = self.wars.get_mut(&id)?;
+        for side in room.sides.iter_mut() {
+            side.retain(|m| m.conn_id != conn_id);
+        }
+        room.ready = [false; 2];
+        if room.sides.iter().all(Vec::is_empty) {
+            self.wars.remove(&id);
+            return None;
+        }
+        self.wars.get(&id)
+    }
+
+    /// Imposta "pronti" per il lato di chi chiama; se entrambi i lati sono
+    /// pronti e abbastanza numerosi, rimuove e restituisce lo schieramento.
+    pub fn war_ready(
+        &mut self,
+        conn_id: u64,
+        ready: bool,
+        min_players: usize,
+    ) -> Result<Option<WarRoom>, &'static str> {
+        let id = self.war_room_of(conn_id).ok_or("non sei schierato")?;
+        let room = self.wars.get_mut(&id).expect("schieramento");
+        let side = room.side_of(conn_id).expect("lato");
+        if ready && room.sides[side].len() < min_players {
+            return Err("servono altri membri nel tuo schieramento");
+        }
+        room.ready[side] = ready;
+        let go = room.ready.iter().all(|&r| r) && room.sides.iter().all(|s| s.len() >= min_players);
+        Ok(if go { self.wars.remove(&id) } else { None })
+    }
+
+    pub fn war_room(&self, id: i64) -> Option<&WarRoom> {
+        self.wars.get(&id)
+    }
+
+    pub fn close_war_room(&mut self, id: i64) -> Option<WarRoom> {
+        self.wars.remove(&id)
     }
 }

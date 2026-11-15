@@ -128,7 +128,10 @@ func shot(name: String) -> void:
 ## Fine della partita automatica: torna al menu, fotografa e chiude.
 func autoplay_after_battle(summary: String) -> void:
 	show_menu()
-	await get_tree().create_timer(2.0).timeout
+	await get_tree().create_timer(1.0).timeout
+	if str(opts.get("mode", "")) in ["coop", "war"] and current != null:
+		current._tabs.current_tab = 3
+	await get_tree().create_timer(1.5).timeout
 	await shot("menu_dopo_partita")
 	finish(0, summary)
 

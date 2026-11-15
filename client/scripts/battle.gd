@@ -28,6 +28,7 @@ var opponent := "IA"
 var mine := {}
 var allies: Array = []
 var mission: Dictionary = {}
+var war: Dictionary = {}
 var engine: TacticaEngine
 var snapshot: Dictionary = {}
 var units: Array = []
@@ -64,6 +65,8 @@ func setup_online(matched: Dictionary, raw: String) -> void:
 	allies = matched.get("allies", [])
 	if matched.get("mission") is Dictionary:
 		mission = matched["mission"]
+	if matched.get("war") is Dictionary:
+		war = matched["war"]
 	engine = TacticaEngine.new()
 	engine.set_snapshot_from_message(raw)
 
@@ -214,7 +217,13 @@ func refresh() -> void:
 	board.champion = int(obj["Champion"]) if obj is Dictionary and obj.has("Champion") else -1
 	board.units = units
 	var turn_txt := "Turno %d" % int(snapshot["turn"])
-	if not mission.is_empty():
+	if not war.is_empty():
+		var t: Array = war["tags"]
+		var n: Array = war["names"]
+		_top.text = "%s · Guerra: [%s] %s contro [%s] %s · Tu: %s · %s · Statuti: %s" % [
+			turn_txt, t[0], n[0], t[1], n[1], "[%s]" % t[my_team], engine.biome_name(),
+			", ".join(engine.statute_names())]
+	elif not mission.is_empty():
 		var goal := "abbatti il campione" if bool(mission.get("hunt", false)) else "sconfiggi tutti i nemici"
 		_top.text = "%s · %s (%s) · Obiettivo: %s · %s · Statuti: %s · Con: %s" % [
 			turn_txt, mission["name"], mission["difficulty_name"], goal, engine.biome_name(),

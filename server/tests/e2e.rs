@@ -34,6 +34,7 @@ async fn start() -> Server {
         backup_keep: 1,
         season_days: 28,
         coop_min_players: 2,
+        war_min_players: 1,
     };
     let state = AppState::new(config).await.unwrap();
     let db = state.db.clone();
@@ -930,4 +931,192 @@ async fn game_loop_with(ws: &mut Ws, mine: Vec<usize>, leave_after: Option<usize
             _ => {}
         }
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn clan_war() {
+    let srv = start().await;
+    let (alice, alice_units) = srv.player("alice").await;
+    let (bob, bob_units) = srv.player("bob").await;
+    let (carol, _) = srv.player("carol").await;
+    assert_eq!(
+        srv.post(
+            "/api/clans",
+            Some(&alice),
+            json!({"name": "Lupi", "tag": "LUPI"})
+        )
+        .await
+        .0,
+        200
+    );
+    assert_eq!(
+        srv.post(
+            "/api/clans",
+            Some(&bob),
+            json!({"name": "Corvi", "tag": "CORV"})
+        )
+        .await
+        .0,
+        200
+    );
+    assert_eq!(
+        srv.post("/api/clans/CORV/join", Some(&carol), json!({}))
+            .await
+            .0,
+        200
+    );
+
+    // Dichiarazione: solo capi o ufficiali, non al proprio clan, una sola guerra aperta.
+    let (st, _) = srv
+        .post("/api/wars", Some(&carol), json!({"tag": "LUPI"}))
+        .await;
+    assert_eq!(st, 403);
+    let (st, _) = srv
+        .post("/api/wars", Some(&alice), json!({"tag": "LUPI"}))
+        .await;
+    assert_eq!(st, 400);
+    let (st, w) = srv
+        .post("/api/wars", Some(&alice), json!({"tag": "CORV"}))
+        .await;
+    assert_eq!(st, 200, "{w}");
+    let war = w["id"].as_i64().unwrap();
+    assert_eq!(w["status"], "pending");
+    let (st, _) = srv
+        .post("/api/wars", Some(&bob), json!({"tag": "LUPI"}))
+        .await;
+    assert_eq!(st, 409, "già una guerra aperta fra i due clan");
+
+    // Lo sfidante non può accettare per l'altro; un membro semplice nemmeno.
+    assert_eq!(
+        srv.post(&format!("/api/wars/{war}/accept"), Some(&alice), json!({}))
+            .await
+            .0,
+        403
+    );
+    assert_eq!(
+        srv.post(&format!("/api/wars/{war}/accept"), Some(&carol), json!({}))
+            .await
+            .0,
+        403
+    );
+    let (st, w) = srv
+        .post(&format!("/api/wars/{war}/accept"), Some(&bob), json!({}))
+        .await;
+    assert_eq!(st, 200);
+    assert_eq!(w["status"], "accepted");
+    let (_, list) = srv.get("/api/wars", Some(&bob)).await;
+    assert_eq!(list[0]["id"].as_i64(), Some(war));
+
+    // Schieramenti: chi non è nei clan coinvolti non entra; via ai pronti.
+    let (dave, dave_units) = srv.player("dave").await;
+    let mut wd = connect(&srv.ws, &dave).await;
+    wd.send(text(ClientMsg::WarJoin {
+        war,
+        units: dave_units,
+    }))
+    .await
+    .unwrap();
+    loop {
+        match next_msg(&mut wd).await {
+            ServerMsg::Error { message } => {
+                assert!(message.contains("clan"), "{message}");
+                break;
+            }
+            ServerMsg::Welcome { .. } => {}
+            other => panic!("inatteso: {other:?}"),
+        }
+    }
+    let mut wa = connect(&srv.ws, &alice).await;
+    let mut wb = connect(&srv.ws, &bob).await;
+    wa.send(text(ClientMsg::WarJoin {
+        war,
+        units: alice_units.clone(),
+    }))
+    .await
+    .unwrap();
+    wb.send(text(ClientMsg::WarJoin {
+        war,
+        units: bob_units.clone(),
+    }))
+    .await
+    .unwrap();
+    loop {
+        if let ServerMsg::WarRoom { room: Some(r) } = next_msg(&mut wa).await
+            && r.sides[0].members.len() == 1
+            && r.sides[1].members.len() == 1
+        {
+            assert_eq!(
+                (r.sides[0].tag.as_str(), r.sides[1].tag.as_str()),
+                ("LUPI", "CORV")
+            );
+            // Un solo giocatore per lato: comanda tutti e 6 i posti (fino a 4 unità scelte).
+            assert_eq!(r.sides[0].members[0].units, 4);
+            break;
+        }
+    }
+    wa.send(text(ClientMsg::WarReady { ready: true }))
+        .await
+        .unwrap();
+    wb.send(text(ClientMsg::WarReady { ready: true }))
+        .await
+        .unwrap();
+
+    let a = tokio::spawn(async move { game_loop(&mut wa, None).await });
+    let b = tokio::spawn(async move { game_loop(&mut wb, Some(3)).await });
+    let (ea, eb) = (a.await.unwrap(), b.await.unwrap());
+    let ServerMsg::Ended {
+        match_id,
+        result: ra,
+        coins: ca,
+        clan_points: pa,
+        elo_before,
+        elo_after,
+        ..
+    } = ea
+    else {
+        unreachable!()
+    };
+    let ServerMsg::Ended { result: rb, .. } = eb else {
+        unreachable!()
+    };
+    assert_eq!(
+        (ra.as_str(), rb.as_str()),
+        ("win", "loss"),
+        "Bob abbandona: è l'unico umano dei Corvi"
+    );
+    assert_eq!(ca, 220, "200 monete di guerra + 10% del clan");
+    assert_eq!(pa, 5);
+    assert_eq!(elo_before, elo_after, "la guerra non tocca l'ELO personale");
+
+    // Esito registrato: ELO dei clan a somma zero, record, punti stagionali.
+    let (_, w) = srv.get("/api/wars", Some(&alice)).await;
+    assert_eq!(w[0]["status"], "done");
+    assert_eq!(w[0]["winner_tag"], "LUPI");
+    assert_eq!(w[0]["match_id"].as_i64(), Some(match_id));
+    let (_, lupi) = srv.get("/api/clans/LUPI", None).await;
+    let (_, corvi) = srv.get("/api/clans/CORV", None).await;
+    assert_eq!(
+        lupi["rating"].as_i64().unwrap() + corvi["rating"].as_i64().unwrap(),
+        2000
+    );
+    assert!(lupi["rating"].as_i64().unwrap() > 1000);
+    assert_eq!(
+        (lupi["war_wins"].as_i64(), corvi["war_losses"].as_i64()),
+        (Some(1), Some(1))
+    );
+    assert_eq!(lupi["season_points"].as_i64(), Some(5));
+    let (_, m) = srv.get(&format!("/api/matches/{match_id}"), None).await;
+    assert_eq!(m["mode"], "war");
+
+    // Conclusa la guerra se ne può dichiarare un'altra; si può anche annullare.
+    let (st, w2) = srv
+        .post("/api/wars", Some(&bob), json!({"tag": "LUPI"}))
+        .await;
+    assert_eq!(st, 200);
+    let id2 = w2["id"].as_i64().unwrap();
+    let (st, w2) = srv
+        .post(&format!("/api/wars/{id2}/cancel"), Some(&alice), json!({}))
+        .await;
+    assert_eq!(st, 200);
+    assert_eq!(w2["status"], "cancelled");
 }

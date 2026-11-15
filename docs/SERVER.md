@@ -29,6 +29,7 @@ La configurazione si fa con variabili d'ambiente:
 | `TACTICA_BACKUP_KEEP` | `14` | quanti backup conservare |
 | `TACTICA_SEASON_DAYS` | `28` | durata di una stagione classificata |
 | `TACTICA_COOP_MIN_PLAYERS` | `2` | giocatori minimi per avviare una missione cooperativa |
+| `TACTICA_WAR_MIN_PLAYERS` | `1` | giocatori minimi per lato in una guerra fra clan |
 | `RUST_LOG` | `info,sqlx=warn` | livello dei log |
 
 ## API HTTP
@@ -64,6 +65,10 @@ Le rotte indicate con 🔒 richiedono l'header `Authorization: Bearer <token>`.
 | `POST /api/clans/{tag}/kick` 🔒 `{username}` | espelle: il capo può espellere chiunque, gli ufficiali solo i membri |
 | `POST /api/clans/{tag}/role` 🔒 `{username, role}` | nomina ufficiali o membri; assegnando `leader` il capo cede il comando |
 | `POST /api/clans/leave` 🔒 | lascia il clan: il comando passa all'ufficiale più anziano, altrimenti al membro più anziano; l'ultimo che esce scioglie il clan |
+| `GET /api/wars` 🔒 | guerre del proprio clan (aperte e ultime concluse) |
+| `POST /api/wars` 🔒 `{tag}` | dichiara guerra a un clan (capo o ufficiale) |
+| `POST /api/wars/{id}/accept`, `POST /api/wars/{id}/decline` 🔒 | il clan sfidato accetta o rifiuta (capo o ufficiale) |
+| `POST /api/wars/{id}/cancel` 🔒 | annulla una guerra non ancora iniziata (capo o ufficiale di uno dei due clan) |
 | `GET /api/seasons/current` | stagione in corso con classifica dei giocatori e dei clan |
 | `GET /api/seasons` | tutte le stagioni |
 | `GET /api/seasons/{number}` | classifica finale di una stagione |
@@ -152,6 +157,28 @@ In `matched`:
 
 Lo snapshot contiene `objective` (`Rout` oppure `{"Champion": id}`).
 
+## Guerre fra clan
+
+- **Dichiarazione e risposta:** un capo o ufficiale dichiara guerra a un altro clan; ci può essere una sola guerra aperta fra gli stessi due clan. Un capo o ufficiale del clan sfidato accetta o rifiuta, e finché la guerra non parte ciascuno dei due clan può annullarla.
+- **Schieramenti:** dopo l'accettazione i membri dei due clan si schierano via WebSocket. Ogni lato ha 6 posti divisi fra i suoi giocatori; il minimo per lato si configura con `TACTICA_WAR_MIN_PLAYERS` (predefinito 1).
+- **Avvio:** la battaglia parte quando i comandanti (capo o ufficiale) di entrambi i lati danno il "pronti". Ogni cambiamento negli schieramenti azzera i "pronti".
+- **In battaglia:** la squadra 0 è lo sfidante, la 1 lo sfidato. Chi abbandona passa all'IA; un lato si arrende quando non gli resta nessun umano.
+- **Esito:**
+  - **ELO dei clan:** parte da 1000 e si aggiorna con K=32, a somma zero, insieme al record di vittorie, sconfitte e pareggi;
+  - **punti stagionali:** 5 al clan vincitore;
+  - **monete:** 200 a chi vince, 60 a chi perde, 100 in caso di pareggio, più il bonus del clan; bottino normale;
+  - **ELO personale e punteggio stagionale personale:** non cambiano.
+- **Stati della guerra:** `pending` → `accepted` → `live` → `done`, oppure `declined` o `cancelled`. Dopo un riavvio del server le guerre rimaste `live` tornano `accepted`.
+
+Messaggi WebSocket:
+
+| Direzione | Messaggio |
+|---|---|
+| client → server | `war_join {war, units}`, `war_leave`, `war_ready {ready}` |
+| server → client | `war_room {room}`, con entrambi i lati, i membri e lo stato dei "pronti" |
+
+In `matched` il campo `war` riporta id, sigle e nomi dei due clan.
+
 ## Protocollo WebSocket
 
 Connessione a `GET /ws?token=<token>`. Tutti i messaggi sono JSON con il campo `type`.
@@ -221,4 +248,4 @@ Note sul deploy:
 - **Matchmaking:** una sola coda PvP a un posto. Mancano lo scarto ELO e la gestione di più livelli.
 - **Livelli in PvP:** il PvP usa i livelli reali del roster; si valuta una modalità classificata con livelli normalizzati.
 - **Rate limiting:** manca su login e registrazione; va aggiunto prima di aprire il server su Internet.
-- **Contenuti mancanti:** guerre fra clan, status alterati (veleno, sonno...), seconda scuola equipaggiabile.
+- **Contenuti mancanti:** status alterati (veleno, sonno...), seconda scuola equipaggiabile, tornei fra clan.
