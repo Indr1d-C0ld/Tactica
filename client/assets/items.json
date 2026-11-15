@@ -81,6 +81,14 @@
   "use_p_egida": 76,
   "use_p_germoglio": 77,
   "use_p_purif": 78,
-  "use_p_slancio": 79
+  "use_p_slancio": 79,
+  "use_p_bufera": 80,
+  "use_p_temporale": 81,
+  "use_p_meteora": 82,
+  "use_p_silenzio": 83,
+  "use_p_preghiera": 84,
+  "use_p_raggio": 85,
+  "use_p_ritorno": 86,
+  "use_p_voto": 87
  }
 }

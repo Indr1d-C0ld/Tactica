@@ -16,6 +16,7 @@ fn main() {
     let mut turns = 0u64;
     let mut by_class: BTreeMap<&str, [i64; 4]> = BTreeMap::new(); // danni, cure, ko, sopravvissuti
     let mut by_biome: BTreeMap<&str, [u32; 3]> = BTreeMap::new();
+    let mut used: BTreeMap<&str, u64> = BTreeMap::new();
 
     for seed in 0..n {
         // Con TACTICA_STATUS=1 la squadra 0 usa l'equipaggiamento con gli status.
@@ -26,6 +27,14 @@ fn main() {
             presets::demo_party(0, 3, ["", "", "", ""])
         };
         units.extend(presets::demo_party(1, 3, ["", "", "", ""]));
+        // TACTICA_MASTER=1: la squadra 0 padroneggia tutte le abilità della
+        // propria scuola; =2: entrambe le squadre.
+        let master = std::env::var("TACTICA_MASTER").ok();
+        for u in &mut units {
+            if master.as_deref() == Some("2") || (master.as_deref() == Some("1") && u.team == 0) {
+                u.mastered = u.class.learnable().to_vec();
+            }
+        }
         let (mut b, _) = Battle::new(&BattleSetup {
             seed,
             map: None,
@@ -34,7 +43,12 @@ fn main() {
             objective: Default::default(),
             loot: Default::default(),
         });
-        ai::autoplay(&mut b, 20_000);
+        let (_, events) = ai::autoplay(&mut b, 20_000);
+        for e in &events {
+            if let tactica_core::Event::AbilityUsed { ability, .. } = e {
+                *used.entry(ability.def().name).or_default() += 1;
+            }
+        }
         let w = match b.winner() {
             Some(Some(t)) => t as usize,
             _ => 2,
@@ -74,4 +88,21 @@ fn main() {
     for (b, v) in &by_biome {
         println!("{b:<10} {:>6} {:>6} {:>6}", v[0], v[1], v[2]);
     }
+
+    if std::env::var("TACTICA_MASTER").is_ok() {
+        let mut v: Vec<_> = used.into_iter().collect();
+        v.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+        println!("\nAbilità usate (per battaglia):");
+        for (name, n) in v {
+            println!("  {name:<24} {:.2}", n as f64 / n_f(n_battles(&wins)));
+        }
+    }
+}
+
+fn n_battles(w: &[u32; 3]) -> u32 {
+    w.iter().sum()
+}
+
+fn n_f(n: u32) -> f64 {
+    n.max(1) as f64
 }

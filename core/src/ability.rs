@@ -67,6 +67,26 @@ pub enum AbilityId {
     Purify,
     Rally,
     Chains,
+    // Seconda serie di abilità di scuola.
+    LegSweep,
+    Bulwark,
+    Cleave,
+    PiercingArrow,
+    HushArrow,
+    BrambleSnare,
+    Blizzard,
+    Thunderstorm,
+    ArcaneHush,
+    Meteor,
+    Prayer,
+    HolyRay,
+    Return,
+    FlameEdge,
+    StormEdge,
+    RuneSeal,
+    ShieldWall,
+    LightHammer,
+    Vow,
     // Effetti degli oggetti consumabili (non si imparano).
     Potion,
     Ether,
@@ -162,7 +182,7 @@ macro_rules! ab {
 use Element::*;
 
 /// Indicizzata per `AbilityId as usize`: l'ordine deve coincidere con l'enum.
-static TABLE: [Ability; 36] = [
+static TABLE: [Ability; 55] = [
     ab!(Strike, "strike", "Colpo", Physical, 100, 0, (1, 1)),
     ab!(
         HeavyBlow,
@@ -208,6 +228,47 @@ static TABLE: [Ability; 36] = [
         effect: fx(Status::Haste, 100, 3)),
     ab!(Chains, "chains", "Catene", Magic, 50, 8, (1, 3), vertical: 4, master_rp: 100,
         effect: fx(Status::Root, 75, 2)),
+    // Seconda serie: Avanguardia
+    ab!(LegSweep, "leg_sweep", "Colpo alle gambe", Physical, 90, 6, (1, 1), master_rp: 90,
+        effect: fx(Status::Root, 55, 2)),
+    ab!(Bulwark, "bulwark", "Baluardo", Support, 0, 8, (0, 0), aoe: 1, vertical: 4, master_rp: 110,
+        effect: fx(Status::Aegis, 100, 2)),
+    ab!(Cleave, "cleave", "Squarcio", Physical, 170, 9, (1, 1), master_rp: 140),
+    // Esploratore
+    ab!(PiercingArrow, "piercing_arrow", "Freccia perforante", Physical, 120, 5, (2, 7), vertical: 7,
+        ranged: true, master_rp: 100),
+    ab!(HushArrow, "hush_arrow", "Freccia del silenzio", Physical, 80, 8, (2, 5), vertical: 5,
+        ranged: true, master_rp: 100, effect: fx(Status::Silence, 55, 2)),
+    ab!(BrambleSnare, "bramble_snare", "Trappola di rovi", Support, 0, 8, (1, 4), aoe: 1, vertical: 4,
+        ranged: true, master_rp: 110, effect: fx(Status::Root, 70, 2)),
+    // Arcanista
+    ab!(Blizzard, "blizzard", "Bufera", Magic, 115, 20, (2, 5), aoe: 2, vertical: 5, element: Some(Ice),
+        master_rp: 150, effect: fx(Status::Slow, 35, 2)),
+    ab!(Thunderstorm, "thunderstorm", "Temporale", Magic, 120, 16, (1, 4), aoe: 1, vertical: 6,
+        element: Some(Thunder), master_rp: 130),
+    ab!(ArcaneHush, "arcane_hush", "Silenzio arcano", Support, 0, 10, (1, 4), aoe: 1, vertical: 4,
+        master_rp: 110, effect: fx(Status::Silence, 65, 2)),
+    ab!(Meteor, "meteor", "Meteora", Magic, 200, 28, (3, 5), aoe: 1, vertical: 6, element: Some(Fire),
+        master_rp: 180),
+    // Guaritore
+    ab!(Prayer, "prayer", "Preghiera", Heal, 75, 18, (0, 2), aoe: 2, vertical: 4, master_rp: 130),
+    ab!(HolyRay, "holy_ray", "Raggio sacro", Magic, 130, 12, (1, 4), vertical: 5, element: Some(Holy),
+        master_rp: 110),
+    ab!(Return, "return", "Ritorno", Heal, 25, 20, (1, 2), vertical: 4, revive: true, master_rp: 160),
+    // Spadaruna
+    ab!(FlameEdge, "flame_edge", "Lama di fiamma", Physical, 120, 6, (1, 1), element: Some(Fire),
+        master_rp: 90),
+    ab!(StormEdge, "storm_edge", "Lama tonante", Physical, 115, 8, (1, 1), element: Some(Thunder),
+        master_rp: 110, effect: fx(Status::Root, 30, 2)),
+    ab!(RuneSeal, "rune_seal", "Sigillo runico", Magic, 70, 10, (1, 3), vertical: 4, master_rp: 110,
+        effect: fx(Status::Silence, 60, 2)),
+    // Custode
+    ab!(ShieldWall, "shield_wall", "Muro di scudi", Support, 0, 14, (0, 0), aoe: 2, vertical: 4,
+        master_rp: 140, effect: fx(Status::Aegis, 100, 2)),
+    ab!(LightHammer, "light_hammer", "Martello di luce", Physical, 140, 10, (1, 1), element: Some(Holy),
+        master_rp: 110),
+    ab!(Vow, "vow", "Voto", Support, 0, 10, (0, 3), aoe: 1, vertical: 4, master_rp: 110,
+        effect: fx(Status::Regen, 100, 4)),
     // Consumabili: valori fissi, portata corta (le bombe si lanciano).
     ab!(Potion, "potion", "Pozione", Heal, 50, 0, (0, 1), vertical: 3, fixed: true),
     ab!(Ether, "ether", "Etere", Heal, 25, 0, (0, 1), vertical: 3, fixed: true, restore_mp: true),
@@ -225,10 +286,10 @@ static TABLE: [Ability; 36] = [
 ];
 
 impl AbilityId {
-    pub const ALL: [AbilityId; 36] = {
-        let mut out = [AbilityId::Strike; 36];
+    pub const ALL: [AbilityId; 55] = {
+        let mut out = [AbilityId::Strike; 55];
         let mut i = 0;
-        while i < 36 {
+        while i < 55 {
             out[i] = TABLE[i].id;
             i += 1;
         }

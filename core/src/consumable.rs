@@ -36,7 +36,7 @@ macro_rules! cons {
     };
 }
 
-pub static CONSUMABLES: [ConsumableDef; 24] = [
+pub static CONSUMABLES: [ConsumableDef; 32] = [
     // Pozioni e preparati
     cons!(
         "pozione",
@@ -247,6 +247,70 @@ pub static CONSUMABLES: [ConsumableDef; 24] = [
         140,
         ""
     ),
+    cons!(
+        "p_bufera",
+        "Pergamena della Bufera",
+        Blizzard,
+        true,
+        Epic,
+        280,
+        ""
+    ),
+    cons!(
+        "p_temporale",
+        "Pergamena del Temporale",
+        Thunderstorm,
+        true,
+        Rare,
+        200,
+        ""
+    ),
+    cons!(
+        "p_meteora",
+        "Pergamena della Meteora",
+        Meteor,
+        true,
+        Epic,
+        320,
+        ""
+    ),
+    cons!(
+        "p_silenzio",
+        "Pergamena del Silenzio arcano",
+        ArcaneHush,
+        true,
+        Rare,
+        150,
+        ""
+    ),
+    cons!(
+        "p_preghiera",
+        "Pergamena della Preghiera",
+        Prayer,
+        true,
+        Rare,
+        190,
+        ""
+    ),
+    cons!(
+        "p_raggio",
+        "Pergamena del Raggio sacro",
+        HolyRay,
+        true,
+        Uncommon,
+        110,
+        ""
+    ),
+    cons!(
+        "p_ritorno",
+        "Pergamena del Ritorno",
+        Return,
+        true,
+        Epic,
+        300,
+        ""
+    ),
+    cons!("p_voto", "Pergamena del Voto", Vow, true, Uncommon, 100, ""),
 ];
 
 const ROMAN: [&str; TIERS] = ["I", "II", "III", "IV", "V", "VI"];

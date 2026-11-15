@@ -166,13 +166,28 @@ Ogni unità porta in battaglia una **borsa** con al massimo 2 consumabili, prepa
 |---|---|---|
 | Pozioni e preparati | Pozione, Etere, Rimedio, Essenza vitale, Elisir | HP, MP, rimozione degli status negativi, rianimazione di un alleato sconfitto accanto (se la sua casella è libera), HP al massimo |
 | Da lancio | Bomba di brace, Fiala di gelo, Fiala tossica, Polvere del sonno | danni di fuoco ad area, ghiaccio e Lentezza, Veleno ad area, Sonno ad area (portata fino a 4) |
-| Pergamene (15) | Fiamma, Gelo, Folgore, Vampa, Luce, Giudizio, Catene, Torpore, Cura, Cura maggiore, Santuario, Egida, Germoglio, Purificazione, Slancio | lanciano l'incantesimo una volta, da qualsiasi classe, senza MP, con una MAG minima garantita dalla qualità |
+| Pergamene (23) | Fiamma, Gelo, Folgore, Vampa, Luce, Giudizio, Catene, Torpore, Cura, Cura maggiore, Santuario, Egida, Germoglio, Purificazione, Slancio, Bufera, Temporale, Meteora, Silenzio arcano, Preghiera, Raggio sacro, Ritorno, Voto | lanciano l'incantesimo una volta, da qualsiasi classe, senza MP, con una MAG minima garantita dalla qualità |
 
 - **Qualità:** I-VI, secondo il livello di chi lascia il consumabile. Aumenta i valori fissi (da ×1 a ×4,5) e la MAG minima delle pergamene (18 + 7 per livello di qualità).
 - **Regole:** valgono gli statuti (una pozione viola «Niente cure», una pergamena di Fiamma «Niente fuoco»). Il Silenzio blocca le pergamene ma non pozioni e bombe.
 - **Bottino:** circa un oggetto su tre è un consumabile, della rarità estratta.
 - **Negozio:** Pozione I, Etere I, Rimedio I, Bomba di brace I e Pergamena di Cura I.
 - **IA:** usa i consumabili quando rendono più del loro costo stimato; rianima appena può.
+
+## Abilità per scuola
+
+Ogni classe ha Colpo, un'abilità innata e una scuola di abilità da imparare con l'equipaggiamento (punti risonanza fino alla padronanza). Quelle in corsivo sono la seconda serie, aggiunta con il bottino generato.
+
+| Classe | Innata | Scuola |
+|---|---|---|
+| Avanguardia | Fendente | Ampio fendente, Carica, Slancio, *Colpo alle gambe* (Radici), *Baluardo* (Egida attorno a sé), *Squarcio* |
+| Esploratore | Tiro | Tiro mirato, Raffica, Dardo velenoso, *Freccia perforante* (portata 7), *Freccia del silenzio*, *Trappola di rovi* (Radici ad area) |
+| Arcanista | Fiamma | Gelo, Folgore, Vampa, Torpore, *Bufera* (ghiaccio, area 2), *Temporale*, *Silenzio arcano*, *Meteora* |
+| Guaritore | Cura | Luce, Cura maggiore, Egida, Germoglio, Purificazione, *Preghiera* (cura ad area 2), *Raggio sacro*, *Ritorno* (rianima un alleato con il 25% degli HP) |
+| Spadaruna | Lama runica | Lama vorace, Taglio gelido, *Lama di fiamma*, *Lama tonante* (Radici), *Sigillo runico* (Silenzio) |
+| Custode | Ammonimento | Santuario, Giudizio, Catene, *Muro di scudi* (Egida, area 2), *Martello di luce*, *Voto* (Rigenerazione) |
+
+Gli oggetti rari ed epici possono insegnare qualsiasi abilità della scuola di una classe che li può usare. Con l'esempio `balance` e `TACTICA_MASTER=2` (tutte le abilità padroneggiate) le squadre speculari restano in equilibrio, 284 vittorie a 276; con `TACTICA_MASTER=1` la squadra che padroneggia la scuola vince circa il 63% delle volte.
 
 ## Status alterati
 

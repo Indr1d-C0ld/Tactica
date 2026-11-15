@@ -116,6 +116,14 @@ ICONS: dict[str, str] = {
     "use_p_germoglio": "a rolled parchment scroll tied with a ribbon and wax seal, with a glowing green sprout leaf rune symbol",
     "use_p_purif": "a rolled parchment scroll tied with a ribbon and wax seal, with a glowing clear water drop rune symbol",
     "use_p_slancio": "a rolled parchment scroll tied with a ribbon and wax seal, with a glowing orange wind swirl rune symbol",
+    "use_p_bufera": "a rolled parchment scroll tied with a ribbon and wax seal, with a glowing white snowstorm swirl rune symbol",
+    "use_p_temporale": "a rolled parchment scroll tied with a ribbon and wax seal, with a glowing dark storm cloud with lightning rune symbol",
+    "use_p_meteora": "a rolled parchment scroll tied with a ribbon and wax seal, with a glowing falling flaming meteor rune symbol",
+    "use_p_silenzio": "a rolled parchment scroll tied with a ribbon and wax seal, with a glowing purple closed mouth rune symbol",
+    "use_p_preghiera": "a rolled parchment scroll tied with a ribbon and wax seal, with a glowing golden praying hands rune symbol",
+    "use_p_raggio": "a rolled parchment scroll tied with a ribbon and wax seal, with a glowing bright golden ray beam rune symbol",
+    "use_p_ritorno": "a rolled parchment scroll tied with a ribbon and wax seal, with a glowing glowing phoenix feather rune symbol",
+    "use_p_voto": "a rolled parchment scroll tied with a ribbon and wax seal, with a glowing green heart leaf rune symbol",
 }
 
 

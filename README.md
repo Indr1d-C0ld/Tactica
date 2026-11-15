@@ -47,8 +47,8 @@ Tutto è originale: regole, storia, nomi, grafica, musica ed effetti sonori. Ter
 ### Progressione
 
 - **6 classi:** Avanguardia, Esploratore, Arcanista e Guaritore di base; Spadaruna e Custode da sbloccare.
-- **27 abilità.** Un oggetto insegna un'abilità finché è equipaggiato; con i **punti risonanza** guadagnati in battaglia l'abilità diventa permanente.
-- **Consumabili in battaglia:** ogni unità porta una borsa con 2 consumabili scelti fra 24 tipi in sei qualità: pozioni, eteri, rimedi, essenze vitali che rianimano, elisir, bombe e fiale da lancio. In più 15 pergamene che permettono a qualsiasi classe di lanciare un incantesimo una volta.
+- **46 abilità di classe** (attacchi, magie elementali ad area, cure, rianimazione, status, protezioni). Un oggetto insegna un'abilità finché è equipaggiato; con i **punti risonanza** guadagnati in battaglia l'abilità diventa permanente.
+- **Consumabili in battaglia:** ogni unità porta una borsa con 2 consumabili scelti fra 24 tipi in sei qualità: pozioni, eteri, rimedi, essenze vitali che rianimano, elisir, bombe e fiale da lancio. In più 23 pergamene che permettono a qualsiasi classe di lanciare un incantesimo una volta.
 - **Bottino da conquistare sul campo:** le unità sconfitte possono lasciare un oggetto, e per prenderlo bisogna raggiungere la loro casella.
 - **Oggetti generati:** più di 200.000 combinazioni con 5 rarità, 37 basi, 6 materiali e 39 affissi (veleno o gelo al colpo, armi elementali, vampirismo, resistenze, immunità, rigenerazione, +1 movimento...). In più 16 leggendari unici con nome e storia. Quattro slot di equipaggiamento: arma, armatura, copricapo, accessorio.
 - **Esperienza e livelli,** roster fino a 8 unità, negozio, bottino ed economia.
@@ -104,7 +104,7 @@ I personaggi delle sei classi, fatti con PixelLab, con i colori delle due squadr
 
 ![Personaggi](docs/img/sprite_sheet.png)
 
-Le icone degli oggetti: 37 basi, 16 leggendari, 24 consumabili (pozioni, bombe, pergamene), gli oggetti classici e il sacchetto del bottino:
+Le icone degli oggetti: 37 basi, 16 leggendari, 32 consumabili (pozioni, bombe, pergamene), gli oggetti classici e il sacchetto del bottino:
 
 ![Icone degli oggetti](docs/img/icone.png)
 
@@ -243,7 +243,7 @@ I pacchetti per i giocatori includono il motore [Godot Engine](https://godotengi
 
 - **Isometric battles** on seeded procedural maps with height, fully rotatable in 3D. Rendering is styled after the VGA and SVGA era (with Bayer dithering).
 - **Statutes:** random battle rules; breaking one gets a unit suspended, then expelled.
-- **Progression:** 6 classes, 27 abilities and 29 items. Abilities are learned from equipment and mastered with resonance points.
+- **Progression:** 6 classes, 46 class abilities, 32 consumables (potions, bombs, spell scrolls) and procedurally generated gear. Abilities are learned from equipment and mastered with resonance points.
 - **Modes:** single-player campaign with tutorial, PvE, offline skirmish, ELO-matched PvP, 2-6 player co-op clan missions, clan wars (up to 6v6), clan tournaments, ranked seasons.
 - **Tech:**
   - deterministic rules engine in Rust (`core/`), shared by the authoritative server (axum, WebSocket, SQLite) and the Godot 4.7 client (GDExtension);

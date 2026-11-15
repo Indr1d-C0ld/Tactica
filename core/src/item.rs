@@ -569,9 +569,12 @@ mod tests {
         }
         for c in Class::ALL {
             assert!(validate_loadout(c, &starter_kit(c).map(ItemRef::from)).is_ok());
-            // Ogni abilità imparabile ha almeno un oggetto che la insegna.
+            // Ogni abilità imparabile si può trovare su un oggetto: o del
+            // catalogo classico, o generato con una base adatta alla classe.
             for a in c.learnable() {
-                assert!(TABLE.iter().any(|i| i.teaches == Some(*a)), "{a:?}");
+                let fixed = TABLE.iter().any(|i| i.teaches == Some(*a));
+                let generated = crate::gear::BASES.iter().any(|b| b.usable_by(c));
+                assert!(fixed || generated, "{a:?}");
             }
         }
     }
