@@ -17,6 +17,7 @@ import palette as P  # noqa: E402
 import tiles  # noqa: E402
 import tiles3d  # noqa: E402
 import units  # noqa: E402
+import font  # noqa: E402
 from pixlib import hexc  # noqa: E402
 
 OUT = Path(__file__).resolve().parents[2] / "client" / "assets"
@@ -50,30 +51,49 @@ def build_units():
     print("units.png", sheet.size)
 
 
-def frame_texture(size: int, border: int, fill, light, dark, outline=(27, 22, 38, 255)) -> Image.Image:
-    img = Image.new("RGBA", (size, size), fill)
+def window_texture(size: int, fill_top, fill_bottom, rim, rim_dark, outline=(18, 14, 30, 255), radius=2) -> Image.Image:
+    """Cornice a 1x: contorno scuro con angoli arrotondati, bordo chiaro in alto
+    a sinistra e scuro in basso a destra, interno a bande con retino."""
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     p = img.load()
     for y in range(size):
         for x in range(size):
-            d = min(x, y, size - 1 - x, size - 1 - y)
-            if d == 0:
+            # Angoli arrotondati.
+            cx = min(x, size - 1 - x)
+            cy = min(y, size - 1 - y)
+            if cx + cy < radius - 1:
+                continue
+            d = min(cx, cy)
+            if d == 0 or (cx + cy == radius - 1):
                 p[x, y] = outline
-            elif d < border:
-                p[x, y] = light if (x < size - 1 - y and d == min(x, y)) else dark
-    # Borchie agli angoli.
-    for cx, cy in ((1, 1), (size - 2, 1), (1, size - 2), (size - 2, size - 2)):
-        p[cx, cy] = (255, 240, 180, 255)
+            elif d == 1:
+                p[x, y] = rim if (x <= y and x < size - 1 - y) or y < size // 2 and x < size - 1 - y else rim_dark
+                if x == size - 2 or y == size - 2:
+                    p[x, y] = rim_dark
+                if x == 1 or y == 1:
+                    p[x, y] = rim
+            elif d == 2:
+                p[x, y] = outline
+            else:
+                t = (y - 3) / max(1, size - 7)
+                c = tuple(int(fill_top[k] * (1 - t) + fill_bottom[k] * t) for k in range(3)) + (255,)
+                p[x, y] = c
     return img
 
 
+def scaled(img: Image.Image, k: int = 2) -> Image.Image:
+    return img.resize((img.width * k, img.height * k), Image.NEAREST)
+
+
 def build_ui():
-    gold_l, gold_d = hexc("#e9c26e"), hexc("#8a5a24")
-    frame_texture(16, 4, hexc("#1c2742"), gold_l, gold_d).save(OUT / "ui_window.png")
-    frame_texture(12, 3, hexc("#2c3d63"), gold_l, gold_d).save(OUT / "ui_button.png")
-    frame_texture(12, 3, hexc("#3e5a8e"), hexc("#fff0b0"), gold_d).save(OUT / "ui_button_hover.png")
-    frame_texture(12, 3, hexc("#18223a"), gold_d, gold_l).save(OUT / "ui_button_pressed.png")
-    frame_texture(12, 3, hexc("#262a33"), hexc("#7a7468"), hexc("#4a4640")).save(OUT / "ui_button_disabled.png")
-    frame_texture(12, 3, hexc("#121a2c"), gold_d, hexc("#5a3c18")).save(OUT / "ui_field.png")
+    cream, cream_d = hexc("#f2e3b8"), hexc("#a3895a")
+    gold_l, gold_d = hexc("#f6d27a"), hexc("#8a5a24")
+    scaled(window_texture(16, hexc("#2b3a66"), hexc("#18213f"), cream, cream_d)).save(OUT / "ui_window.png")
+    scaled(window_texture(12, hexc("#3a4f86"), hexc("#25335c"), cream, cream_d)).save(OUT / "ui_button.png")
+    scaled(window_texture(12, hexc("#5470b4"), hexc("#34487f"), (255, 250, 220, 255), gold_l)).save(OUT / "ui_button_hover.png")
+    scaled(window_texture(12, hexc("#18223f"), hexc("#22305a"), cream_d, cream)).save(OUT / "ui_button_pressed.png")
+    scaled(window_texture(12, hexc("#30323c"), hexc("#25272f"), hexc("#7a7468"), hexc("#4a4640"))).save(OUT / "ui_button_disabled.png")
+    scaled(window_texture(12, hexc("#101830"), hexc("#141e3a"), gold_d, gold_l)).save(OUT / "ui_field.png")
     print("ui_*.png")
 
 
@@ -81,9 +101,11 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     tiles.atlas().save(OUT / "terrain.png")
     tiles3d.atlas().save(OUT / "terrain3d.png")
+    tiles3d.backdrop().save(OUT / "backdrop.png")
     print("terrain.png, terrain3d.png")
     build_units()
     build_ui()
+    font.build(OUT / "fonts")
 
 
 if __name__ == "__main__":

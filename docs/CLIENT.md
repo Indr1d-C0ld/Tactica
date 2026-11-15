@@ -15,11 +15,18 @@ La battaglia è in **3D ruotabile** con estetica **VGA/SVGA**:
   L'immagine viene ingrandita senza sfocatura; il tasto F2 o il pulsante dello stile passa da uno stile all'altro.
 - **Sopra la scena:** barre degli HP, colore di squadra e numeri fluttuanti, sempre leggibili.
 
-Le texture vengono da `tools/pixelart` (vedi il suo README).
+Le texture vengono da `tools/pixelart` (vedi il suo README). Tutto è pixel-art originale:
+
+- **Font:** bitmap disegnato a pixel (Tactica Pixel), ingrandito solo per multipli interi.
+- **Finestre:** cornici con angoli arrotondati e bordo crema.
+- **Terreni:** lastre e placche irregolari, erba che ricade sui fianchi, ciuffi e cespugli.
+- **Fondale:** cielo a bande con nuvole e colline.
+- **Sprite:** ombreggiatura di volume con passaggi a retino e contorni morbidi sul lato in luce.
 
 ![Battaglia](img/battaglia.png)
 ![Battaglia ruotata](img/battaglia_ruotata.png)
 ![Roster](img/roster.png)
+![Tornei](img/tornei.png)
 ![Clan](img/clan.png)
 
 ## Avvio
@@ -54,6 +61,7 @@ godot --path client --editor
     - schieramento con i "pronti" dei comandanti;
     - storico con l'ELO del clan prima e dopo.
   - **Stagione:** tempo rimanente, premi, il tuo punteggio, classifiche di giocatori e clan, stagioni passate.
+  - **Tornei:** organizzazione, iscrizione, avvio; tabellone a colonne per turno con vincitori evidenziati e pulsante «Schierati» per gli incontri del proprio clan.
   - **Statistiche:** profilo, classifica, statistiche globali.
 - **Battaglia:**
   - **Mappa:** isometrica, scalata alla finestra.

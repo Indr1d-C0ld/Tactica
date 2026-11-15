@@ -32,6 +32,9 @@ pub struct WarInfo {
     pub clan_ids: [i64; 2],
     pub tags: [String; 2],
     pub names: [String; 2],
+    /// Nome del torneo, se la guerra è un incontro di torneo.
+    #[serde(default)]
+    pub tournament: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, sqlx::FromRow)]
@@ -161,12 +164,19 @@ async fn transition(
     to: &str,
 ) -> ApiResult<Json<WarRow>> {
     let me = captain(s, user).await?;
-    let (challenger, defender, status): (i64, i64, String) =
-        sqlx::query_as("SELECT challenger_id, defender_id, status FROM clan_wars WHERE id = ?")
-            .bind(id)
-            .fetch_optional(&s.db)
-            .await?
-            .ok_or_else(|| ApiError::not_found("guerra non trovata"))?;
+    let (challenger, defender, status, tournament): (i64, i64, String, Option<i64>) =
+        sqlx::query_as(
+            "SELECT challenger_id, defender_id, status, tournament_id FROM clan_wars WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("guerra non trovata"))?;
+    if tournament.is_some() {
+        return Err(ApiError::conflict(
+            "gli incontri di torneo non si annullano né si rifiutano",
+        ));
+    }
     let allowed = match who {
         "defender" => me.clan_id == defender,
         _ => me.clan_id == defender || me.clan_id == challenger,
@@ -234,16 +244,18 @@ pub async fn for_join(
     war: i64,
     account: i64,
 ) -> Result<(WarInfo, usize, String), String> {
-    let row: Option<(i64, i64, String, String, String, String, String)> = sqlx::query_as(
-        "SELECT w.challenger_id, w.defender_id, w.status, a.tag, a.name, b.tag, b.name
+    #[allow(clippy::type_complexity)]
+    let row: Option<(i64, i64, String, String, String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT w.challenger_id, w.defender_id, w.status, a.tag, a.name, b.tag, b.name, t.name
          FROM clan_wars w JOIN clans a ON a.id = w.challenger_id JOIN clans b ON b.id = w.defender_id
+         LEFT JOIN tournaments t ON t.id = w.tournament_id
          WHERE w.id = ?",
     )
     .bind(war)
     .fetch_optional(&mut *conn)
     .await
     .map_err(|e| e.to_string())?;
-    let Some((ch, df, status, at, an, bt, bn)) = row else {
+    let Some((ch, df, status, at, an, bt, bn, tournament)) = row else {
         return Err("guerra non trovata".into());
     };
     if status != "accepted" {
@@ -265,6 +277,7 @@ pub async fn for_join(
         clan_ids: [ch, df],
         tags: [at, bt],
         names: [an, bn],
+        tournament,
     };
     Ok((info, side, m.role))
 }
@@ -351,6 +364,15 @@ pub async fn record_result(
     .bind(war.id)
     .execute(&mut *conn)
     .await?;
+    let tournament: Option<i64> =
+        sqlx::query_scalar("SELECT tournament_id FROM clan_wars WHERE id = ?")
+            .bind(war.id)
+            .fetch_one(&mut *conn)
+            .await?;
+    if let Some(tid) = tournament {
+        let winner = winner_team.map(|w| war.clan_ids[w as usize]);
+        crate::tournaments::on_war_done(conn, tid, war.id, winner, war.clan_ids, rating).await?;
+    }
     Ok(())
 }
 

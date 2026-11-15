@@ -122,6 +122,7 @@ def head(x: Ctx, c: C, show_hair=True, bangs=True):
 def face(x: Ctx, c: C):
     b = x.b
     for ex in (13, 16):
+        c.px(ex - 1, 12 + b, P.EYE_WHITE)
         c.px(ex, 12 + b, P.EYE)
         c.px(ex, 13 + b, P.EYE)
     c.px(17, 14 + b, x.skin, tone=3)

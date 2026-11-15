@@ -16,6 +16,8 @@ var _shop: VBoxContainer
 var _stats: VBoxContainer
 var _clan: VBoxContainer
 var _season: VBoxContainer
+var _tourn: VBoxContainer
+var _open_tournament := -1
 var _status: Label
 var _picked := {}
 var _room: Dictionary = {}
@@ -55,6 +57,7 @@ func _ready() -> void:
 	_shop = _tab("Negozio")
 	_clan = _tab("Clan")
 	_season = _tab("Stagione")
+	_tourn = _tab("Tornei")
 	_stats = _tab("Statistiche")
 	_status = UI.label("", 14, UI.MUTED)
 	root.add_child(_status)
@@ -127,6 +130,7 @@ func reload() -> void:
 	_build_shop()
 	await _build_clan()
 	await _build_season()
+	await _build_tournaments()
 	await _build_stats()
 
 
@@ -450,7 +454,7 @@ func _autoplay() -> void:
 			await Net.put_json("/api/roster/%d/equipment" % int(u["id"]), {"items": ["frost_rod", "leather"]})
 			await reload()
 			break
-	for tab in [[1, "menu_roster"], [2, "menu_negozio"], [3, "menu_clan"], [4, "menu_stagione"], [5, "menu_statistiche"]]:
+	for tab in [[1, "menu_roster"], [2, "menu_negozio"], [3, "menu_clan"], [4, "menu_stagione"], [5, "menu_tornei"], [6, "menu_statistiche"]]:
 		_tabs.current_tab = tab[0]
 		await get_tree().create_timer(0.3).timeout
 		await main.shot(tab[1])
@@ -848,3 +852,86 @@ func _autoplay_war_room() -> void:
 		await get_tree().create_timer(0.5).timeout
 		await main.shot("menu_guerra")
 	Net.ws_send({"type": "war_ready", "ready": true})
+
+
+# ------------------------------------------------------------------ tornei
+
+func _build_tournaments() -> void:
+	UI.clear(_tourn)
+	_tourn.add_child(UI.label("Tornei fra clan", 20, UI.ACCENT))
+	_tourn.add_child(UI.label("Eliminazione diretta: teste di serie per ELO di clan, ogni incontro è una guerra (in caso di pareggio passa il clan con ELO più alto). Campioni: titolo, 500 monete a ogni membro e 15 punti stagionali; finalisti: titolo e 200 monete.", 13, UI.MUTED))
+	var clan: Variant = me.get("clan")
+	var captain: bool = clan != null and str(clan["role"]) != "member"
+	if captain:
+		var row := UI.hbox()
+		var name_e := UI.line_edit("Nome del torneo")
+		var size := UI.option([["4 clan", 4], ["8 clan", 8], ["16 clan", 16]], 1)
+		row.add_child(name_e)
+		row.add_child(size)
+		row.add_child(UI.button("Organizza", func() -> void:
+			_tourn_post("/api/tournaments", {"name": name_e.text, "max_clans": int(size.get_selected_metadata())}, "Torneo creato")))
+		_tourn.add_child(row)
+	var r := await Net.get_json("/api/tournaments")
+	if int(r.status) != 200:
+		return
+	if (r.data as Array).is_empty():
+		_tourn.add_child(UI.label("Nessun torneo per ora.", 0, UI.MUTED))
+	var names := {"signup": "iscrizioni aperte", "running": "in corso", "done": "concluso", "cancelled": "annullato"}
+	for t in r.data:
+		var id := int(t["id"])
+		var row := UI.hbox()
+		var txt := "«%s» — %s — %d/%d clan" % [t["name"], names.get(t["status"], t["status"]), int(t["clans"]), int(t["max_clans"])]
+		if t["winner"] != null:
+			txt += " — campioni [%s]" % t["winner"]
+		row.add_child(UI.label(txt))
+		row.add_child(UI.button("Tabellone", func() -> void:
+			_open_tournament = id
+			_build_tournaments()))
+		if captain and str(t["status"]) == "signup":
+			row.add_child(UI.button("Iscrivi il clan", func() -> void: _tourn_post("/api/tournaments/%d/join" % id, {}, "Clan iscritto")))
+			row.add_child(UI.button("Avvia", func() -> void: _tourn_post("/api/tournaments/%d/start" % id, {}, "Torneo avviato")))
+		_tourn.add_child(row)
+	if main.autoplay() and _open_tournament < 0 and not (r.data as Array).is_empty():
+		_open_tournament = int(r.data[0]["id"])
+	if _open_tournament >= 0:
+		await _render_bracket(_open_tournament)
+
+
+func _render_bracket(id: int) -> void:
+	var r := await Net.get_json("/api/tournaments/%d" % id)
+	if int(r.status) != 200:
+		return
+	var t: Dictionary = r.data
+	_tourn.add_child(HSeparator.new())
+	_tourn.add_child(UI.label("Tabellone — «%s»" % t["name"], 18, UI.ACCENT))
+	var seeds: Array[String] = []
+	for e in t["entries"]:
+		seeds.append("%s[%s] (ELO %d)" % ["" if e["seed"] == null else "%d. " % int(e["seed"]), e["tag"], int(e["rating"])])
+	_tourn.add_child(UI.label("Iscritti: " + ", ".join(seeds), 13))
+	var my_tag := "" if me.get("clan") == null else str(me["clan"]["tag"])
+	var cols := UI.hbox(16)
+	for round in range(1, int(t["rounds"]) + 1):
+		var col := UI.vbox(10)
+		var title := "Finale" if round == int(t["rounds"]) else ("Semifinali" if round == int(t["rounds"]) - 1 else "Turno %d" % round)
+		col.add_child(UI.label(title, 16, UI.ACCENT))
+		for m in t["matches"]:
+			if int(m["round"]) != round:
+				continue
+			var box := UI.vbox(2)
+			var a := "—" if m["a"] == null else "[%s]" % m["a"]
+			var b := "turno libero" if bool(m["bye"]) else ("—" if m["b"] == null else "[%s]" % m["b"])
+			for side in [[a, m["a"]], [b, m["b"]]]:
+				var won: bool = m["winner"] != null and side[1] != null and str(side[1]) == str(m["winner"])
+				box.add_child(UI.label(str(side[0]), 0, UI.GOOD if won else Color.WHITE))
+			if m["war_status"] != null and str(m["war_status"]) == "accepted" and my_tag in [str(m["a"]), str(m["b"])]:
+				var war_id := int(m["war_id"])
+				box.add_child(UI.button("Schierati", func() -> void: Net.ws_send({"type": "war_join", "war": war_id, "units": _picked_ids()})))
+			col.add_child(UI.panel(box, 6))
+		cols.add_child(col)
+	_tourn.add_child(cols)
+	if t["winner"] != null:
+		_tourn.add_child(UI.label("Campioni: [%s]" % t["winner"], 20, UI.GOOD))
+
+
+func _tourn_post(path: String, body: Dictionary, ok: String) -> void:
+	await _result(await Net.post_json(path, body), ok)

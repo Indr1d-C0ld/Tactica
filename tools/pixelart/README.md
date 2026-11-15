@@ -15,6 +15,8 @@ godot --headless --path client --import
 | `pixlib.py` | tela a livelli: forme, timbri ASCII, ombreggiatura a smusso con luce dall'alto a sinistra, linee interne tra le parti, contorno colorato |
 | `palette.py` | palette del progetto: rampe da 4 toni con ombre fredde e luci calde; squadre, capelli, carnagioni, materiali |
 | `units.py` | personaggi chibi delle 6 classi, composti da parti (corpo, abiti, copricapo, arma) |
+| `tiles3d.py` | texture della mappa 3D: sommità 16x16 con lastre e placche di Voronoi e rumore a grana grossa, fianchi con variante "bordo che ricade", decorazioni, fondale |
+| `font.py` | font bitmap originale proporzionale (cella di 11 px, accenti italiani e simboli dell'interfaccia), esportato come BMFont `.fnt` + PNG |
 | `tiles.py` | caselle isometriche 2:1 (rombo 32x16, 8 px per livello) dei 6 terreni, fianchi stratificati, sovrapposizioni (evidenziazione, cursore, freccia, ombra) |
 | `build.py` | scrive gli atlanti `terrain.png` e `units.png`, i metadati `units.json` e le cornici dell'interfaccia `ui_*.png` |
 | `preview.py` | anteprima ingrandita degli sprite |

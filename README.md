@@ -39,6 +39,7 @@ Gioco tattico fantasy originale, ispirato ai classici tattici a turni per consol
   - clan con ruoli e inviti;
   - missioni cooperative di clan (da 2 a 6 giocatori contro l'IA, con caccia al campione);
   - guerre fra clan (fino a 6 contro 6) con ELO dei clan;
+  - tornei fra clan a eliminazione diretta con teste di serie e premi;
   - stagioni classificate con titoli e premi.
 
   Dettagli in [docs/SERVER.md](docs/SERVER.md).
@@ -78,5 +79,5 @@ cargo build -p tactica-godot && godot --path client
 
 ## Prossimi passi
 
-1. **Tornei fra clan**, matchmaking per ELO; rate limiting prima dell'apertura su Internet.
+1. **Matchmaking per ELO**, scadenze per gli incontri di torneo; rate limiting prima dell'apertura su Internet.
 2. **Audio ed effetti** originali (musiche, suoni, effetti delle abilità); font in pixel-art.

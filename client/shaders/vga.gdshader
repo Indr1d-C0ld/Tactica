@@ -18,5 +18,5 @@ void fragment() {
 		float n = levels - 1.0;
 		c.rgb = clamp(floor(c.rgb * n + 0.5 + t * dither) / n, 0.0, 1.0);
 	}
-	COLOR = vec4(c.rgb, 1.0);
+	COLOR = c;
 }

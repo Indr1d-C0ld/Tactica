@@ -14,7 +14,7 @@ use crate::db::{self, MAX_ROSTER, RosterUnit, items_json, now};
 use crate::error::{ApiError, ApiResult};
 use crate::stats;
 use crate::ws;
-use crate::{clans, seasons, wars};
+use crate::{clans, seasons, tournaments, wars};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -47,6 +47,15 @@ pub fn routes() -> Router<AppState> {
         .route("/api/wars/{id}/accept", post(wars::accept))
         .route("/api/wars/{id}/decline", post(wars::decline))
         .route("/api/wars/{id}/cancel", post(wars::cancel))
+        .route(
+            "/api/tournaments",
+            get(tournaments::list).post(tournaments::create),
+        )
+        .route("/api/tournaments/{id}", get(tournaments::detail))
+        .route("/api/tournaments/{id}/join", post(tournaments::join))
+        .route("/api/tournaments/{id}/leave", post(tournaments::leave))
+        .route("/api/tournaments/{id}/start", post(tournaments::start))
+        .route("/api/tournaments/{id}/cancel", post(tournaments::cancel))
         .route("/api/seasons", get(season_list))
         .route("/api/seasons/current", get(season_current))
         .route("/api/seasons/{number}", get(season_by_number))

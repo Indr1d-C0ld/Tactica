@@ -6,15 +6,23 @@ const ACCENT := Color(0.95, 0.78, 0.35)
 const MUTED := Color(0.65, 0.68, 0.75)
 const BAD := Color(0.95, 0.4, 0.35)
 const GOOD := Color(0.45, 0.85, 0.5)
+## Dimensioni del font bitmap (cella di 11 px): 2x per il testo, 3x per i titoli.
+const FONT_M := 22
+const FONT_L := 33
 
 
 static func label(text: String, size := 0, color := Color(0, 0, 0, 0)) -> Label:
 	var l := Label.new()
 	l.text = text
 	if size > 0:
-		l.add_theme_font_size_override("font_size", size)
+		# Le dimensioni richieste vengono ricondotte a multipli interi del font.
+		l.add_theme_font_size_override("font_size", FONT_L if size >= 24 else FONT_M)
 	if color.a > 0:
 		l.add_theme_color_override("font_color", color)
+	if text.length() > 60:
+		# I testi lunghi vanno a capo invece di uscire dallo schermo.
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	return l
 
 

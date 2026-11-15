@@ -69,6 +69,11 @@ Le rotte indicate con 🔒 richiedono l'header `Authorization: Bearer <token>`.
 | `POST /api/wars` 🔒 `{tag}` | dichiara guerra a un clan (capo o ufficiale) |
 | `POST /api/wars/{id}/accept`, `POST /api/wars/{id}/decline` 🔒 | il clan sfidato accetta o rifiuta (capo o ufficiale) |
 | `POST /api/wars/{id}/cancel` 🔒 | annulla una guerra non ancora iniziata (capo o ufficiale di uno dei due clan) |
+| `GET /api/tournaments` | elenco dei tornei (in corso, con iscrizioni aperte, conclusi) |
+| `POST /api/tournaments` 🔒 `{name, max_clans}` | organizza un torneo da 2 a 16 clan (capo o ufficiale); il proprio clan è iscritto |
+| `GET /api/tournaments/{id}` | iscritti con teste di serie e tabellone con turni, guerre e vincitori |
+| `POST /api/tournaments/{id}/join`, `POST /api/tournaments/{id}/leave` 🔒 | iscrive o ritira il proprio clan finché le iscrizioni sono aperte |
+| `POST /api/tournaments/{id}/start`, `POST /api/tournaments/{id}/cancel` 🔒 | il clan organizzatore avvia (almeno 2 clan) o annulla |
 | `GET /api/seasons/current` | stagione in corso con classifica dei giocatori e dei clan |
 | `GET /api/seasons` | tutte le stagioni |
 | `GET /api/seasons/{number}` | classifica finale di una stagione |
@@ -211,6 +216,15 @@ Messaggi WebSocket:
 
 In `matched` il campo `war` riporta id, sigle e nomi dei due clan.
 
+## Tornei fra clan
+
+- **Formato:** eliminazione diretta con teste di serie in base all'ELO dei clan. Il tabellone è una potenza di due; i posti mancanti diventano turni liberi per le prime teste di serie.
+- **Incontri:** ogni incontro è una guerra fra clan creata già accettata, che si gioca con gli schieramenti normali. Gli incontri di torneo non si possono annullare né rifiutare. Quando una guerra finisce il vincitore avanza; in caso di pareggio passa il clan con l'ELO più alto prima della guerra. I turni successivi si creano da soli.
+- **Premi:**
+  - **campioni:** titolo «Campioni del torneo "nome"», 500 monete a ogni membro e 15 punti stagionali al clan;
+  - **finalisti:** titolo e 200 monete a ogni membro.
+- **Intestazione:** in battaglia il campo `war.tournament` riporta il nome del torneo.
+
 ## Protocollo WebSocket
 
 Connessione a `GET /ws?token=<token>`. Tutti i messaggi sono JSON con il campo `type`.
@@ -280,4 +294,4 @@ Note sul deploy:
 - **Matchmaking:** una sola coda PvP a un posto. Mancano lo scarto ELO e la gestione di più livelli.
 - **Livelli in PvP:** il PvP usa i livelli reali del roster; si valuta una modalità classificata con livelli normalizzati.
 - **Rate limiting:** manca su login e registrazione; va aggiunto prima di aprire il server su Internet.
-- **Contenuti mancanti:** status alterati (veleno, sonno...), seconda scuola equipaggiabile, tornei fra clan.
+- **Contenuti mancanti:** seconda scuola equipaggiabile, scadenze per gli incontri di torneo (oggi un incontro resta aperto finché non si gioca).

@@ -9,7 +9,7 @@ const Board3D := preload("res://scripts/board3d.gd")
 const VGA_SHADER := preload("res://shaders/vga.gdshader")
 ## Stili grafici: fattore di ingrandimento della risoluzione interna e livelli di colore.
 const STYLES := [
-	{"name": "VGA", "scale": 3, "levels": 6.0, "dither": 0.75},
+	{"name": "VGA", "scale": 3, "levels": 6.0, "dither": 0.5},
 	{"name": "SVGA", "scale": 2, "levels": 10.0, "dither": 0.8},
 	{"name": "Nitido", "scale": 2, "levels": 0.0, "dither": 0.0},
 ]
@@ -102,7 +102,16 @@ func _build_ui() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UI.full_rect(bg)
 	add_child(bg)
+	var backdrop := TextureRect.new()
+	backdrop.texture = preload("res://assets/backdrop.png")
+	backdrop.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	UI.full_rect(backdrop)
+	add_child(backdrop)
 	_vp = SubViewport.new()
+	_vp.transparent_bg = true
 	_vp.own_world_3d = true
 	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_vp.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
@@ -122,7 +131,7 @@ func _build_ui() -> void:
 	_hud = Control.new()
 	_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UI.full_rect(_hud)
-	_hud.draw.connect(func() -> void: board.draw_hud(_hud, float(STYLES[_style]["scale"]), ThemeDB.fallback_font))
+	_hud.draw.connect(func() -> void: board.draw_hud(_hud, float(STYLES[_style]["scale"]), _hud.get_theme_default_font()))
 	add_child(_hud)
 
 	var top := UI.panel(UI.label(""), 8)
@@ -134,14 +143,14 @@ func _build_ui() -> void:
 	_card = RichTextLabel.new()
 	_card.bbcode_enabled = true
 	_card.fit_content = true
-	_card.custom_minimum_size = Vector2(220, 0)
+	_card.custom_minimum_size = Vector2(260, 0)
 	left.add_child(_card)
 	_actions = UI.vbox(4)
 	left.add_child(_actions)
 	var lp := UI.panel(left)
 	lp.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
 	lp.offset_top = 48
-	lp.offset_right = 250
+	lp.offset_right = 290
 	lp.offset_bottom = -8
 	lp.self_modulate = Color(1, 1, 1, 0.9)
 	add_child(lp)
@@ -220,8 +229,9 @@ func refresh() -> void:
 	if not war.is_empty():
 		var t: Array = war["tags"]
 		var n: Array = war["names"]
-		_top.text = "%s · Guerra: [%s] %s contro [%s] %s · Tu: %s · %s · Statuti: %s" % [
-			turn_txt, t[0], n[0], t[1], n[1], "[%s]" % t[my_team], engine.biome_name(),
+		var cup := "" if war.get("tournament") == null else "Torneo «%s» · " % war["tournament"]
+		_top.text = "%s · %sGuerra: [%s] %s contro [%s] %s · Tu: %s · %s · Statuti: %s" % [
+			turn_txt, cup, t[0], n[0], t[1], n[1], "[%s]" % t[my_team], engine.biome_name(),
 			", ".join(engine.statute_names())]
 	elif not mission.is_empty():
 		var goal := "abbatti il campione" if bool(mission.get("hunt", false)) else "sconfiggi tutti i nemici"
@@ -276,8 +286,8 @@ func _show_card(i: int) -> void:
 func _rebuild_actions() -> void:
 	UI.clear(_actions)
 	var view := UI.hbox(4)
-	view.add_child(UI.button("⟲", func() -> void: board.rotate_by(-45.0)))
-	view.add_child(UI.button("⟳", func() -> void: board.rotate_by(45.0)))
+	view.add_child(UI.button("<", func() -> void: board.rotate_by(-45.0)))
+	view.add_child(UI.button(">", func() -> void: board.rotate_by(45.0)))
 	view.add_child(UI.button("Vista", func() -> void: board.reset_view()))
 	view.add_child(UI.button(str(STYLES[_style]["name"]), cycle_style))
 	_actions.add_child(view)
@@ -613,7 +623,7 @@ func _show_end_online(msg: Dictionary) -> void:
 	var result := str(msg["result"])
 	var title: String = str({"win": "Vittoria", "loss": "Sconfitta", "draw": "Pareggio"}.get(result, result))
 	var lines: Array[String] = []
-	lines.append("[font_size=30][b]%s[/b][/font_size]" % title)
+	lines.append("[font_size=33][b]%s[/b][/font_size]" % title)
 	if int(msg["elo_before"]) != int(msg["elo_after"]):
 		lines.append("ELO %d → %d" % [int(msg["elo_before"]), int(msg["elo_after"])])
 	if msg.get("season_after") != null:
@@ -654,7 +664,7 @@ func _show_end_local() -> void:
 		buttons.append(["Torna al menu", func() -> void: main.show_menu()])
 	else:
 		buttons.append(["Accesso", func() -> void: main.show_login()])
-	_show_overlay("[font_size=30][b]%s[/b][/font_size]\nTurni: %d" % [title, int(snapshot["turn"])], buttons)
+	_show_overlay("[font_size=33][b]%s[/b][/font_size]\nTurni: %d" % [title, int(snapshot["turn"])], buttons)
 	if main.autoplay():
 		await main.shot("schermaglia_fine")
 		main.finish(0, "schermaglia %s turni=%d hash=%d" % [title, int(snapshot["turn"]), engine.state_hash()])

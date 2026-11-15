@@ -136,6 +136,14 @@ class Canvas:
         px = img.load()
         get = lambda x, y: self.mat[y][x] if 0 <= x < self.w and 0 <= y < self.h else None
         part = lambda x, y: self.part[y][x] if 0 <= x < self.w and 0 <= y < self.h else -1
+        # Riquadro di ogni parte, per un'ombreggiatura "di volume".
+        bbox: dict[int, list[int]] = {}
+        for y in range(self.h):
+            for x in range(self.w):
+                if self.mat[y][x] is not None:
+                    b = bbox.setdefault(self.part[y][x], [x, y, x, y])
+                    b[0], b[1] = min(b[0], x), min(b[1], y)
+                    b[2], b[3] = max(b[2], x), max(b[3], y)
         for y in range(self.h):
             for x in range(self.w):
                 m = self.mat[y][x]
@@ -147,13 +155,31 @@ class Canvas:
                 elif m.flat:
                     t = m.tone
                 else:
-                    t = 2
                     up, left = get(x, y - 1), get(x - 1, y)
                     down, right = get(x, y + 1), get(x + 1, y)
-                    if up is None or left is None or (up is not m and part(x, y - 1) < me):
-                        t = 3
-                    if down is None or right is None or (down is not m and part(x, y + 1) < me):
-                        t = 1
+                    lit_edge = up is None or left is None or (up is not m and part(x, y - 1) < me)
+                    dark_edge = down is None or right is None or (down is not m and part(x, y + 1) < me)
+                    x0, y0, x1, y1 = bbox[me]
+                    bw, bh = x1 - x0, y1 - y0
+                    if bw >= 3 and bh >= 3:
+                        # Luce dall'alto a sinistra sul volume della parte, con
+                        # passaggi fra i toni a retino a scacchiera.
+                        sv = (x - x0) / bw * 0.45 + (y - y0) / bh * 0.55
+                        t = 3 if sv < 0.26 else (2 if sv < 0.7 else 1)
+                        if 0.22 <= sv < 0.3:
+                            t = 3 if (x + y) % 2 == 0 else 2
+                        elif 0.66 <= sv < 0.74:
+                            t = 2 if (x + y) % 2 == 0 else 1
+                        if dark_edge:
+                            t = min(t, 1)
+                        elif lit_edge and t >= 2:
+                            t = 3
+                    else:
+                        t = 2
+                        if lit_edge:
+                            t = 3
+                        if dark_edge:
+                            t = 1
                 if inner_lines and not m.flat:
                     # Linea interna dove questa parte copre una parte più arretrata.
                     for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
@@ -169,10 +195,12 @@ class Canvas:
             for x in range(self.w):
                 if self.mat[y][x] is not None:
                     continue
-                for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                for nx, ny in ((x + 1, y), (x, y + 1), (x - 1, y), (x, y - 1)):
                     n = get(nx, ny)
                     if n is not None and n.outline:
-                        opx[x, y] = outline_color or darken(n.ramp[0], 0.55)
+                        # Contorno più morbido sul lato illuminato (alto/sinistra).
+                        lit = nx > x or ny > y
+                        opx[x, y] = outline_color or darken(n.ramp[0], 0.78 if lit else 0.5)
                         break
         return out
 

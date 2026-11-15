@@ -1124,3 +1124,224 @@ async fn clan_war() {
     assert_eq!(st, 200);
     assert_eq!(w2["status"], "cancelled");
 }
+
+/// Combatte una guerra già accettata: il secondo giocatore abbandona dopo 2 azioni.
+async fn fight(
+    srv: &Server,
+    war: i64,
+    a: (&str, &[i64]),
+    b: (&str, &[i64]),
+) -> (ServerMsg, ServerMsg) {
+    let mut wa = connect(&srv.ws, a.0).await;
+    let mut wb = connect(&srv.ws, b.0).await;
+    wa.send(text(ClientMsg::WarJoin {
+        war,
+        units: a.1.to_vec(),
+    }))
+    .await
+    .unwrap();
+    wb.send(text(ClientMsg::WarJoin {
+        war,
+        units: b.1.to_vec(),
+    }))
+    .await
+    .unwrap();
+    loop {
+        if let ServerMsg::WarRoom { room: Some(r) } = next_msg(&mut wa).await
+            && r.sides.iter().all(|s| s.members.len() == 1)
+        {
+            break;
+        }
+    }
+    wa.send(text(ClientMsg::WarReady { ready: true }))
+        .await
+        .unwrap();
+    wb.send(text(ClientMsg::WarReady { ready: true }))
+        .await
+        .unwrap();
+    let ha = tokio::spawn(async move { game_loop(&mut wa, None).await });
+    let hb = tokio::spawn(async move { game_loop(&mut wb, Some(2)).await });
+    (ha.await.unwrap(), hb.await.unwrap())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn clan_tournament() {
+    let srv = start().await;
+    let (alice, au) = srv.player("alice").await;
+    let (bob, bu) = srv.player("bob").await;
+    let (carol, cu) = srv.player("carol").await;
+    for (tok, name, tag) in [
+        (&alice, "Aquile", "AQUI"),
+        (&bob, "Bisonti", "BISO"),
+        (&carol, "Cervi", "CERV"),
+    ] {
+        assert_eq!(
+            srv.post("/api/clans", Some(tok), json!({"name": name, "tag": tag}))
+                .await
+                .0,
+            200
+        );
+    }
+
+    let (st, t) = srv
+        .post(
+            "/api/tournaments",
+            Some(&alice),
+            json!({"name": "Coppa d'Autunno", "max_clans": 4}),
+        )
+        .await;
+    assert_eq!(st, 200, "{t}");
+    let tid = t["id"].as_i64().unwrap();
+    assert_eq!(
+        srv.post(
+            &format!("/api/tournaments/{tid}/join"),
+            Some(&bob),
+            json!({})
+        )
+        .await
+        .0,
+        200
+    );
+    assert_eq!(
+        srv.post(
+            &format!("/api/tournaments/{tid}/start"),
+            Some(&bob),
+            json!({})
+        )
+        .await
+        .0,
+        403
+    );
+    assert_eq!(
+        srv.post(
+            &format!("/api/tournaments/{tid}/join"),
+            Some(&carol),
+            json!({})
+        )
+        .await
+        .0,
+        200
+    );
+    let (st, t) = srv
+        .post(
+            &format!("/api/tournaments/{tid}/start"),
+            Some(&alice),
+            json!({}),
+        )
+        .await;
+    assert_eq!(st, 200, "{t}");
+    assert_eq!(t["status"], "running");
+    assert_eq!(t["rounds"].as_i64(), Some(2));
+    let (dave, _) = srv.player("dave").await;
+    assert_eq!(
+        srv.post(
+            "/api/clans",
+            Some(&dave),
+            json!({"name": "Delfini", "tag": "DELF"})
+        )
+        .await
+        .0,
+        200
+    );
+    assert_eq!(
+        srv.post(
+            &format!("/api/tournaments/{tid}/join"),
+            Some(&dave),
+            json!({})
+        )
+        .await
+        .0,
+        409
+    );
+
+    // Primo turno: la testa di serie 1 (AQUI, organizzatore) ha il turno libero.
+    let m = t["matches"].as_array().unwrap();
+    assert_eq!(m.len(), 2);
+    let bye = m.iter().find(|x| x["bye"] == true).unwrap();
+    assert_eq!(
+        (bye["a"].as_str(), bye["winner"].as_str()),
+        (Some("AQUI"), Some("AQUI"))
+    );
+    let semi = m.iter().find(|x| x["bye"] == false).unwrap();
+    assert_eq!(
+        (semi["a"].as_str(), semi["b"].as_str()),
+        (Some("BISO"), Some("CERV"))
+    );
+    let semi_war = semi["war_id"].as_i64().unwrap();
+    assert_eq!(semi["war_status"], "accepted");
+    let (st, _) = srv
+        .post(
+            &format!("/api/wars/{semi_war}/cancel"),
+            Some(&bob),
+            json!({}),
+        )
+        .await;
+    assert_eq!(st, 409, "gli incontri di torneo non si annullano");
+
+    let (eb, ec) = fight(&srv, semi_war, (&bob, &bu), (&carol, &cu)).await;
+    let (ServerMsg::Ended { result: rb, .. }, ServerMsg::Ended { result: rc, .. }) = (eb, ec)
+    else {
+        unreachable!()
+    };
+    assert_eq!((rb.as_str(), rc.as_str()), ("win", "loss"));
+
+    // Finale creata automaticamente: AQUI contro BISO.
+    let (_, t) = srv.get(&format!("/api/tournaments/{tid}"), None).await;
+    let fin = t["matches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|x| x["round"].as_i64() == Some(2))
+        .unwrap()
+        .clone();
+    assert_eq!(
+        (fin["a"].as_str(), fin["b"].as_str()),
+        (Some("AQUI"), Some("BISO"))
+    );
+    let final_war = fin["war_id"].as_i64().unwrap();
+    let (_, before_a) = srv.get("/api/me", Some(&alice)).await;
+    let (_, before_b) = srv.get("/api/me", Some(&bob)).await;
+    let (ea, _) = fight(&srv, final_war, (&alice, &au), (&bob, &bu)).await;
+    let ServerMsg::Ended {
+        coins: war_coins, ..
+    } = ea
+    else {
+        unreachable!()
+    };
+
+    // Torneo concluso: campioni, finalisti, premi e punti.
+    let (_, t) = srv.get(&format!("/api/tournaments/{tid}"), None).await;
+    assert_eq!(t["status"], "done");
+    assert_eq!(t["winner"], "AQUI");
+    let (_, pa) = srv.get("/api/players/alice", None).await;
+    let (_, pb) = srv.get("/api/players/bob", None).await;
+    assert!(
+        pa["titles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|x| x == "Campioni del torneo «Coppa d'Autunno»")
+    );
+    assert!(
+        pb["titles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|x| x == "Finalisti del torneo «Coppa d'Autunno»")
+    );
+    let (_, after_a) = srv.get("/api/me", Some(&alice)).await;
+    let (_, after_b) = srv.get("/api/me", Some(&bob)).await;
+    assert_eq!(
+        after_a["coins"].as_i64().unwrap() - before_a["coins"].as_i64().unwrap(),
+        war_coins + 500
+    );
+    assert!(after_b["coins"].as_i64().unwrap() - before_b["coins"].as_i64().unwrap() >= 200);
+    let (_, c) = srv.get("/api/clans/AQUI", None).await;
+    assert_eq!(
+        c["season_points"].as_i64(),
+        Some(5 + 15),
+        "vittoria in guerra + campioni del torneo"
+    );
+    let (_, list) = srv.get("/api/tournaments", None).await;
+    assert_eq!(list[0]["winner"], "AQUI");
+}

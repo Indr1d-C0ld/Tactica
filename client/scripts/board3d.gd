@@ -74,8 +74,8 @@ func _ready() -> void:
 	cam.near = 0.1
 	cam.far = 300.0
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.06, 0.07, 0.12)
+	# Sfondo trasparente: dietro la scena c'è il fondale in pixel-art.
+	env.background_mode = Environment.BG_CLEAR_COLOR
 	cam.environment = env
 	add_child(cam)
 
@@ -209,7 +209,9 @@ func _build_terrain() -> void:
 				var yb := top
 				while yb > ntop + 0.001:
 					var ya := maxf(yb - LEVEL, ntop)
-					var su0 := Vector2(3 * C, row * C) / Vector2(tw, th)
+					# Il segmento più alto usa la variante col bordo della sommità che ricade.
+					var col := 4 if yb == top else 3
+					var su0 := Vector2(col * C, row * C) / Vector2(tw, th)
 					var su1 := su0 + Vector2(C, 8.0 * (yb - ya) / LEVEL) / Vector2(tw, th)
 					_quad(st, _side(x, y, d, ya, yb), su0, su1, Color(shade, shade, shade))
 					yb = ya
@@ -237,6 +239,8 @@ func _decorate(x: int, y: int, terrain: String, top: float) -> void:
 		cells = [[hsh % 2, Vector2(0.28, 0.3)], [(hsh + 1) % 2, Vector2(0.7, 0.68)]]
 	elif terrain == "Stone" and hsh % 4 == 0:
 		cells = [[2, Vector2(0.65, 0.4)]]
+	elif terrain == "Grass" and hsh % 3 == 0:
+		cells = [[3, Vector2(0.3 + (hsh % 5) * 0.1, 0.35 + (hsh % 7) * 0.05)]]
 	for c in cells:
 		var s := _sprite(TEX, Rect2(int(c[0]) * C, 6 * C, C, C))
 		var off: Vector2 = c[1]
@@ -527,5 +531,5 @@ func draw_hud(ci: CanvasItem, scale: float, font: Font) -> void:
 		var col: Color = f["color"]
 		col.a = a
 		var at := screen_of(f["world"] as Vector3) * scale + Vector2(-14, -float(f["t"]) * 30)
-		ci.draw_string_outline(font, at, f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, 20, 6, Color(0.05, 0.03, 0.1, a))
-		ci.draw_string(font, at, f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, 20, col)
+		ci.draw_string_outline(font, at, f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, 6, Color(0.05, 0.03, 0.1, a))
+		ci.draw_string(font, at, f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, col)

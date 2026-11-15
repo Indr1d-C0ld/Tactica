@@ -34,22 +34,29 @@ func _ready() -> void:
 ## Tema dell'interfaccia: cornici in pixel-art generate da tools/pixelart.
 func _make_theme() -> Theme:
 	var t := Theme.new()
-	t.default_font_size = 15
-	var win := _frame("ui_window", 4, 10)
+	# Font bitmap originale, ingrandito solo per multipli interi (pixel nitidi).
+	var f: FontFile = load("res://assets/fonts/tactica.fnt")
+	f.fixed_size_scale_mode = TextServer.FIXED_SIZE_SCALE_INTEGER_ONLY
+	f.antialiasing = TextServer.FONT_ANTIALIASING_NONE
+	t.default_font = f
+	t.default_font_size = UI.FONT_M
+	var win := _frame("ui_window", 8, 14)
 	t.set_stylebox("panel", "PanelContainer", win)
 	t.set_stylebox("panel", "TabContainer", win)
 	var states := {"normal": "ui_button", "hover": "ui_button_hover", "pressed": "ui_button_pressed",
 		"disabled": "ui_button_disabled", "hover_pressed": "ui_button_pressed"}
 	for st in states:
-		t.set_stylebox(st, "Button", _frame(states[st], 3, 7))
-		t.set_stylebox(st, "OptionButton", _frame(states[st], 3, 7))
+		t.set_stylebox(st, "Button", _frame(states[st], 6, 9))
+		t.set_stylebox(st, "OptionButton", _frame(states[st], 6, 9))
 	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
 	t.set_stylebox("focus", "OptionButton", StyleBoxEmpty.new())
-	t.set_stylebox("tab_selected", "TabContainer", _frame("ui_button_hover", 3, 8))
-	t.set_stylebox("tab_unselected", "TabContainer", _frame("ui_button", 3, 8))
-	t.set_stylebox("tab_hovered", "TabContainer", _frame("ui_button_hover", 3, 8))
-	t.set_stylebox("normal", "LineEdit", _frame("ui_field", 3, 7))
-	t.set_stylebox("focus", "LineEdit", _frame("ui_button_hover", 3, 7))
+	t.set_stylebox("tab_selected", "TabContainer", _frame("ui_button_hover", 6, 9))
+	t.set_stylebox("tab_unselected", "TabContainer", _frame("ui_button", 6, 9))
+	t.set_stylebox("tab_hovered", "TabContainer", _frame("ui_button_hover", 6, 9))
+	t.set_stylebox("normal", "LineEdit", _frame("ui_field", 6, 9))
+	t.set_stylebox("focus", "LineEdit", _frame("ui_button_hover", 6, 9))
+	for type in ["Label", "RichTextLabel", "LineEdit", "Button", "OptionButton", "CheckBox", "TabContainer"]:
+		t.set_color("font_outline_color", type, Color(0.05, 0.03, 0.1))
 	for type in ["Button", "OptionButton"]:
 		t.set_color("font_color", type, Color(0.98, 0.94, 0.84))
 		t.set_color("font_hover_color", type, Color(1, 1, 0.9))

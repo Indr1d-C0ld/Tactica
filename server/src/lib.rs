@@ -13,6 +13,7 @@ pub mod lobby;
 pub mod protocol;
 pub mod seasons;
 pub mod stats;
+pub mod tournaments;
 pub mod wars;
 pub mod ws;
 
