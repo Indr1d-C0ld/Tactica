@@ -1,6 +1,39 @@
 # Grafica: specifiche per il pixel artist
 
-Tutta la grafica del gioco è originale e generata da `tools/pixelart` (vedi il suo README). Questa pagina spiega come sostituirla con grafica disegnata a mano senza toccare il codice del client.
+Tutta la grafica del gioco è originale. I terreni, l'interfaccia, gli effetti e il font sono generati da `tools/pixelart` (vedi il suo README). I personaggi e le icone degli oggetti sono fatti con [PixelLab](https://pixellab.ai): le immagini scaricate sono nel repository e il gioco non ha bisogno di PixelLab per funzionare. Questa pagina spiega anche come sostituire la grafica con altra disegnata a mano, senza toccare il codice del client.
+
+## Grafica fatta con PixelLab
+
+Secondo i termini di servizio di PixelLab (sezione 3.3), le immagini generate appartengono a chi le crea e si possono usare e distribuire per qualsiasi scopo, tranne l'addestramento di altri modelli. Per questo sono incluse nel repository sotto la licenza del progetto.
+
+**Personaggi** (`tools/pixelart/pixellab/<classe>/pack/`):
+
+- un personaggio per classe, alto 32 pixel, in 8 direzioni;
+- animazioni: camminata (fronte e retro), caduta e un'azione propria della classe (fendente, tiro con l'arco, incantesimo...);
+- il blu dei vestiti diventa il colore della squadra.
+
+`python3 tools/pixelart/pixellab_import.py` compone il foglio base e scrive l'atlante completo in `client/assets/override/units.png`. Per ogni classe usa:
+
+| Fotogrammi | Da dove |
+|---|---|
+| riposo, fronte e retro | dalle rotazioni |
+| secondo fotogramma del riposo | si ricava abbassando il busto di un pixel |
+| azione, KO e camminata | da fotogrammi scelti delle animazioni |
+| colore della squadra | il blu saturo dei vestiti va nei colori chiave della squadra; l'acciaio, bluastro ma poco saturo, resta com'è |
+
+**Icone degli oggetti** (`tools/pixelart/pixellab/icons/`): una icona 32×32 per ognuna delle 37 basi, per ognuno dei 16 leggendari, per stivali e corno (oggetti del catalogo classico) e per il sacchetto del bottino a terra.
+
+```bash
+PIXELLAB_TOKEN=... python3 tools/pixelart/pixellab_icons.py generate
+```
+
+```bash
+python3 tools/pixelart/pixellab_icons.py atlas
+```
+
+**Mappa del mondo** (`tools/pixelart/pixellab/worldmap/`): pergamena 480×272 fatta con lo strumento «Pro» di PixelLab, usando la mappa generata come riferimento per la disposizione delle cinque regioni da ovest a est. È installata come `client/assets/override/worldmap.png`; le tappe della campagna (`server/src/campaign.rs`) sono posizionate sui punti di riferimento del disegno (tempio, oasi, fortezza di lava, Sala dei Custodi). I nomi delle regioni compaiono in targhe in fondo a ogni fascia.
+
+Il primo comando genera solo le icone mancanti; il secondo compone `client/assets/items.png` e l'indice `items.json`. Per rifare un'icona basta cancellarne il PNG e rilanciare `generate`.
 
 ## Come si sostituisce un atlante
 

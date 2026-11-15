@@ -8,6 +8,7 @@ extends Node3D
 const UI := preload("res://scripts/ui.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const Art := preload("res://scripts/art.gd")
+const Items := preload("res://scripts/items.gd")
 var TEX: Texture2D = Art.tex("terrain3d")
 var OVERLAY_TEX: Texture2D = Art.tex("terrain")
 const ANIM_SHADER := preload("res://shaders/animated_tile.gdshader")
@@ -71,6 +72,12 @@ var units: Array = []:
 	set(value):
 		units = value
 		_sync_units()
+## Oggetti a terra (dallo snapshot): sacchetti colorati per rarità sulle caselle.
+var loot: Array = []:
+	set(value):
+		loot = value
+		_sync_loot()
+var _loot_nodes: Array = []
 
 
 func _ready() -> void:
@@ -390,6 +397,58 @@ func _sync_units() -> void:
 			_nodes.erase(i)
 
 
+# ------------------------------------------------------------------ bottino a terra
+
+func _sync_loot() -> void:
+	for n in _loot_nodes:
+		(n as Node).queue_free()
+	_loot_nodes.clear()
+	if not is_inside_tree() or tiles.is_empty():
+		return
+	var per_tile := {}
+	for d in loot:
+		var p := Vector2i(int(d["pos"]["x"]), int(d["pos"]["y"]))
+		var k: int = per_tile.get(p, 0)
+		per_tile[p] = k + 1
+		var rarity := str(Items.info(str(d["item"])).get("rarity", "common"))
+		var s := Sprite3D.new()
+		var bag := Items.icon("bag")
+		s.texture = bag if bag != null else Items.bag_texture(rarity)
+		s.pixel_size = PX * (0.8 if bag != null else 1.2)
+		s.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+		s.shaded = false
+		s.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+		s.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+		# Più oggetti sulla stessa casella si dispongono a ventaglio.
+		var off := Vector3(0.18 * k - 0.1, 0.0, 0.12 * k)
+		s.set_meta("base", tile_top(p) + off + Vector3(0, 1.05, 0))
+		s.set_meta("phase", float(p.x * 7 + p.y * 3 + k))
+		s.set_meta("glow", rarity in ["epic", "legendary"])
+		s.position = s.get_meta("base")
+		# Scintilla del colore della rarità sopra il sacchetto.
+		var sp := Sprite3D.new()
+		sp.texture = Items.spark_texture(rarity)
+		sp.pixel_size = PX
+		sp.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		sp.shaded = false
+		sp.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+		sp.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+		sp.position = Vector3(0.12, 0.42, 0)
+		s.add_child(sp)
+		add_child(s)
+		_loot_nodes.append(s)
+
+
+func _animate_loot() -> void:
+	for s in _loot_nodes:
+		var sp := s as Sprite3D
+		var ph: float = sp.get_meta("phase")
+		sp.position = (sp.get_meta("base") as Vector3) + Vector3(0, 0.06 * sin(time * 3.0 + ph), 0)
+		if bool(sp.get_meta("glow")):
+			var g := 1.0 + 0.35 * (0.5 + 0.5 * sin(time * 5.0 + ph))
+			sp.modulate = Color(g, g, g)
+
+
 # ------------------------------------------------------------------ effetti
 
 func _fx_sprite(kind: String) -> Sprite3D:
@@ -498,6 +557,7 @@ func add_float(p: Vector2i, text: String, color: Color) -> void:
 
 func _process(delta: float) -> void:
 	time += delta
+	_animate_loot()
 	yaw = lerpf(yaw, yaw_target, minf(1.0, delta * 10.0))
 	zoom = lerpf(zoom, zoom_target, minf(1.0, delta * 10.0))
 	_place_camera()

@@ -108,6 +108,7 @@ fn demo_setup(seed: u64) -> BattleSetup {
         units,
         statutes: 2,
         objective: Default::default(),
+        loot: Default::default(),
     }
 }
 

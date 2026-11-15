@@ -45,6 +45,17 @@ pub fn describe_event(e: &Event, n: &dyn Fn(UnitId) -> String) -> Option<String>
         } => format!("  {} recupera {amount} HP (HP {hp})", n(*unit)),
         Event::Missed { unit, .. } => format!("  mancato {}", n(*unit)),
         Event::Defeated { unit } => format!("  {} è fuori combattimento", n(*unit)),
+        Event::LootDropped { unit, rarity, .. } => {
+            format!("  {} lascia cadere un oggetto {}", n(*unit), rarity.name())
+        }
+        Event::LootPicked { unit, item, .. } => {
+            format!(
+                "{} raccoglie {} ({})",
+                n(*unit),
+                item.name(),
+                item.rarity().name()
+            )
+        }
         Event::TerrainDamage {
             unit,
             terrain,

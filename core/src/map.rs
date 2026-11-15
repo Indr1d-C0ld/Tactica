@@ -104,6 +104,32 @@ impl Terrain {
         }
     }
 
+    /// Effetti del terreno sulle unità, in italiano, ricavati dai valori del motore.
+    pub fn effects(self) -> Vec<String> {
+        let mut v = Vec::new();
+        if self.move_cost() > 1 {
+            v.push(format!("costa {} punti movimento", self.move_cost()));
+        }
+        if self.def_bonus() != 0 {
+            v.push(format!("DEF {:+}", self.def_bonus()));
+        }
+        if self.evade_bonus() != 0 {
+            v.push(format!("schivata {:+}%", self.evade_bonus()));
+        }
+        if self.end_turn_damage_pct() > 0 {
+            v.push(format!("-{}% HP a fine turno", self.end_turn_damage_pct()));
+        }
+        match self {
+            Terrain::Water => {
+                v.push("fulmine +50%".into());
+                v.push("fuoco -50%".into());
+            }
+            Terrain::Lava => v.push("ghiaccio -50%".into()),
+            _ => {}
+        }
+        v
+    }
+
     pub fn glyph(self) -> char {
         match self {
             Terrain::Grass => '.',
@@ -230,10 +256,10 @@ impl MapParams {
         let biome = Biome::ALL[rng.below(Biome::ALL.len() as u32) as usize];
         let extra = if biome == Biome::Highlands { 3 } else { 0 };
         MapParams {
-            width: rng.range(10, 14),
-            height: rng.range(9, 12),
+            width: rng.range(14, 20),
+            height: rng.range(12, 17),
             biome,
-            max_height: rng.range(3, 6) + extra,
+            max_height: rng.range(4, 8) + extra,
             roughness: rng.range(10, 60),
             spawns_per_team: 6,
         }
@@ -322,9 +348,10 @@ impl Map {
         let (w, h) = (params.width, params.height);
         let max_h = params.max_height.max(1);
 
-        let elev = value_noise(w, h, 4, max_h * 16, rng);
-        let moist = value_noise(w, h, 3, 99 * 16, rng);
-        let jitter = params.roughness.clamp(0, 100) * max_h * 16 / 200;
+        let landform = Landform::pick(params.biome, rng);
+        let elev = shaped_elevation(w, h, max_h, landform, rng);
+        let moist = fractal_noise(w, h, 99 * 16, rng);
+        let jitter = params.roughness.clamp(0, 100) * max_h * 16 / 260;
 
         let mut tiles = Vec::with_capacity((w * h) as usize);
         for i in 0..(w * h) as usize {
@@ -333,10 +360,16 @@ impl Map {
             } else {
                 0
             };
-            let height = ((elev[i] + j) / 16).clamp(0, max_h);
+            let mut height = ((elev[i] + j) / 16).clamp(0, max_h);
+            if landform == Landform::Terraces {
+                // Gradoni larghi: altezze pari, salti di due livelli.
+                height = (height / 2 * 2).min(max_h);
+            }
             let terrain = params.biome.pick_terrain(height, max_h, moist[i] / 16);
             tiles.push(Tile { height, terrain });
         }
+        landform.carve(&mut tiles, w, h, max_h, params.biome, rng);
+        scatter_features(&mut tiles, w, h, max_h, params.biome, rng);
         // Le superfici liquide sono piatte e al livello più basso del vicinato.
         for y in 0..h {
             for x in 0..w {
@@ -417,6 +450,235 @@ impl Map {
         }
         s
     }
+}
+
+/// Forma del terreno di una mappa, estratta secondo il bioma.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Landform {
+    /// Colline morbide.
+    Rolling,
+    /// Vallata fra due crinali, aperta da una squadra all'altra.
+    Valley,
+    /// Colle o mesa al centro.
+    Hill,
+    /// Gola stretta con pareti ripide.
+    Canyon,
+    /// Gradoni larghi.
+    Terraces,
+    /// Fiume (o colata) che attraversa la mappa, con guadi.
+    River,
+    /// Laghetti e stagni sparsi.
+    Lakes,
+    /// Pinnacoli di roccia su un terreno mosso.
+    Pillars,
+}
+
+impl Landform {
+    pub fn name(self) -> &'static str {
+        match self {
+            Landform::Rolling => "colline",
+            Landform::Valley => "vallata",
+            Landform::Hill => "colle",
+            Landform::Canyon => "gola",
+            Landform::Terraces => "gradoni",
+            Landform::River => "fiume",
+            Landform::Lakes => "laghi",
+            Landform::Pillars => "pinnacoli",
+        }
+    }
+
+    fn pick(biome: Biome, rng: &mut Rng) -> Landform {
+        use Landform::*;
+        let pool: &[(Landform, u32)] = match biome {
+            Biome::Meadow => &[
+                (Rolling, 3),
+                (Valley, 3),
+                (Hill, 3),
+                (River, 4),
+                (Lakes, 2),
+                (Terraces, 1),
+            ],
+            Biome::Desert => &[
+                (Rolling, 2),
+                (Canyon, 4),
+                (Pillars, 4),
+                (Hill, 2),
+                (Lakes, 1),
+            ],
+            Biome::Volcano => &[
+                (Hill, 3),
+                (River, 4),
+                (Canyon, 2),
+                (Pillars, 2),
+                (Rolling, 1),
+            ],
+            Biome::Marsh => &[(Lakes, 5), (River, 3), (Rolling, 2), (Valley, 1)],
+            Biome::Highlands => &[
+                (Terraces, 4),
+                (Valley, 3),
+                (Canyon, 2),
+                (Hill, 2),
+                (Pillars, 2),
+            ],
+        };
+        let total: u32 = pool.iter().map(|p| p.1).sum();
+        let mut roll = rng.below(total);
+        for &(l, wt) in pool {
+            if roll < wt {
+                return l;
+            }
+            roll -= wt;
+        }
+        Rolling
+    }
+
+    /// Ritocchi dopo l'assegnazione dei terreni: fiumi, laghi, pinnacoli.
+    fn carve(self, tiles: &mut [Tile], w: i32, h: i32, max_h: i32, biome: Biome, rng: &mut Rng) {
+        let liquid = if biome == Biome::Volcano {
+            Terrain::Lava
+        } else {
+            Terrain::Water
+        };
+        let at = |x: i32, y: i32| (y * w + x) as usize;
+        match self {
+            Landform::River => {
+                // Scorre da nord a sud fra i due schieramenti, serpeggiando.
+                let mut x = w / 2 + rng.range(-1, 1);
+                let fords: Vec<i32> = (0..2).map(|_| rng.range(1, h - 2)).collect();
+                for y in 0..h {
+                    x = (x + rng.range(-1, 1)).clamp(4, w - 5);
+                    let width = if rng.percent(35) { 2 } else { 1 };
+                    for dx in 0..width {
+                        let i = at(x + dx, y);
+                        if fords.contains(&y) {
+                            // Guado: basso e attraversabile, sabbia o roccia.
+                            tiles[i] = Tile {
+                                height: 0,
+                                terrain: if liquid == Terrain::Lava {
+                                    Terrain::Stone
+                                } else {
+                                    Terrain::Sand
+                                },
+                            };
+                        } else {
+                            tiles[i] = Tile {
+                                height: 0,
+                                terrain: liquid,
+                            };
+                        }
+                    }
+                    // Sponde più basse accanto al fiume.
+                    for bx in [x - 1, x + width] {
+                        let i = at(bx, y);
+                        tiles[i].height = tiles[i].height.min(1);
+                    }
+                }
+            }
+            Landform::Lakes => {
+                let n = rng.range(2, 4);
+                for _ in 0..n {
+                    let (cx, cy) = (rng.range(3, w - 4), rng.range(1, h - 2));
+                    let r = rng.range(1, 2);
+                    for y in (cy - r).max(0)..=(cy + r).min(h - 1) {
+                        for x in (cx - r).max(0)..=(cx + r).min(w - 1) {
+                            if (x - cx).abs() + (y - cy).abs() <= r + 1 && rng.percent(85) {
+                                tiles[at(x, y)] = Tile {
+                                    height: 0,
+                                    terrain: liquid,
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+            Landform::Pillars => {
+                let n = rng.range(4, 9);
+                for _ in 0..n {
+                    let (x, y) = (rng.range(3, w - 4), rng.range(0, h - 1));
+                    let i = at(x, y);
+                    tiles[i] = Tile {
+                        height: (tiles[i].height + rng.range(2, 4)).min(max_h + 2),
+                        terrain: Terrain::Stone,
+                    };
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Dettagli naturali sparsi: affioramenti di roccia e macchie di vegetazione.
+fn scatter_features(tiles: &mut [Tile], w: i32, h: i32, max_h: i32, biome: Biome, rng: &mut Rng) {
+    let area = w * h;
+    let rocks = area / 40 + rng.range(0, 3);
+    for _ in 0..rocks {
+        let i = rng.below(area as u32) as usize;
+        if tiles[i].standable() {
+            tiles[i].terrain = Terrain::Stone;
+            if rng.percent(50) {
+                tiles[i].height = (tiles[i].height + 1).min(max_h + 1);
+            }
+        }
+    }
+    let veg = match biome {
+        Biome::Meadow | Biome::Marsh | Biome::Highlands => area / 30,
+        _ => 0,
+    };
+    for _ in 0..veg {
+        let (cx, cy) = (rng.range(0, w - 1), rng.range(0, h - 1));
+        for (dx, dy) in [(0, 0), (1, 0), (0, 1), (-1, 0), (0, -1)] {
+            let (x, y) = (cx + dx, cy + dy);
+            if x >= 0 && y >= 0 && x < w && y < h && rng.percent(70) {
+                let i = (y * w + x) as usize;
+                if tiles[i].terrain == Terrain::Grass {
+                    tiles[i].terrain = Terrain::Thicket;
+                }
+            }
+        }
+    }
+}
+
+/// Rumore su tre scale (forme ampie, medie e piccole), valori `0..=max`.
+fn fractal_noise(w: i32, h: i32, max: i32, rng: &mut Rng) -> Vec<i32> {
+    let a = value_noise(w, h, 6, max, rng);
+    let b = value_noise(w, h, 3, max, rng);
+    let c = value_noise(w, h, 2, max, rng);
+    (0..a.len())
+        .map(|i| (a[i] * 55 + b[i] * 30 + c[i] * 15) / 100)
+        .collect()
+}
+
+/// Rilievo modellato secondo la forma del terreno (virgola fissa ×16).
+fn shaped_elevation(w: i32, h: i32, max_h: i32, form: Landform, rng: &mut Rng) -> Vec<i32> {
+    let max = max_h * 16;
+    let base = fractal_noise(w, h, max, rng);
+    let mut out = Vec::with_capacity(base.len());
+    for y in 0..h {
+        for x in 0..w {
+            let n = base[(y * w + x) as usize];
+            // Distanza dal centro normalizzata a 0..=100.
+            let dy = (2 * y - (h - 1)).abs() * 100 / h.max(1);
+            let dx = (2 * x - (w - 1)).abs() * 100 / w.max(1);
+            let d = ((dx * dx + dy * dy) as f64).sqrt().min(100.0) as i32;
+            let v = match form {
+                Landform::Valley => n * 50 / 100 + max * dy / 100 * 70 / 100,
+                Landform::Canyon => {
+                    let wall = if dy > 30 {
+                        max * 85 / 100
+                    } else {
+                        max * 5 / 100
+                    };
+                    n * 30 / 100 + wall
+                }
+                Landform::Hill => n * 45 / 100 + max * (100 - d) / 100 * 75 / 100,
+                Landform::Terraces => n * 60 / 100 + max * x / w.max(1) * 50 / 100,
+                Landform::River | Landform::Lakes => n * 85 / 100,
+                Landform::Rolling | Landform::Pillars => n,
+            };
+            out.push(v.clamp(0, max));
+        }
+    }
+    out
 }
 
 /// Rumore a reticolo con interpolazione bilineare, in virgola fissa (valori `0..=max`).

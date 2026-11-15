@@ -9,6 +9,7 @@ use std::collections::VecDeque;
 use std::fmt;
 
 use crate::ability::{AbilityId, Element, Kind};
+use crate::gear::{self, ItemRef, Rarity};
 use crate::map::{Dir, Map, MapParams, Pos, Terrain};
 use crate::rng::Rng;
 use crate::status::{Status, StatusEffect};
@@ -30,6 +31,33 @@ pub struct BattleSetup {
     /// Condizione di vittoria (predefinita: sconfiggere tutti i nemici).
     #[cfg_attr(feature = "serde", serde(default))]
     pub objective: Objective,
+    /// Bottino lasciato dalle unità sconfitte (predefinito: nessuno).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub loot: LootRules,
+}
+
+/// Regole del bottino, per squadra dell'unità sconfitta.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct LootRules {
+    /// Probabilità (%) che un'unità sconfitta lasci un oggetto.
+    pub chance: [i32; 2],
+    /// Spinta verso le rarità alte (0-10).
+    pub boost: [i32; 2],
+    /// Unità che lascia sempre un oggetto, con una spinta in più (il campione).
+    pub champion: Option<UnitId>,
+}
+
+/// Oggetto a terra, lasciato da un'unità sconfitta: lo raccoglie chi si ferma
+/// sulla casella, purché sia della squadra avversaria.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LootDrop {
+    pub pos: Pos,
+    pub item: ItemRef,
+    /// Squadra dell'unità che l'ha lasciato.
+    pub team: u8,
+    pub from: UnitId,
 }
 
 /// Obiettivo della battaglia.
@@ -95,6 +123,19 @@ pub enum Event {
     },
     Defeated {
         unit: UnitId,
+    },
+    /// Un'unità sconfitta lascia un oggetto sulla sua casella.
+    LootDropped {
+        unit: UnitId,
+        pos: Pos,
+        rarity: Rarity,
+    },
+    /// Un'unità raccoglie un oggetto fermandosi sulla casella.
+    LootPicked {
+        unit: UnitId,
+        item: ItemRef,
+        /// Unità sconfitta che l'aveva lasciato.
+        from: UnitId,
     },
     TerrainDamage {
         unit: UnitId,
@@ -204,6 +245,13 @@ pub struct Battle {
     last_ability: Option<AbilityId>,
     winner: Option<Option<u8>>,
     pub objective: Objective,
+    loot_rules: LootRules,
+    /// Oggetti a terra.
+    pub loot: Vec<LootDrop>,
+    /// Oggetti raccolti, con chi li ha raccolti.
+    pub picked: Vec<(UnitId, ItemRef)>,
+    /// Unità sconfitte per cui il bottino è già stato estratto.
+    loot_rolled: Vec<UnitId>,
 }
 
 /// Stato pubblico della battaglia, senza il generatore casuale: è ciò che il
@@ -225,6 +273,10 @@ pub struct Snapshot {
     pub winner: Option<u8>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub objective: Objective,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub loot: Vec<LootDrop>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub picked: Vec<(UnitId, ItemRef)>,
 }
 
 impl Battle {
@@ -241,12 +293,20 @@ impl Battle {
             finished: self.winner.is_some(),
             winner: self.winner.flatten(),
             objective: self.objective,
+            loot: self.loot.clone(),
+            picked: self.picked.clone(),
         }
     }
 
     /// Battaglia "di sola consultazione" da uno snapshot: generatore casuale
     /// fittizio, quindi da usare per anteprime e IA lato client, non per giocare.
     pub fn from_snapshot(s: Snapshot) -> Battle {
+        let loot_rolled = s
+            .units
+            .iter()
+            .filter(|u| u.condition == Condition::Defeated)
+            .map(|u| u.id)
+            .collect();
         Battle {
             seed: 0,
             map: s.map,
@@ -260,6 +320,10 @@ impl Battle {
             last_ability: s.last_ability,
             winner: s.finished.then_some(s.winner),
             objective: s.objective,
+            loot_rules: LootRules::default(),
+            loot_rolled,
+            loot: s.loot,
+            picked: s.picked,
         }
     }
 
@@ -311,6 +375,10 @@ impl Battle {
             acted: false,
             last_ability: None,
             winner: None,
+            loot_rules: setup.loot,
+            loot: Vec::new(),
+            picked: Vec::new(),
+            loot_rolled: Vec::new(),
         };
         let mut ev = Vec::new();
         b.check_victory(&mut ev);
@@ -407,10 +475,9 @@ impl Battle {
                 if (t.height - h).abs() > u.stats.jump {
                     continue;
                 }
-                if self
-                    .unit_at(nb)
-                    .is_some_and(|o| self.units[o].team != u.team)
-                {
+                // Ogni unità in piedi occupa la sua casella: non si attraversano
+                // né i nemici né gli alleati.
+                if self.unit_at(nb).is_some() {
                     continue;
                 }
                 let c = cost + t.terrain.move_cost();
@@ -473,6 +540,13 @@ impl Battle {
         let ab = ability.def();
         let u = &self.units[idx];
         let from_h = self.map.tile(from).map_or(0, |t| t.height);
+        let gear = u.gear_effects();
+        // Gli attacchi fisici senza elemento prendono quello dell'arma.
+        let element = ab.element.or(if ab.kind == Kind::Physical {
+            gear.attack_element
+        } else {
+            None
+        });
         let mut out = Vec::new();
         for (ti, t) in self.units.iter().enumerate() {
             if !t.is_active() {
@@ -485,7 +559,15 @@ impl Battle {
             let tile = self.map.tile(tpos).unwrap();
             let ally = t.team == u.team;
             // Gli status negativi colpiscono i nemici, quelli positivi gli alleati.
-            let status = ab.effect.filter(|e| e.status.is_negative() != ally);
+            let status = ab
+                .effect
+                .filter(|e| e.status.is_negative() != ally)
+                .or_else(|| {
+                    // Effetti al colpo dell'arma: solo colpi fisici sui nemici.
+                    (ab.kind == Kind::Physical && !ally && ti != idx)
+                        .then(|| gear.on_hit.first().copied())
+                        .flatten()
+                });
             let cleanse = ab.cleanse && ally;
             let (hit_pct, amount, heal) = match ab.kind {
                 Kind::Support => {
@@ -522,10 +604,14 @@ impl Battle {
             let amount = if heal || ab.kind == Kind::Support {
                 amount
             } else {
-                match (ab.element, tile.terrain) {
+                let amount = match (element, tile.terrain) {
                     (Some(Element::Thunder), Terrain::Water) => amount * 3 / 2,
                     (Some(Element::Ice), Terrain::Lava) => amount / 2,
                     (Some(Element::Fire), Terrain::Water) => amount / 2,
+                    _ => amount,
+                };
+                match element {
+                    Some(el) if t.gear_effects().resist.contains(&el) => amount / 2,
                     _ => amount,
                 }
             };
@@ -579,11 +665,13 @@ impl Battle {
                     u.facing = Dir::toward(from, dest);
                 }
                 self.moved = true;
+                let (uid, team) = (u.id, u.team);
                 ev.push(Event::Moved {
-                    unit: u.id,
+                    unit: uid,
                     from,
                     to: dest,
                 });
+                self.pick_up(uid, team, dest, &mut ev);
             }
             Action::Act { ability, target } => {
                 if self.acted {
@@ -600,6 +688,7 @@ impl Battle {
                 self.finish_turn(idx, &mut ev);
             }
         }
+        self.roll_drops(&mut ev);
         Ok(ev)
     }
 
@@ -707,9 +796,15 @@ impl Battle {
                     self.try_status(o.target, e, ev);
                 }
             }
-            if ab.drain && o.target != idx && self.units[idx].is_active() {
+            let gear_drain = if ab.kind == Kind::Physical && enemy {
+                self.units[idx].gear_effects().drain_pct
+            } else {
+                0
+            };
+            let drain_pct = if ab.drain { 50 } else { 0 } + gear_drain;
+            if drain_pct > 0 && o.target != idx && self.units[idx].is_active() {
                 let u = &mut self.units[idx];
-                let gain = (amount / 2).min(u.stats.max_hp - u.hp);
+                let gain = (amount * drain_pct / 100).min(u.stats.max_hp - u.hp);
                 if gain > 0 {
                     u.hp += gain;
                     ev.push(Event::Healed {
@@ -739,7 +834,8 @@ impl Battle {
     /// Tira la probabilità e applica uno status; restituisce se è riuscito.
     fn try_status(&mut self, target: usize, e: StatusEffect, ev: &mut Vec<Event>) -> bool {
         let id = self.units[target].id;
-        if !self.rng.percent(e.chance) {
+        let immune = self.units[target].gear_effects().immune.contains(&e.status);
+        if immune || !self.rng.percent(e.chance) {
             ev.push(Event::StatusResisted {
                 unit: id,
                 status: e.status,
@@ -806,6 +902,21 @@ impl Battle {
                 return;
             }
         }
+        let gear_regen = u.gear_effects().regen_pct;
+        if gear_regen > 0 && !u.has(Status::Regen) {
+            let amount = (u.stats.max_hp * gear_regen / 100)
+                .max(1)
+                .min(u.stats.max_hp - u.hp);
+            if amount > 0 {
+                u.hp += amount;
+                ev.push(Event::Healed {
+                    unit: id,
+                    by: id,
+                    amount,
+                    hp: u.hp,
+                });
+            }
+        }
         if u.has(Status::Regen) {
             let amount = tick.min(u.stats.max_hp - u.hp);
             if amount > 0 {
@@ -855,6 +966,63 @@ impl Battle {
                 turns: SUSPEND_TURNS,
             });
         }
+    }
+
+    /// Estrae il bottino delle unità appena sconfitte (una volta sola per unità).
+    fn roll_drops(&mut self, ev: &mut Vec<Event>) {
+        for i in 0..self.units.len() {
+            let u = &self.units[i];
+            if u.condition != Condition::Defeated || self.loot_rolled.contains(&u.id) {
+                continue;
+            }
+            let (id, team, pos, level) = (u.id, u.team as usize, u.pos, u.level);
+            self.loot_rolled.push(id);
+            let champion = self.loot_rules.champion == Some(id);
+            let chance = if champion {
+                100
+            } else {
+                self.loot_rules.chance[team]
+            };
+            if chance <= 0 || !self.rng.percent(chance) {
+                continue;
+            }
+            let boost = self.loot_rules.boost[team] + if champion { 4 } else { 0 };
+            let item = gear::roll_item(&mut self.rng, level, boost);
+            self.loot.push(LootDrop {
+                pos,
+                item,
+                team: team as u8,
+                from: id,
+            });
+            ev.push(Event::LootDropped {
+                unit: id,
+                pos,
+                rarity: item.rarity(),
+            });
+        }
+    }
+
+    /// Raccoglie gli oggetti avversari sulla casella in cui l'unità si è fermata.
+    fn pick_up(&mut self, unit: UnitId, team: u8, at: Pos, ev: &mut Vec<Event>) {
+        let mut i = 0;
+        while i < self.loot.len() {
+            if self.loot[i].pos == at && self.loot[i].team != team {
+                let d = self.loot.remove(i);
+                self.picked.push((unit, d.item));
+                ev.push(Event::LootPicked {
+                    unit,
+                    item: d.item,
+                    from: d.from,
+                });
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    /// Oggetti a terra su una casella.
+    pub fn loot_at(&self, p: Pos) -> impl Iterator<Item = &LootDrop> {
+        self.loot.iter().filter(move |d| d.pos == p)
     }
 
     fn vary(&mut self, amount: i32) -> i32 {

@@ -32,6 +32,7 @@ fn main() {
             units,
             statutes: 2,
             objective: Default::default(),
+            loot: Default::default(),
         });
         ai::autoplay(&mut b, 20_000);
         let w = match b.winner() {

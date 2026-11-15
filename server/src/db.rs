@@ -6,7 +6,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 use sqlx::{FromRow, SqliteConnection, SqlitePool};
 use tactica_core::ability::AbilityId;
 use tactica_core::class::Class;
-use tactica_core::item::ItemId;
+use tactica_core::gear::ItemRef;
 use tactica_core::progression;
 use tactica_core::unit::Unit;
 use tactica_core::{Dir, Pos, UnitSetup};
@@ -102,10 +102,10 @@ impl RosterUnit {
         Class::from_key(&self.class).unwrap_or(Class::Vanguard)
     }
 
-    pub fn items(&self) -> Vec<ItemId> {
+    pub fn items(&self) -> Vec<ItemRef> {
         self.equipment
             .iter()
-            .filter_map(|k| ItemId::from_key(k))
+            .filter_map(|k| ItemRef::from_key(k))
             .collect()
     }
 
@@ -130,15 +130,15 @@ impl RosterUnit {
     }
 }
 
-pub fn parse_items(json: &str) -> Vec<ItemId> {
+pub fn parse_items(json: &str) -> Vec<ItemRef> {
     serde_json::from_str::<Vec<String>>(json)
         .unwrap_or_default()
         .iter()
-        .filter_map(|k| ItemId::from_key(k))
+        .filter_map(|k| ItemRef::from_key(k))
         .collect()
 }
 
-pub fn items_json(items: &[ItemId]) -> String {
+pub fn items_json(items: &[ItemRef]) -> String {
     serde_json::to_string(&items.iter().map(|i| i.key()).collect::<Vec<_>>()).expect("json")
 }
 
@@ -249,7 +249,7 @@ pub async fn roster_units(
 pub async fn add_item(
     conn: &mut SqliteConnection,
     account: i64,
-    item: ItemId,
+    item: ItemRef,
     n: i64,
 ) -> sqlx::Result<()> {
     sqlx::query(
@@ -268,7 +268,7 @@ pub async fn add_item(
 pub async fn take_item(
     conn: &mut SqliteConnection,
     account: i64,
-    item: ItemId,
+    item: ItemRef,
 ) -> sqlx::Result<bool> {
     let n = sqlx::query(
         "UPDATE inventory SET qty = qty - 1 WHERE account_id = ? AND item = ? AND qty > 0",

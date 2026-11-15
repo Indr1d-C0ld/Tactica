@@ -69,7 +69,7 @@ pub static REGIONS: [RegionDef; 5] = [
                 false,
                 true,
                 0.07,
-                0.62
+                0.72
             ),
             node!(
                 "r1n2",
@@ -80,7 +80,7 @@ pub static REGIONS: [RegionDef; 5] = [
                 false,
                 false,
                 0.15,
-                0.45
+                0.38
             ),
             node!(
                 "r1n3",
@@ -90,8 +90,8 @@ pub static REGIONS: [RegionDef; 5] = [
                 1,
                 true,
                 false,
-                0.23,
-                0.6
+                0.09,
+                0.55
             ),
         ],
     },
@@ -109,8 +109,8 @@ pub static REGIONS: [RegionDef; 5] = [
                 1,
                 false,
                 false,
-                0.32,
-                0.38
+                0.25,
+                0.3
             ),
             node!(
                 "r2n2",
@@ -120,8 +120,8 @@ pub static REGIONS: [RegionDef; 5] = [
                 2,
                 false,
                 false,
-                0.4,
-                0.55
+                0.36,
+                0.64
             ),
             node!(
                 "r2n3",
@@ -131,8 +131,8 @@ pub static REGIONS: [RegionDef; 5] = [
                 2,
                 true,
                 false,
-                0.47,
-                0.4
+                0.3,
+                0.46
             ),
         ],
     },
@@ -150,8 +150,8 @@ pub static REGIONS: [RegionDef; 5] = [
                 2,
                 false,
                 false,
-                0.56,
-                0.6
+                0.44,
+                0.36
             ),
             node!(
                 "r3n2",
@@ -161,8 +161,8 @@ pub static REGIONS: [RegionDef; 5] = [
                 2,
                 false,
                 false,
-                0.63,
-                0.45
+                0.56,
+                0.28
             ),
             node!(
                 "r3n3",
@@ -172,8 +172,8 @@ pub static REGIONS: [RegionDef; 5] = [
                 2,
                 true,
                 false,
-                0.7,
-                0.62
+                0.5,
+                0.53
             ),
         ],
     },
@@ -191,8 +191,8 @@ pub static REGIONS: [RegionDef; 5] = [
                 2,
                 false,
                 false,
-                0.76,
-                0.42
+                0.64,
+                0.4
             ),
             node!(
                 "r4n2",
@@ -202,8 +202,8 @@ pub static REGIONS: [RegionDef; 5] = [
                 3,
                 false,
                 false,
-                0.82,
-                0.58
+                0.66,
+                0.76
             ),
             node!(
                 "r4n3",
@@ -213,8 +213,8 @@ pub static REGIONS: [RegionDef; 5] = [
                 3,
                 true,
                 false,
-                0.87,
-                0.4
+                0.71,
+                0.58
             ),
         ],
     },
@@ -232,8 +232,8 @@ pub static REGIONS: [RegionDef; 5] = [
                 3,
                 false,
                 false,
-                0.9,
-                0.62
+                0.83,
+                0.72
             ),
             node!(
                 "r5n2",
@@ -243,8 +243,8 @@ pub static REGIONS: [RegionDef; 5] = [
                 3,
                 false,
                 false,
-                0.94,
-                0.47
+                0.86,
+                0.46
             ),
             node!(
                 "r5n3",
@@ -254,7 +254,7 @@ pub static REGIONS: [RegionDef; 5] = [
                 3,
                 true,
                 false,
-                0.97,
+                0.91,
                 0.3
             ),
         ],

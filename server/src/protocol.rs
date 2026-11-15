@@ -175,8 +175,9 @@ pub enum ServerMsg {
         elo_before: i64,
         elo_after: i64,
         coins: i64,
-        /// Chiave dell'oggetto ottenuto come bottino.
-        loot: Option<String>,
+        /// Oggetti raccolti in battaglia dalle proprie unità (ora nell'inventario).
+        /// Ogni elemento ha la forma di `GET /api/items` (chiave, nome, rarità, effetti...).
+        loot: Vec<serde_json::Value>,
         /// Punteggio stagionale prima/dopo (solo PvP classificato).
         season_before: Option<i64>,
         season_after: Option<i64>,

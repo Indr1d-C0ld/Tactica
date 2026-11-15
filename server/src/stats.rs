@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use serde::Serialize;
 use sqlx::SqlitePool;
-use tactica_core::item::ItemId;
+use tactica_core::gear::ItemRef;
 use tactica_core::progression::{self, MatchResult};
 use tactica_core::unit::Unit;
 use tactica_core::{Action, Battle, BattleSetup};
@@ -24,7 +24,8 @@ pub struct SeatOutcome {
     pub elo_before: i64,
     pub elo_after: i64,
     pub coins: i64,
-    pub loot: Option<ItemId>,
+    /// Oggetti raccolti in battaglia dalle unità del giocatore.
+    pub loot: Vec<ItemRef>,
     pub season_before: Option<i64>,
     pub season_after: Option<i64>,
     pub clan_points: i64,
@@ -41,8 +42,6 @@ pub struct SavedMatch {
 pub fn coop_win_coins(difficulty: u8) -> i64 {
     150 + 50 * (difficulty.max(1) as i64 - 1)
 }
-
-pub const COOP_LOOT_CHANCE: i32 = 75;
 
 fn match_result(r: &str) -> MatchResult {
     match r {
@@ -201,20 +200,21 @@ pub async fn save_match(
                     .await?;
             }
         }
-        // Bottino deterministico: verificabile da seed della partita e account.
-        let loot_seed = setup.seed ^ e.account_id as u64;
-        let loot = if matches!(mode, Mode::Coop | Mode::Campaign) {
-            progression::loot_with_chance(loot_seed, mr, COOP_LOOT_CHANCE)
-        } else {
-            progression::loot(loot_seed, mr)
-        };
+        // Bottino: solo ciò che le unità del giocatore hanno raccolto in battaglia,
+        // qualunque sia l'esito (anche chi perde tiene ciò che ha raccolto).
+        let loot: Vec<ItemRef> = battle
+            .picked
+            .iter()
+            .filter(|(u, _)| players[i].units.contains(&(*u as usize)))
+            .map(|(_, item)| *item)
+            .collect();
         sqlx::query("UPDATE accounts SET elo = ?, coins = coins + ? WHERE id = ?")
             .bind(after)
             .bind(coins)
             .bind(e.account_id)
             .execute(&mut *tx)
             .await?;
-        if let Some(item) = loot {
+        for &item in &loot {
             db::add_item(&mut tx, e.account_id, item, 1).await?;
         }
         sqlx::query(
@@ -229,7 +229,9 @@ pub async fn save_match(
         .bind(elo[i])
         .bind(after)
         .bind(coins)
-        .bind(loot.map(ItemId::key))
+        .bind(
+            (!loot.is_empty()).then(|| loot.iter().map(ItemRef::key).collect::<Vec<_>>().join(",")),
+        )
         .bind(season.id)
         .bind(clan.as_ref().map(|c| c.clan_id))
         .bind(season_before)

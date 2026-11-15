@@ -85,13 +85,26 @@ func _build_nodes() -> void:
 	for c in _map.get_children():
 		if c != _paths:
 			c.queue_free()
-	for reg in data["regions"]:
-		var first: Dictionary = reg["nodes"][0]
-		var title := UI.label(str(reg["name"]), 0, Color(0.25, 0.16, 0.08))
-		title.position = _node_pos(first) + Vector2(-30, -70)
-		title.position.x = minf(title.position.x, _map.size.x - 300)
-		title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_map.add_child(title)
+	var regions: Array = data["regions"]
+	for ri in regions.size():
+		var reg: Dictionary = regions[ri]
+		# Targa col nome in fondo alla fascia della regione (le regioni vanno da ovest a est).
+		var band := _map.size.x / regions.size()
+		var plate := PanelContainer.new()
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.1, 0.07, 0.05, 0.72)
+		sb.border_color = Color(0.85, 0.7, 0.45)
+		sb.set_border_width_all(1)
+		sb.set_content_margin_all(4)
+		plate.add_theme_stylebox_override("panel", sb)
+		var title := UI.label(str(reg["name"]), 13, Color(1.0, 0.92, 0.75))
+		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		title.custom_minimum_size = Vector2(band - 34, 0)
+		plate.add_child(title)
+		plate.position = Vector2(band * ri + 12, _map.size.y * 0.84)
+		plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_map.add_child(plate)
 		for n in reg["nodes"]:
 			var b := Button.new()
 			var locked := not bool(n["unlocked"])

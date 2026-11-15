@@ -6,6 +6,7 @@ extends Control
 
 const UI := preload("res://scripts/ui.gd")
 const Board3D := preload("res://scripts/board3d.gd")
+const Items := preload("res://scripts/items.gd")
 const VGA_SHADER := preload("res://shaders/vga.gdshader")
 ## Stili grafici: fattore di ingrandimento della risoluzione interna e livelli di colore.
 const STYLES := [
@@ -62,6 +63,8 @@ var _card: RichTextLabel
 var _actions: VBoxContainer
 var _log: RichTextLabel
 var _hint: RichTextLabel
+## Testo della barra in basso per la modalità attuale (senza le informazioni sulla casella).
+var _base_hint := ""
 var _overlay: Control
 
 
@@ -250,6 +253,7 @@ func refresh() -> void:
 	var obj: Variant = snapshot.get("objective")
 	board.champion = int(obj["Champion"]) if obj is Dictionary and obj.has("Champion") else -1
 	board.units = units
+	board.loot = snapshot.get("loot", [])
 	var turn_txt := "Turno %d" % int(snapshot["turn"])
 	if not war.is_empty():
 		var t: Array = war["tags"]
@@ -414,6 +418,7 @@ func _set_mode(m: String, ability := "") -> void:
 			_hint.text = "Scegli la direzione: gli attacchi alle spalle colpiscono più facilmente"
 		_:
 			_hint.text = ""
+	_base_hint = _hint.text
 
 
 func _preview(t: Vector2i) -> void:
@@ -483,6 +488,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_show_card(_active())
 			if mode == "ability" and targets.has(t):
 				_preview(t)
+			else:
+				_show_tile(t)
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_RIGHT:
 			_set_mode("idle")
@@ -495,6 +502,36 @@ func _unhandled_input(event: InputEvent) -> void:
 			_send(TacticaEngine.make_move(t.x, t.y))
 		elif mode == "ability" and targets.has(t):
 			_send(TacticaEngine.make_act(sel_ability, t.x, t.y))
+
+
+## Terreno, altezza ed effetti della casella sotto il cursore, nella barra in basso.
+func _show_tile(t: Vector2i) -> void:
+	var info: Variant = JSON.parse_string(engine.tile_info_json(t))
+	if not (info is Dictionary) or not (info as Dictionary).has("terrain"):
+		_hint.text = _base_hint
+		return
+	var txt := "[color=#ffd27a]%s[/color] · altezza %d" % [str(info["terrain"]).capitalize(), int(info["height"])]
+	var fx: Array = info["effects"]
+	if not fx.is_empty():
+		txt += " · " + ", ".join(PackedStringArray(fx))
+	if info["unit"] != null:
+		txt += " · [color=#9cf]occupata da %s[/color]" % info["unit"]
+	var drops: Array = info.get("loot", [])
+	if not drops.is_empty():
+		var names: Array[String] = []
+		for k in drops:
+			names.append(Items.bb_name(str(k)))
+		txt += " · a terra: " + ", ".join(names)
+	_hint.text = txt if _base_hint == "" else _base_hint + "\n" + txt
+
+
+## Modalità automatica: inquadra il primo bottino caduto e lo fotografa.
+func _shot_loot(at: Vector2i) -> void:
+	await get_tree().create_timer(0.1).timeout
+	board.hover = at
+	_show_tile(at)
+	await get_tree().process_frame
+	await main.shot("battaglia_bottino")
 
 
 func _unit_at(t: Vector2i) -> int:
@@ -576,6 +613,18 @@ func _announce(msg: Dictionary, raw: String) -> void:
 		elif kind == "Defeated":
 			board.add_float(at, "KO", UI.BAD)
 			Sfx.play("ko")
+		elif kind == "LootDropped":
+			var rar := str(v["rarity"]).to_lower()
+			board.add_float(at, "Bottino!", Items.color(rar))
+			board.effect("buff", at, 0.4)
+			if main.autoplay() and main.opts.has("shots") and not shots_taken.has("bottino") \
+					and snapshot.get("finished") != true:
+				shots_taken["bottino"] = true
+				_shot_loot.call_deferred(at)
+		elif kind == "LootPicked":
+			var key := str(v["item"])
+			board.add_float(at, Items.name_of(key), Items.color_of(key))
+			Sfx.play("levelup")
 		elif kind == "StatusApplied":
 			var neg := str(v["status"]) in ["Poison", "Sleep", "Silence", "Slow", "Root"]
 			board.effect("debuff" if neg else "buff", at)
@@ -610,6 +659,10 @@ func _autoplay_tick() -> void:
 	if not shots_taken.has("inizio"):
 		shots_taken["inizio"] = true
 		await get_tree().create_timer(0.3).timeout
+		# Mostra le informazioni di una casella, come al passaggio del mouse.
+		board.hover = Vector2i(board.w / 2, board.h / 2)
+		_show_tile(board.hover)
+		await get_tree().process_frame
 		await main.shot("battaglia_inizio")
 		if main.opts.has("shots"):
 			# Dimostrazione della telecamera: rotazione, inclinazione, zoom, stili.
@@ -702,10 +755,12 @@ func _show_end_online(msg: Dictionary) -> void:
 	lines.append("Monete +%d" % int(msg["coins"]))
 	if int(msg.get("clan_points", 0)) > 0:
 		lines.append("[color=#8cf]Punti clan +%d[/color]" % int(msg["clan_points"]))
-	if msg.get("loot") != null:
-		var key := str(msg["loot"])
-		var name: String = Net.items.get(key, {}).get("name", key)
-		lines.append("[color=#fc6]Bottino: %s[/color]" % name)
+	var found: Array = msg.get("loot", [])
+	if not found.is_empty():
+		lines.append("[b]Bottino raccolto:[/b]")
+		for it in found:
+			Net.items[str(it["key"])] = it
+			lines.append("   " + Items.bb_name(str(it["key"])))
 	lines.append("")
 	for r in msg["rewards"]:
 		var lv := ""
@@ -718,8 +773,11 @@ func _show_end_online(msg: Dictionary) -> void:
 	_show_overlay("\n".join(lines), [["Torna al menu", func() -> void: main.show_menu()]])
 	if main.autoplay():
 		await main.shot("battaglia_fine")
+		var names: Array[String] = []
+		for it in found:
+			names.append("%s (%s)" % [it["name"], it["rarity"]])
 		var summary := "risultato=%s monete=%d bottino=%s premi=%d" % [
-			result, int(msg["coins"]), str(msg.get("loot")), msg["rewards"].size()]
+			result, int(msg["coins"]), "; ".join(names) if not names.is_empty() else "-", msg["rewards"].size()]
 		main.autoplay_after_battle(summary)
 
 
@@ -737,7 +795,14 @@ func _show_end_local() -> void:
 		buttons.append(["Torna al menu", func() -> void: main.show_menu()])
 	else:
 		buttons.append(["Accesso", func() -> void: main.show_login()])
-	_show_overlay("[font_size=33][b]%s[/b][/font_size]\nTurni: %d" % [title, int(snapshot["turn"])], buttons)
+	var text := "[font_size=33][b]%s[/b][/font_size]\nTurni: %d" % [title, int(snapshot["turn"])]
+	var mine: Array[String] = []
+	for pk in snapshot.get("picked", []):
+		if int(units[int(pk[0])]["team"]) == my_team:
+			mine.append("   " + Items.bb_name(str(pk[1])))
+	if not mine.is_empty():
+		text += "\n\n[b]Bottino raccolto[/b] (schermaglia: non si conserva)\n" + "\n".join(mine)
+	_show_overlay(text, buttons)
 	if main.autoplay():
 		await main.shot("schermaglia_fine")
 		main.finish(0, "schermaglia %s turni=%d hash=%d" % [title, int(snapshot["turn"]), engine.state_hash()])

@@ -1,6 +1,7 @@
 extends Control
 ## Menu principale: partite, roster (equipaggiamento, classi), negozio, statistiche.
 
+const Items := preload("res://scripts/items.gd")
 const UI := preload("res://scripts/ui.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const MAX_PARTY := 4
@@ -111,7 +112,7 @@ func _ability_name(key: String) -> String:
 
 
 func _item_name(key: String) -> String:
-	return str(Net.items.get(key, {}).get("name", key))
+	return Items.name_of(key)
 
 
 func reload() -> void:
@@ -122,6 +123,9 @@ func reload() -> void:
 	me = r.data
 	var inv := await Net.get_json("/api/inventory")
 	inventory = inv.data if int(inv.status) == 200 else {"coins": 0, "items": []}
+	# Le schede dell'inventario includono gli oggetti generati.
+	for it in inventory.get("items", []):
+		Net.items[str(it["key"])] = it
 	var tag := ""
 	if me.get("clan") != null:
 		tag = "[%s] " % me["clan"]["tag"]
@@ -258,8 +262,20 @@ func _unit_panel(u: Dictionary) -> Control:
 	box.add_child(UI.label("%s — %s  Lv %d  (EXP %d/100)" % [u["name"], u["class_name"], int(u["level"]), int(u["xp"])], 17, UI.ACCENT))
 	var eq: Array[String] = []
 	for k in u["equipment"]:
-		eq.append(_item_name(str(k)))
-	box.add_child(UI.label("Equipaggiamento: " + (", ".join(eq) if not eq.is_empty() else "nessuno")))
+		eq.append(Items.bb_name(str(k)))
+	var eq_lbl := RichTextLabel.new()
+	eq_lbl.bbcode_enabled = true
+	eq_lbl.fit_content = true
+	eq_lbl.text = "Equipaggiamento: " + (", ".join(eq) if not eq.is_empty() else "nessuno")
+	eq_lbl.tooltip_text = "\n\n".join(Array(u["equipment"]).map(func(k: Variant) -> String:
+		return Items.plain(Items.describe(str(k), _ability_name))))
+	box.add_child(eq_lbl)
+	var icons := UI.hbox(6)
+	for k in u["equipment"]:
+		var ib := Items.icon_box(str(k))
+		ib.tooltip_text = Items.plain(Items.describe(str(k), _ability_name))
+		icons.add_child(ib)
+	box.add_child(icons)
 	var us: Array[String] = []
 	for k in u["usable"]:
 		us.append(_ability_name(str(k)))
@@ -272,7 +288,7 @@ func _unit_panel(u: Dictionary) -> Control:
 	# Equipaggiamento: un menu per slot con oggetti equipaggiati o in inventario adatti alla classe.
 	var row := UI.hbox()
 	var pickers: Array[OptionButton] = []
-	for slot in ["arma", "armatura", "accessorio"]:
+	for slot in ["arma", "armatura", "copricapo", "accessorio"]:
 		var opts := [["(%s: nessuno)" % slot, ""]]
 		var sel := 0
 		var seen := {}
@@ -282,13 +298,14 @@ func _unit_panel(u: Dictionary) -> Control:
 		for it in inventory.get("items", []):
 			candidates.append(str(it["key"]))
 		for k in candidates:
-			var info: Dictionary = Net.items.get(k, {})
+			var info: Dictionary = Items.info(k)
 			if info.is_empty() or str(info["slot"]) != slot or seen.has(k):
 				continue
 			if not (str(u["class"]) in info["classes"]):
 				continue
 			seen[k] = true
-			opts.append([info["name"], k])
+			var mark := {"common": "", "uncommon": "◆ ", "rare": "◆◆ ", "epic": "◆◆◆ ", "legendary": "★ "}
+			opts.append([str(mark.get(str(info.get("rarity", "common")), "")) + str(info["name"]), k])
 			if k in u["equipment"]:
 				sel = opts.size() - 1
 		var ob := UI.option(opts, sel)
@@ -369,9 +386,9 @@ func _build_shop() -> void:
 	UI.clear(_shop)
 	_shop.add_child(UI.label("Monete: %d" % int(inventory.get("coins", 0)), 18, UI.ACCENT))
 	var grid := GridContainer.new()
-	grid.columns = 5
+	grid.columns = 6
 	grid.add_theme_constant_override("h_separation", 14)
-	for h in ["Oggetto", "Slot", "Effetti", "Prezzo", ""]:
+	for h in ["", "Oggetto", "Slot", "Effetti", "Prezzo", ""]:
 		grid.add_child(UI.label(h, 0, UI.MUTED))
 	for it in Net.items.values():
 		if not bool(it["in_shop"]):
@@ -380,6 +397,12 @@ func _build_shop() -> void:
 		var fx := _bonus_text(it["bonus"])
 		if it["teaches"] != null:
 			fx += "  · insegna " + _ability_name(str(it["teaches"]))
+		var ic := TextureRect.new()
+		ic.texture = Items.icon(key)
+		ic.custom_minimum_size = Vector2(32, 32)
+		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ic.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		grid.add_child(ic)
 		grid.add_child(UI.label(str(it["name"])))
 		grid.add_child(UI.label(str(it["slot"])))
 		grid.add_child(UI.label(fx, 13))
@@ -388,13 +411,24 @@ func _build_shop() -> void:
 	_shop.add_child(grid)
 	_shop.add_child(HSeparator.new())
 	_shop.add_child(UI.label("Inventario (oggetti non equipaggiati)", 16))
-	for it in inventory.get("items", []):
+	var sorted_inv: Array = inventory.get("items", []).duplicate()
+	var order := {"legendary": 0, "epic": 1, "rare": 2, "uncommon": 3, "common": 4}
+	sorted_inv.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(order.get(str(a.get("rarity", "common")), 5)) < int(order.get(str(b.get("rarity", "common")), 5)))
+	for it in sorted_inv:
 		var key := str(it["key"])
-		var row := UI.hbox()
-		row.add_child(UI.label("%s ×%d" % [it["name"], int(it["qty"])]))
-		var price := int(Net.items.get(key, {}).get("price", 0)) / 2
+		var row := UI.hbox(12)
+		row.add_child(Items.icon_box(key))
+		var card := RichTextLabel.new()
+		card.bbcode_enabled = true
+		card.fit_content = true
+		card.custom_minimum_size = Vector2(620, 0)
+		card.text = Items.describe(key, _ability_name) + ("   ×%d" % int(it["qty"]) if int(it["qty"]) > 1 else "")
+		row.add_child(card)
+		var price := int(Items.info(key).get("price", 0)) / 2
 		row.add_child(UI.button("Vendi (%d)" % price, func() -> void: _trade("sell", key)))
 		_shop.add_child(row)
+		_shop.add_child(HSeparator.new())
 
 
 func _trade(kind: String, key: String) -> void:

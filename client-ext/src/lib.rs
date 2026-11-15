@@ -69,6 +69,12 @@ impl TacticaEngine {
             units,
             statutes: statutes.max(0) as usize,
             objective: Default::default(),
+            // Schermaglia locale: i nemici sconfitti lasciano oggetti (non salvati).
+            loot: tactica_core::LootRules {
+                chance: [0, 40],
+                boost: [0, 1],
+                champion: None,
+            },
         };
         let (battle, _) = Battle::new(&setup);
         Some(Gd::from_init_fn(|base| Self {
@@ -361,11 +367,67 @@ impl TacticaEngine {
         out
     }
 
+    /// Casella: terreno, altezza, effetti del terreno e unità presente.
+    #[func]
+    fn tile_info_json(&self, target: Vector2i) -> GString {
+        let Some(b) = &self.battle else {
+            return gs("{}");
+        };
+        let p = pos(target);
+        let Some(t) = b.map.tile(p) else {
+            return gs("{}");
+        };
+        let unit = b.unit_at(p).map(|i| b.units[i].name.clone());
+        let loot: Vec<String> = b.loot_at(p).map(|d| d.item.key()).collect();
+        gs(json!({
+            "terrain": t.terrain.name(),
+            "height": t.height,
+            "effects": t.terrain.effects(),
+            "unit": unit,
+            "loot": loot,
+        })
+        .to_string())
+    }
+
+    /// Nome del bioma della mappa.
     #[func]
     fn biome_name(&self) -> GString {
         self.battle
             .as_ref()
             .map_or(GString::new(), |b| gs(b.map.biome.name()))
+    }
+
+    /// Scheda di un oggetto qualsiasi (del catalogo o generato) dalla sua chiave,
+    /// nello stesso formato di `GET /api/items`; `{}` se la chiave non è valida.
+    #[func]
+    fn item_info_json(key: GString) -> GString {
+        use tactica_core::class::Class;
+        use tactica_core::gear::ItemRef;
+        let Some(i) = ItemRef::from_key(&key.to_string()) else {
+            return gs("{}");
+        };
+        let classes: Vec<&str> = if i.classes().is_empty() {
+            Class::ALL.iter().map(|c| c.key()).collect()
+        } else {
+            i.classes().iter().map(|c| c.key()).collect()
+        };
+        gs(json!({
+            "key": i.key(),
+            "name": i.name(),
+            "slot": i.slot().name(),
+            "slot_key": i.slot().key(),
+            "classes": classes,
+            "bonus": serde_json::to_value(i.bonus()).unwrap_or_default(),
+            "teaches": i.teaches().map(AbilityId::key),
+            "price": i.price(),
+            "in_shop": matches!(i, ItemRef::Fixed(f) if f.def().in_shop),
+            "rarity": i.rarity().key(),
+            "rarity_name": i.rarity().name(),
+            "effects": i.effects().into_iter().map(|e| e.describe()).collect::<Vec<_>>(),
+            "icon": i.icon(),
+            "lore": i.lore(),
+        })
+        .to_string())
     }
 
     /// Effetto visivo di un'abilità (nome della variante, es. "Flame"):

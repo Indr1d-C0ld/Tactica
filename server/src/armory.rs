@@ -5,6 +5,7 @@ use axum::extract::{Path, State};
 use serde::{Deserialize, Serialize};
 use tactica_core::ability::AbilityId;
 use tactica_core::class::{Class, Stats};
+use tactica_core::gear::ItemRef;
 use tactica_core::item::{ItemId, validate_loadout};
 
 use crate::AppState;
@@ -92,42 +93,62 @@ pub async fn classes() -> Json<Vec<ClassInfo>> {
 
 #[derive(Serialize)]
 pub struct ItemInfo {
-    key: &'static str,
-    name: &'static str,
+    key: String,
+    name: String,
+    /// Nome dello slot in italiano ("arma", "copricapo"...).
     slot: &'static str,
+    slot_key: &'static str,
     classes: Vec<&'static str>,
     bonus: Stats,
     teaches: Option<&'static str>,
     price: i32,
     in_shop: bool,
+    rarity: &'static str,
+    rarity_name: &'static str,
+    /// Effetti speciali descritti in italiano.
+    effects: Vec<String>,
+    /// Nome dell'icona (base dell'oggetto o leggendario).
+    icon: String,
+    lore: Option<&'static str>,
 }
 
-fn item_info(i: ItemId) -> ItemInfo {
-    let d = i.def();
+pub fn item_info(i: ItemRef) -> ItemInfo {
+    let classes = i.classes();
     ItemInfo {
-        key: d.key,
-        name: d.name,
-        slot: d.slot.name(),
-        classes: if d.classes.is_empty() {
+        key: i.key(),
+        name: i.name(),
+        slot: i.slot().name(),
+        slot_key: i.slot().key(),
+        classes: if classes.is_empty() {
             Class::ALL.iter().map(|c| c.key()).collect()
         } else {
-            d.classes.iter().map(|c| c.key()).collect()
+            classes.iter().map(|c| c.key()).collect()
         },
-        bonus: d.bonus,
-        teaches: d.teaches.map(AbilityId::key),
-        price: d.price,
-        in_shop: d.in_shop,
+        bonus: i.bonus(),
+        teaches: i.teaches().map(AbilityId::key),
+        price: i.price(),
+        in_shop: matches!(i, ItemRef::Fixed(f) if f.def().in_shop),
+        rarity: i.rarity().key(),
+        rarity_name: i.rarity().name(),
+        effects: i.effects().into_iter().map(|e| e.describe()).collect(),
+        icon: i.icon(),
+        lore: i.lore(),
     }
 }
 
 pub async fn items() -> Json<Vec<ItemInfo>> {
-    Json(ItemId::ALL.into_iter().map(item_info).collect())
+    Json(
+        ItemId::ALL
+            .into_iter()
+            .map(|i| item_info(i.into()))
+            .collect(),
+    )
 }
 
 #[derive(Serialize)]
 pub struct Owned {
-    key: String,
-    name: &'static str,
+    #[serde(flatten)]
+    info: ItemInfo,
     qty: i64,
 }
 
@@ -146,9 +167,8 @@ async fn load_inventory(s: &AppState, account: i64) -> ApiResult<Inventory> {
         .await?
         .into_iter()
         .filter_map(|(key, qty)| {
-            ItemId::from_key(&key).map(|i| Owned {
-                name: i.def().name,
-                key,
+            ItemRef::from_key(&key).map(|i| Owned {
+                info: item_info(i),
                 qty,
             })
         })
@@ -165,8 +185,8 @@ pub struct Trade {
     item: String,
 }
 
-fn parse_item(key: &str) -> ApiResult<ItemId> {
-    ItemId::from_key(key)
+fn parse_item(key: &str) -> ApiResult<ItemRef> {
+    ItemRef::from_key(key)
         .ok_or_else(|| ApiError::bad_request(format!("oggetto sconosciuto: {key}")))
 }
 
@@ -175,11 +195,11 @@ pub async fn buy(
     user: AuthUser,
     Json(t): Json<Trade>,
 ) -> ApiResult<Json<Inventory>> {
-    let item = parse_item(&t.item)?;
-    let d = item.def();
-    if !d.in_shop {
-        return Err(ApiError::bad_request("oggetto non in vendita"));
-    }
+    let d = match parse_item(&t.item)? {
+        ItemRef::Fixed(f) if f.def().in_shop => f.def(),
+        _ => return Err(ApiError::bad_request("oggetto non in vendita")),
+    };
+    let item = ItemRef::Fixed(d.id);
     let mut tx = s.db.begin().await?;
     let paid = sqlx::query("UPDATE accounts SET coins = coins - ? WHERE id = ? AND coins >= ?")
         .bind(d.price as i64)
@@ -207,7 +227,7 @@ pub async fn sell(
         return Err(ApiError::conflict("oggetto non posseduto (o equipaggiato)"));
     }
     sqlx::query("UPDATE accounts SET coins = coins + ? WHERE id = ?")
-        .bind(item.def().price as i64 / 2)
+        .bind(item.price() as i64 / 2)
         .bind(user.id)
         .execute(&mut *tx)
         .await?;
@@ -258,10 +278,7 @@ pub async fn equip(
     }
     for &new in &wanted {
         if !db::take_item(&mut tx, user.id, new).await? {
-            return Err(ApiError::conflict(format!(
-                "non possiedi {}",
-                new.def().name
-            )));
+            return Err(ApiError::conflict(format!("non possiedi {}", new.name())));
         }
     }
     sqlx::query("UPDATE roster SET equipment = ? WHERE id = ? AND account_id = ?")
@@ -296,10 +313,8 @@ pub async fn change_class(
             format!("{} richiede: {}", class.name(), class.requirement_text()),
         ));
     }
-    let (keep, drop): (Vec<ItemId>, Vec<ItemId>) = unit
-        .items()
-        .into_iter()
-        .partition(|i| i.def().usable_by(class));
+    let (keep, drop): (Vec<ItemRef>, Vec<ItemRef>) =
+        unit.items().into_iter().partition(|i| i.usable_by(class));
     let mut tx = s.db.begin().await?;
     for i in drop {
         db::add_item(&mut tx, user.id, i, 1).await?;

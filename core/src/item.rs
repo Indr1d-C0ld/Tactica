@@ -2,6 +2,7 @@
 
 use crate::ability::AbilityId;
 use crate::class::{Class, Stats};
+use crate::gear::ItemRef;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -9,16 +10,27 @@ pub enum Slot {
     Weapon,
     Armor,
     Accessory,
+    Head,
 }
 
 impl Slot {
-    pub const ALL: [Slot; 3] = [Slot::Weapon, Slot::Armor, Slot::Accessory];
+    pub const ALL: [Slot; 4] = [Slot::Weapon, Slot::Armor, Slot::Head, Slot::Accessory];
 
     pub fn name(self) -> &'static str {
         match self {
             Slot::Weapon => "arma",
             Slot::Armor => "armatura",
             Slot::Accessory => "accessorio",
+            Slot::Head => "copricapo",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Slot::Weapon => "weapon",
+            Slot::Armor => "armor",
+            Slot::Accessory => "accessory",
+            Slot::Head => "head",
         }
     }
 }
@@ -488,17 +500,17 @@ pub fn starter_kit(class: Class) -> [ItemId; 2] {
     [weapon, ItemId::Leather]
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LoadoutError {
-    NotForClass(ItemId),
+    NotForClass(String),
     SlotTaken(Slot),
 }
 
 impl std::fmt::Display for LoadoutError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LoadoutError::NotForClass(i) => {
-                write!(f, "{} non è utilizzabile da questa classe", i.def().name)
+            LoadoutError::NotForClass(name) => {
+                write!(f, "{name} non è utilizzabile da questa classe")
             }
             LoadoutError::SlotTaken(s) => write!(f, "uno solo oggetto per slot ({})", s.name()),
         }
@@ -506,25 +518,23 @@ impl std::fmt::Display for LoadoutError {
 }
 
 /// Al massimo un oggetto per slot, tutti utilizzabili dalla classe.
-pub fn validate_loadout(class: Class, equipment: &[ItemId]) -> Result<(), LoadoutError> {
+pub fn validate_loadout(class: Class, equipment: &[ItemRef]) -> Result<(), LoadoutError> {
     for (i, it) in equipment.iter().enumerate() {
-        let d = it.def();
-        if !d.usable_by(class) {
-            return Err(LoadoutError::NotForClass(*it));
+        if !it.usable_by(class) {
+            return Err(LoadoutError::NotForClass(it.name()));
         }
-        if equipment[..i].iter().any(|o| o.def().slot == d.slot) {
-            return Err(LoadoutError::SlotTaken(d.slot));
+        if equipment[..i].iter().any(|o| o.slot() == it.slot()) {
+            return Err(LoadoutError::SlotTaken(it.slot()));
         }
     }
     Ok(())
 }
 
 /// Tiene solo la parte valida di un equipaggiamento (primo oggetto per slot).
-pub fn sanitize_loadout(class: Class, equipment: &[ItemId]) -> Vec<ItemId> {
-    let mut out: Vec<ItemId> = Vec::new();
+pub fn sanitize_loadout(class: Class, equipment: &[ItemRef]) -> Vec<ItemRef> {
+    let mut out: Vec<ItemRef> = Vec::new();
     for &it in equipment {
-        let d = it.def();
-        if d.usable_by(class) && !out.iter().any(|o| o.def().slot == d.slot) {
+        if it.usable_by(class) && !out.iter().any(|o| o.slot() == it.slot()) {
             out.push(it);
         }
     }
@@ -551,7 +561,7 @@ mod tests {
             }
         }
         for c in Class::ALL {
-            assert!(validate_loadout(c, &starter_kit(c)).is_ok());
+            assert!(validate_loadout(c, &starter_kit(c).map(ItemRef::from)).is_ok());
             // Ogni abilità imparabile ha almeno un oggetto che la insegna.
             for a in c.learnable() {
                 assert!(TABLE.iter().any(|i| i.teaches == Some(*a)), "{a:?}");

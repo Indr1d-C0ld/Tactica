@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tactica_core::presets;
-use tactica_core::{Action, Battle, BattleSetup, Event, Objective, UnitSetup, ai};
+use tactica_core::{Action, Battle, BattleSetup, Event, LootRules, Objective, UnitSetup, ai};
 use tokio::sync::mpsc;
 use tokio::time::{Instant, sleep, timeout_at};
 
@@ -69,6 +69,14 @@ pub struct MissionInfo {
 pub const STATUTES_PER_BATTLE: usize = 2;
 /// Posti totali della squadra alleata in una missione.
 pub const COOP_SLOTS: usize = 6;
+
+/// Probabilità (%) che un'unità sconfitta lasci un oggetto, per modalità.
+/// È l'unico modo di trovare bottino: bisogna raggiungere la casella dello sconfitto.
+pub const LOOT_PVE: i32 = 45;
+pub const LOOT_PVP: i32 = 35;
+pub const LOOT_COOP: i32 = 55;
+pub const LOOT_CAMPAIGN: i32 = 50;
+pub const LOOT_WAR: i32 = 40;
 const AI_NAMES: [&str; 4] = ["Sentinella", "Predone", "Veggente", "Eremita"];
 
 fn random_seed() -> u64 {
@@ -115,12 +123,27 @@ pub fn start_match(state: AppState, mode: Mode, seats: [Seat; 2]) {
             units: (start..units.len()).collect(),
         });
     }
+    // PvE: lasciano oggetti i nemici dell'IA; PvP: entrambe le squadre.
+    let loot = if mode == Mode::Pvp {
+        LootRules {
+            chance: [LOOT_PVP, LOOT_PVP],
+            boost: [1, 1],
+            champion: None,
+        }
+    } else {
+        LootRules {
+            chance: [0, LOOT_PVE],
+            boost: [0, 0],
+            champion: None,
+        }
+    };
     let setup = BattleSetup {
         seed: random_seed(),
         map: None,
         units,
         statutes: STATUTES_PER_BATTLE,
         objective: Objective::Rout,
+        loot,
     };
     launch(state, mode, setup, players, roster_ids, None, None);
 }
@@ -170,12 +193,18 @@ pub fn start_mission(state: AppState, members: Vec<Entrant>, difficulty: u8) {
         node: None,
         tutorial: false,
     };
+    let loot = LootRules {
+        chance: [0, LOOT_COOP],
+        boost: [0, 2 * (difficulty as i32 - 1)],
+        champion: mission.champion.map(|c| (enemy_start + c) as u32),
+    };
     let setup = BattleSetup {
         seed,
         map: None,
         units,
         statutes: mission.statutes,
         objective,
+        loot,
     };
     launch(
         state,
@@ -253,12 +282,18 @@ pub fn start_campaign(state: AppState, entrant: Entrant, key: &str) {
         node: Some(def.key.to_string()),
         tutorial: def.tutorial,
     };
+    let loot = LootRules {
+        chance: [0, if def.tutorial { 100 } else { LOOT_CAMPAIGN }],
+        boost: [0, r as i32 + def.difficulty as i32 - 1],
+        champion: def.champion.then_some(enemy_start as u32),
+    };
     let setup = BattleSetup {
         seed,
         map: Some(params),
         units,
         statutes: if def.tutorial { 1 } else { mission.statutes },
         objective,
+        loot,
     };
     launch(
         state,
@@ -299,6 +334,11 @@ pub fn start_war(state: AppState, info: WarInfo, sides: [Vec<Entrant>; 2]) {
         units,
         statutes: STATUTES_PER_BATTLE,
         objective: Objective::Rout,
+        loot: LootRules {
+            chance: [LOOT_WAR, LOOT_WAR],
+            boost: [2, 2],
+            champion: None,
+        },
     };
     let db = state.db.clone();
     let war_id = info.id;
@@ -526,7 +566,14 @@ async fn run(
                         season_before: o.season_before,
                         season_after: o.season_after,
                         clan_points: o.clan_points,
-                        loot: o.loot.map(|i| i.key().to_string()),
+                        loot: o
+                            .loot
+                            .iter()
+                            .map(|&i| {
+                                serde_json::to_value(crate::armory::item_info(i))
+                                    .unwrap_or_default()
+                            })
+                            .collect(),
                         rewards: o.rewards.clone(),
                     });
                 }

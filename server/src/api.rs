@@ -163,7 +163,7 @@ async fn recruit(
     .bind(user.id)
     .bind(&name)
     .bind(class.key())
-    .bind(items_json(&starter_kit(class)))
+    .bind(items_json(&starter_kit(class).map(tactica_core::gear::ItemRef::from)))
     .bind(now())
     .execute(&s.db)
     .await?

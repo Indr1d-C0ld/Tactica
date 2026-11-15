@@ -12,7 +12,7 @@
 
 Tactica è un gioco originale ispirato ai classici tattici a turni delle console portatili. Si gioca su mappe isometriche con altezze, generate da un seed e ruotabili in 3D. Ogni battaglia ha i suoi **Statuti**, regole estratte a sorte: chi le infrange viene sospeso e poi espulso dal campo. Le unità crescono di livello, cambiano classe e imparano abilità dall'equipaggiamento, fino a padroneggiarle.
 
-Tutto è fatto da zero: regole, storia, nomi, grafica, musica ed effetti sonori. La grafica e l'audio sono generati da script inclusi nel repository, quindi si possono ricostruire e modificare.
+Tutto è originale: regole, storia, nomi, grafica, musica ed effetti sonori. Terreni, interfaccia, effetti e audio sono generati da script inclusi nel repository. Personaggi e icone degli oggetti sono fatti con [PixelLab](https://pixellab.ai) e inclusi come immagini ([docs/ARTE.md](docs/ARTE.md)).
 
 *[English summary below](#in-english).*
 
@@ -35,7 +35,8 @@ Tutto è fatto da zero: regole, storia, nomi, grafica, musica ed effetti sonori.
 
 ### Battaglia
 
-- **Griglia isometrica con altezze** su 5 biomi (prateria, palude, deserto, vulcano, altopiano). Le mappe sono generate da un seed, e il generatore verifica che gli schieramenti siano collegati.
+- **Griglia isometrica con altezze** su 5 biomi (prateria, palude, deserto, vulcano, altopiano). Le mappe sono generate da un seed: da 14×12 a 20×17 caselle, fino a 8 livelli d'altezza. Ognuna ha una forma del terreno (vallata, colle, gola, gradoni, fiume con guadi, laghi, pinnacoli) con affioramenti di roccia e boscaglia. Il generatore verifica che gli schieramenti siano collegati.
+- **Ogni unità occupa la sua casella:** nessuno attraversa né alleati né nemici. Il terreno conta: la roccia protegge, la boscaglia aiuta a schivare, acqua e sabbia rallentano, la lava brucia.
 - **Turni a iniziativa (CT):** la velocità decide chi agisce. Muoversi e agire costano iniziativa.
 - **Danno con dislivello, fianco, spalle e terreno.** Gli elementi interagiscono con il terreno: il fulmine è più forte sull'acqua, il ghiaccio più debole sulla lava.
 - **9 Statuti** estratti a sorte (per esempio «Niente cure» o «Divieto di colpire dall'alto»). Chi li viola viene sospeso e poi espulso.
@@ -46,7 +47,9 @@ Tutto è fatto da zero: regole, storia, nomi, grafica, musica ed effetti sonori.
 ### Progressione
 
 - **6 classi:** Avanguardia, Esploratore, Arcanista e Guaritore di base; Spadaruna e Custode da sbloccare.
-- **27 abilità e 29 oggetti.** Un oggetto insegna un'abilità finché è equipaggiato; con i **punti risonanza** guadagnati in battaglia l'abilità diventa permanente.
+- **27 abilità.** Un oggetto insegna un'abilità finché è equipaggiato; con i **punti risonanza** guadagnati in battaglia l'abilità diventa permanente.
+- **Bottino da conquistare sul campo:** le unità sconfitte possono lasciare un oggetto, e per prenderlo bisogna raggiungere la loro casella.
+- **Oggetti generati:** più di 200.000 combinazioni con 5 rarità, 37 basi, 6 materiali e 39 affissi (veleno o gelo al colpo, armi elementali, vampirismo, resistenze, immunità, rigenerazione, +1 movimento...). In più 16 leggendari unici con nome e storia. Quattro slot di equipaggiamento: arma, armatura, copricapo, accessorio.
 - **Esperienza e livelli,** roster fino a 8 unità, negozio, bottino ed economia.
 
 ### Modalità
@@ -80,25 +83,29 @@ Tutto è fatto da zero: regole, storia, nomi, grafica, musica ed effetti sonori.
 | | |
 |---|---|
 | ![Mappa del mondo](docs/img/mappa_mondo.png) | ![Tutorial](docs/img/tutorial.png) |
-| *La mappa della campagna* | *Il tutorial guidato* |
+| *La mappa della campagna, dipinta con PixelLab* | *Il tutorial guidato* |
+| ![Bottino](docs/img/bottino.png) | ![Vittoria](docs/img/vittoria.png) |
+| *Un'unità sconfitta lascia un oggetto epico* | *Fine battaglia con il bottino raccolto* |
 | ![Missione cooperativa](docs/img/missione.png) | ![Stanza cooperativa](docs/img/stanza.png) |
-| *Missione cooperativa di clan* | *Stanza di missione con due giocatori* |
-| ![Effetti](docs/img/effetti.png) | ![Anteprima](docs/img/anteprima.png) |
-| *Primo piano con effetti di fuoco* | *Anteprima di un'abilità* |
-| ![Stile SVGA](docs/img/stile_svga.png) | ![Vittoria](docs/img/vittoria.png) |
-| *Stile SVGA* | *Fine battaglia con ricompense* |
-| ![Roster](docs/img/roster.png) | ![Negozio](docs/img/negozio.png) |
-| *Roster ed equipaggiamento* | *Negozio* |
-| ![Statistiche](docs/img/statistiche.png) | ![Tornei](docs/img/tornei.png) |
-| *Statistiche personali e globali* | *Tornei fra clan* |
+| *Missione cooperativa: caccia al campione* | *Stanza di missione con due giocatori* |
+| ![Deserto con pinnacoli](docs/img/deserto.png) | ![Anteprima](docs/img/anteprima.png) |
+| *Deserto con pinnacoli di roccia* | *Anteprima di un'abilità* |
+| ![Stile SVGA](docs/img/stile_svga.png) | ![Negozio](docs/img/negozio.png) |
+| *Stile SVGA* | *Negozio con le icone degli oggetti* |
+| ![Roster](docs/img/roster.png) | ![Statistiche](docs/img/statistiche.png) |
+| *Roster ed equipaggiamento* | *Statistiche personali e globali* |
 
 La telecamera ruota, si inclina e cambia stile di resa:
 
 ![Telecamera](docs/img/telecamera.gif)
 
-Tutti i personaggi derivano da un unico foglio base, ricolorato per classe, squadra, capelli e carnagione:
+I personaggi delle sei classi, fatti con PixelLab, con i colori delle due squadre (riposo, azione, KO e camminata):
 
-![Sprite](docs/img/sprite_sheet.png)
+![Personaggi](docs/img/sprite_sheet.png)
+
+Le icone degli oggetti: 37 basi, 16 leggendari, gli oggetti classici e il sacchetto del bottino:
+
+![Icone degli oggetti](docs/img/icone.png)
 
 ## Come si gioca
 

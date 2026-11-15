@@ -25,7 +25,7 @@ pub fn plan_turn(b: &Battle) -> Vec<Action> {
     let mut best: Option<(i32, Pos, Action)> = None;
     if !b.has_acted() {
         for &from in &froms {
-            let lava = if is_lava(b, from) { 15 } else { 0 };
+            let lava = if is_lava(b, from) { 15 } else { 0 } - loot_value(b, u.team, from);
             for ability in u.abilities() {
                 let r = ability.def().range_max;
                 for dy in -r..=r {
@@ -54,7 +54,13 @@ pub fn plan_turn(b: &Battle) -> Vec<Action> {
             from
         }
         None if !b.has_moved() => {
-            let dest = position_for(b, idx, &froms);
+            // Senza bersagli utili, raccoglie il bottino più prezioso a portata.
+            let dest = froms
+                .iter()
+                .copied()
+                .filter(|&p| loot_value(b, u.team, p) > 0)
+                .max_by_key(|&p| (loot_value(b, u.team, p), -(p.dist(u.pos))))
+                .unwrap_or_else(|| position_for(b, idx, &froms));
             if dest != u.pos {
                 plan.push(Action::Move(dest));
             }
@@ -88,6 +94,14 @@ pub fn autoplay(b: &mut Battle, max_actions: usize) -> (Vec<Action>, Vec<Event>)
         }
     }
     (actions, events)
+}
+
+/// Valore del bottino avversario su una casella (cresce con la rarità).
+fn loot_value(b: &Battle, team: u8, p: Pos) -> i32 {
+    b.loot_at(p)
+        .filter(|d| d.team != team)
+        .map(|d| 20 + 15 * d.item.rarity() as i32)
+        .sum()
 }
 
 fn is_lava(b: &Battle, p: Pos) -> bool {

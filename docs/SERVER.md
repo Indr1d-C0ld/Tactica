@@ -119,10 +119,43 @@ Ogni unità del roster riporta anche:
 - **Economia:**
   - si parte con 400 monete;
   - ogni partita ne dà 120 se si vince, 70 in caso di pareggio, 40 se si perde;
-  - chi vince ha il 50% di probabilità di un bottino, in cui gli oggetti costosi sono più rari. Alcuni oggetti si trovano solo così.
   
-  Il bottino si ricava in modo deterministico dal seed della partita e dall'account, quindi è verificabile.
+  Il bottino non arriva più a fine partita: si trova solo in battaglia, raggiungendo le unità sconfitte (sezione seguente).
 - **IA in PvE:** rispecchia classi, livelli, equipaggiamento e padronanze della squadra del giocatore.
+
+## Bottino e oggetti generati
+
+**Come si trova.** Quando un'unità va KO può lasciare un oggetto sulla sua casella. Le unità KO non bloccano il passaggio. L'oggetto lo raccoglie chi si ferma su quella casella, purché sia della squadra avversaria di chi l'ha lasciato. È l'unico modo di trovare bottino. Gli oggetti raccolti vanno nell'inventario del giocatore che controlla l'unità, qualunque sia l'esito della partita; quelli rimasti a terra si perdono.
+
+| Modalità | Chi lascia oggetti | Probabilità |
+|---|---|---|
+| PvE | i nemici dell'IA | 45% |
+| PvP | entrambe le squadre | 35% |
+| Missioni cooperative | i nemici | 55%, rarità più alte con la difficoltà; il campione lascia sempre un oggetto |
+| Campagna | i nemici | 50% (tutorial 100%), rarità più alte con la regione; il campione lascia sempre un oggetto |
+| Guerre fra clan | entrambe le squadre | 40% |
+
+L'estrazione usa il generatore della battaglia: è deterministica e segreta fino a fine partita, come gli altri tiri. L'IA raccoglie il bottino a portata quando non ha bersagli migliori.
+
+**Oggetti generati** (`core/src/gear.rs`). Più di 200.000 combinazioni, senza contare le abilità insegnate:
+
+- **Rarità:** comune, non comune, raro, epico, leggendario. Le rarità alte hanno più affissi e statistiche migliori.
+- **Basi (37):** 16 armi (spade, spadoni, lance, asce, mazze, pugnali, sciabole, archi corti e lunghi, balestre, bacchette, verghe, bastoni, lame runiche, flagelli, tomi), 8 corazze, 6 copricapi e 7 accessori. Ogni base ha le sue classi.
+- **Materiali:** sei livelli di qualità secondo il livello di chi lascia l'oggetto (per i metalli: bronzo, ferro, acciaio, argento runico, oricalco, ferro stellare). Moltiplicano le statistiche principali da ×1 a ×4,5.
+- **Affissi (39):** aggettivi («affilata», «velenoso», «fiammeggiante»...) e complementi («del Lupo», «della Salamandra»...). Danno statistiche oppure effetti:
+  - al colpo, sui colpi fisici: veleno, lentezza, radici, silenzio o sonno;
+  - assorbimento di una parte dei danni inflitti;
+  - attacchi fisici di un elemento (fuoco, ghiaccio, fulmine, luce);
+  - resistenza a un elemento (danni dimezzati);
+  - immunità a uno status;
+  - rigenerazione a fine turno;
+  - +1 movimento o salto.
+- **Abilità insegnate:** i rari (30%) e gli epici (65%) possono insegnare un'abilità della scuola di una classe che può usarli.
+- **Leggendari (16):** oggetti unici con nome, storia ed effetti propri, per esempio «Lama dell'Alba» o «Eco di Varen».
+
+Un oggetto generato è descritto per intero dalla sua chiave, per esempio `g.spa.2.r.aff.lup.-.sweep` oppure `u.alba.3`. Inventario, equipaggiamento e replay lo salvano come una stringa qualsiasi. `GET /api/inventory` restituisce per ogni oggetto la scheda completa: nome, rarità, slot, classi, bonus, effetti descritti, abilità insegnata, icona e storia.
+
+**Equipaggiamento:** quattro slot (arma, armatura, copricapo, accessorio), al massimo un oggetto per slot.
 
 ## Status alterati
 
@@ -187,7 +220,8 @@ Le durate si contano nei turni dell'unità colpita: diminuiscono alla fine di og
 - **Abbandono:** se un giocatore se ne va o si disconnette, le sue unità passano all'IA. La squadra si arrende solo quando non resta nessun umano.
 - **Ricompense:**
   - esperienza e punti risonanza per le proprie unità;
-  - in caso di vittoria, monete pari a 150 + 50 per ogni livello di difficoltà oltre il primo (più il bonus del clan) e bottino al 75%;
+  - in caso di vittoria, monete pari a 150 + 50 per ogni livello di difficoltà oltre il primo (più il bonus del clan);
+  - il bottino raccolto in battaglia da ciascuno;
   - punti clan: 2 per la vittoria (3 per una caccia), assegnati una sola volta al clan.
 - **ELO e punteggio stagionale:** non cambiano.
 
@@ -215,7 +249,7 @@ Lo snapshot contiene `objective` (`Rout` oppure `{"Champion": id}`).
 - **Esito:**
   - **ELO dei clan:** parte da 1000 e si aggiorna con K=32, a somma zero, insieme al record di vittorie, sconfitte e pareggi;
   - **punti stagionali:** 5 al clan vincitore;
-  - **monete:** 200 a chi vince, 60 a chi perde, 100 in caso di pareggio, più il bonus del clan; bottino normale;
+  - **monete:** 200 a chi vince, 60 a chi perde, 100 in caso di pareggio, più il bonus del clan; bottino raccolto in battaglia;
   - **ELO personale e punteggio stagionale personale:** non cambiano.
 - **Stati della guerra:** `pending` → `accepted` → `live` → `done`, oppure `declined` o `cancelled`. Dopo un riavvio del server le guerre rimaste `live` tornano `accepted`.
 
@@ -241,7 +275,7 @@ In `matched` il campo `war` riporta id, sigle e nomi dei due clan.
 
 - **Tappe:** 15 tappe fisse in 5 regioni (`server/src/campaign.rs`), sbloccate una alla volta.
 - **Avvio:** dal client si avvia una tappa con `{"type":"campaign","node":"r1n2","units":[...]}`. La battaglia usa il bioma della regione, con nemici dal generatore di missioni e livello pari alla media della squadra più il bonus della tappa. L'ultima tappa di ogni regione è la caccia a un campione; la prima è il tutorial, con 2 nemici e 1 statuto.
-- **Vittoria:** registra la tappa, dà le monete delle missioni (più il bonus del clan), il bottino al 75% e 1 punto al clan.
+- **Vittoria:** registra la tappa, dà le monete delle missioni (più il bonus del clan), e 1 punto al clan. Il bottino è quello raccolto in battaglia.
 
 ## Protocollo WebSocket
 
@@ -266,7 +300,7 @@ Connessione a `GET /ws?token=<token>`. Tutti i messaggi sono JSON con il campo `
 - `matched {mode, team, opponent, snapshot}`
 - `update {events, snapshot}`: arriva dopo ogni azione, anche dell'IA o dell'avversario
 - `error {message}`
-- `ended {match_id, winner, result, elo_before, elo_after, season_before, season_after, clan_points, coins, loot, rewards}`: ogni ricompensa contiene esperienza, livelli e i punti risonanza (`rp`) guadagnati, con `mastered_now` quando un'abilità viene padroneggiata
+- `ended {match_id, winner, result, elo_before, elo_after, season_before, season_after, clan_points, coins, loot, rewards}`: `loot` è l'elenco delle schede degli oggetti raccolti dalle proprie unità; ogni ricompensa contiene esperienza, livelli e i punti risonanza (`rp`) guadagnati, con `mastered_now` quando un'abilità viene padroneggiata
 
 Lo `snapshot` è lo stato pubblico completo: mappa, unità, statuti, turno, unità attiva, `moved` e `acted`. Il client può ricostruire una `Battle::from_snapshot` per calcolare caselle raggiungibili, anteprime del danno e suggerimenti dell'IA. Non può risolvere le azioni, perché non conosce il seed.
 

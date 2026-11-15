@@ -16,6 +16,7 @@ fn setup(seed: u64) -> BattleSetup {
         units,
         statutes: 2,
         objective: Default::default(),
+        loot: Default::default(),
     }
 }
 
@@ -118,6 +119,7 @@ fn violating_a_statute_suspends_then_expels() {
                 units: units.clone(),
                 statutes: 1,
                 objective: Default::default(),
+                loot: Default::default(),
             })
         })
         .find(|(b, _)| b.statutes == [Statute::NoHealing] && b.active_index() == Some(0))
@@ -219,7 +221,11 @@ fn equipment_teaches_and_boosts() {
     assert_eq!(u1.stats.mag, u0.stats.mag + 4);
     assert_eq!(
         u1.stats,
-        stats_with(Class::Arcanist, 5, &[ItemId::FrostRod, ItemId::Robe])
+        stats_with(
+            Class::Arcanist,
+            5,
+            &[ItemId::FrostRod, ItemId::Robe].map(tactica_core::gear::ItemRef::from)
+        )
     );
     // Padroneggiata: resta anche senza l'oggetto, ma solo nella propria classe.
     let mut m = bare.clone();
@@ -255,6 +261,7 @@ fn advanced_classes_fight() {
             units: units.clone(),
             statutes: 1,
             objective: Default::default(),
+            loot: Default::default(),
         });
         let (_, ev) = ai::autoplay(&mut b, 10_000);
         assert!(b.is_over());
@@ -299,6 +306,7 @@ fn missions_scale_and_champion_wins() {
             units,
             statutes: 0,
             objective: Objective::Champion(champ_id),
+            loot: Default::default(),
         };
         let (mut b, _) = Battle::new(&setup);
         let (_, ev) = ai::autoplay(&mut b, 20_000);
@@ -331,6 +339,7 @@ mod statuses {
             units,
             statutes: 1,
             objective: Default::default(),
+            loot: Default::default(),
         }
     }
 
@@ -446,4 +455,106 @@ fn paths_follow_reachable_tiles() {
         assert_eq!(prev, dest);
     }
     assert!(b.path(idx, Pos::new(-1, -1)).is_none());
+}
+
+#[test]
+fn units_block_movement_paths() {
+    // Nessun percorso attraversa una casella occupata, alleata o nemica,
+    // e nessuna destinazione è occupata da un'altra unità.
+    for seed in 0..30 {
+        let (mut b, _) = Battle::new(&setup(seed));
+        for _ in 0..12 {
+            let Some(idx) = b.active_index() else { break };
+            for dest in b.reachable(idx) {
+                let path = b.path(idx, dest).expect("destinazione raggiungibile");
+                for step in &path {
+                    assert!(
+                        b.unit_at(*step).is_none_or(|o| o == idx),
+                        "seed {seed}: il percorso attraversa un'unità in {step:?}"
+                    );
+                }
+            }
+            let Some(plan) = ai::plan_turn(&b).into_iter().next() else {
+                break;
+            };
+            if b.apply(plan).is_err() {
+                break;
+            }
+        }
+    }
+}
+
+fn loot_setup(seed: u64) -> BattleSetup {
+    let mut s = setup(seed);
+    s.loot = tactica_core::LootRules {
+        chance: [100, 100],
+        boost: [3, 3],
+        champion: None,
+    };
+    s
+}
+
+#[test]
+fn defeated_units_drop_loot_and_enemies_pick_it_up() {
+    let mut dropped = 0;
+    let mut picked = 0;
+    for seed in 0..25 {
+        let (mut b, _) = Battle::new(&loot_setup(seed));
+        let (_, events) = ai::autoplay(&mut b, 10_000);
+        let defeated: Vec<_> = b
+            .units
+            .iter()
+            .filter(|u| u.condition == tactica_core::unit::Condition::Defeated)
+            .map(|u| u.id)
+            .collect();
+        for e in &events {
+            match e {
+                Event::LootDropped { unit, .. } => {
+                    dropped += 1;
+                    assert!(defeated.contains(unit));
+                }
+                Event::LootPicked { unit, item, from } => {
+                    picked += 1;
+                    assert!(b.picked.contains(&(*unit, *item)));
+                    // Lo raccoglie solo un avversario di chi l'ha lasciato.
+                    assert_ne!(b.units[*unit as usize].team, b.units[*from as usize].team);
+                }
+                _ => {}
+            }
+        }
+        // Ogni sconfitto (con probabilità 100%) lascia esattamente un oggetto.
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, Event::LootDropped { .. }))
+                .count(),
+            defeated.len()
+        );
+    }
+    assert!(dropped > 50, "poco bottino: {dropped}");
+    assert!(picked > 5, "l'IA non raccoglie quasi mai: {picked}");
+}
+
+#[test]
+fn loot_is_deterministic_and_survives_snapshots() {
+    let (mut a, _) = Battle::new(&loot_setup(3));
+    let (mut b, _) = Battle::new(&loot_setup(3));
+    ai::autoplay(&mut a, 10_000);
+    ai::autoplay(&mut b, 10_000);
+    assert_eq!(a.picked, b.picked);
+    assert_eq!(a.loot, b.loot);
+    let view = Battle::from_snapshot(a.snapshot());
+    assert_eq!(view.loot, a.loot);
+    assert_eq!(view.snapshot(), a.snapshot());
+}
+
+#[test]
+fn no_loot_without_rules() {
+    let (mut b, _) = Battle::new(&setup(5));
+    let (_, events) = ai::autoplay(&mut b, 10_000);
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, Event::LootDropped { .. }))
+    );
 }

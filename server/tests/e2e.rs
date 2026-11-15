@@ -1520,3 +1520,87 @@ async fn auth_rate_limits() {
         429
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn loot_from_defeated_units() {
+    let srv = start().await;
+    let (tok, units) = srv.player("razziatore").await;
+    // Il bottino si trova solo raggiungendo le unità sconfitte: con qualche
+    // partita contro l'IA le proprie unità ne raccolgono di sicuro.
+    let mut found: Vec<Value> = Vec::new();
+    for _ in 0..6 {
+        let m = play(srv.ws.clone(), tok.clone(), Mode::Pve, units.clone(), None).await;
+        let ServerMsg::Ended { loot, .. } = m else {
+            panic!("fine partita attesa")
+        };
+        found.extend(loot);
+        if found.len() >= 2 {
+            break;
+        }
+    }
+    assert!(!found.is_empty(), "nessun oggetto raccolto in 6 partite");
+    for it in &found {
+        assert!(it["name"].as_str().is_some_and(|n| !n.is_empty()));
+        assert!(it["rarity"].as_str().is_some());
+    }
+
+    // Tutto ciò che è stato raccolto è nell'inventario.
+    let (_, inv) = srv.get("/api/inventory", Some(&tok)).await;
+    let owned = inv["items"].as_array().unwrap();
+    for it in &found {
+        let key = it["key"].as_str().unwrap();
+        assert!(
+            owned
+                .iter()
+                .any(|o| o["key"] == key && o["qty"].as_i64() >= Some(1)),
+            "{key} manca dall'inventario"
+        );
+    }
+
+    // Un oggetto trovato si può equipaggiare (se adatto a una delle unità) e vendere.
+    let (_, me) = srv.get("/api/me", Some(&tok)).await;
+    let roster = me["roster"].as_array().unwrap();
+    'equip: for it in &found {
+        let classes: Vec<&str> = it["classes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|c| c.as_str())
+            .collect();
+        for u in roster {
+            if classes.contains(&u["class"].as_str().unwrap()) {
+                let id = u["id"].as_i64().unwrap();
+                let mut items: Vec<Value> = u["equipment"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|k| {
+                        owned
+                            .iter()
+                            .chain(found.iter())
+                            .all(|o| o["key"] != **k || o["slot_key"] != it["slot_key"])
+                    })
+                    .cloned()
+                    .collect();
+                // Toglie l'oggetto dello stesso slot (gli oggetti iniziali sono arma e corazza).
+                let slot = it["slot_key"].as_str().unwrap();
+                items.retain(|k| {
+                    let k = k.as_str().unwrap();
+                    !((slot == "weapon" && ["iron_sword", "shortbow", "rod", "staff"].contains(&k))
+                        || (slot == "armor" && k == "leather"))
+                });
+                items.push(it["key"].clone());
+                let (st, body) = srv
+                    .put(
+                        &format!("/api/roster/{id}/equipment"),
+                        &tok,
+                        json!({ "items": items }),
+                    )
+                    .await;
+                assert_eq!(st, 200, "{body}");
+                assert!(body["equipment"].as_array().unwrap().contains(&it["key"]));
+                break 'equip;
+            }
+        }
+    }
+}

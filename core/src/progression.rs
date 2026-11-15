@@ -8,8 +8,7 @@
 
 use crate::ability::AbilityId;
 use crate::class::Class;
-use crate::item::ItemId;
-use crate::rng::Rng;
+use crate::gear::ItemRef;
 use crate::unit::Unit;
 
 pub const RP_BASE: i32 = 20;
@@ -20,8 +19,6 @@ pub const RP_ACTION_CAP: i32 = 10;
 pub const COINS_WIN: i64 = 120;
 pub const COINS_DRAW: i64 = 70;
 pub const COINS_LOSS: i64 = 40;
-/// Probabilità (%) di bottino in caso di vittoria.
-pub const LOOT_CHANCE: i32 = 50;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MatchResult {
@@ -42,10 +39,10 @@ pub fn rp_award(unit: &Unit, result: MatchResult) -> i32 {
 }
 
 /// Abilità che l'unità sta imparando con l'equipaggiamento attuale.
-pub fn training(class: Class, equipment: &[ItemId], mastered: &[AbilityId]) -> Vec<AbilityId> {
+pub fn training(class: Class, equipment: &[ItemRef], mastered: &[AbilityId]) -> Vec<AbilityId> {
     let mut v: Vec<AbilityId> = equipment
         .iter()
-        .filter_map(|i| i.def().teaches)
+        .filter_map(|i| i.teaches())
         .filter(|a| class.learnable().contains(a) && !mastered.contains(a))
         .collect();
     v.sort();
@@ -68,46 +65,25 @@ pub fn coins(result: MatchResult) -> i64 {
     }
 }
 
-/// Bottino di fine partita, deterministico dato il seed (verificabile).
-/// Gli oggetti più costosi sono più rari.
-pub fn loot(seed: u64, result: MatchResult) -> Option<ItemId> {
-    loot_with_chance(seed, result, LOOT_CHANCE)
-}
-
-/// Come `loot`, con probabilità di bottino personalizzata (es. missioni cooperative).
-pub fn loot_with_chance(seed: u64, result: MatchResult, chance: i32) -> Option<ItemId> {
-    if result != MatchResult::Win {
-        return None;
-    }
-    let mut rng = Rng::new(seed ^ 0x6c6f_6f74);
-    if !rng.percent(chance) {
-        return None;
-    }
-    let weight = |i: ItemId| (2000 / i.def().price.max(50)) as u32;
-    let total: u32 = ItemId::ALL.iter().map(|&i| weight(i)).sum();
-    let mut roll = rng.below(total);
-    for i in ItemId::ALL {
-        let w = weight(i);
-        if roll < w {
-            return Some(i);
-        }
-        roll -= w;
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::item::starter_kit;
+    use crate::item::{ItemId, starter_kit};
 
     #[test]
     fn training_only_own_school() {
-        let eq = [ItemId::WarPike, ItemId::Leather];
+        let eq = [ItemId::WarPike, ItemId::Leather].map(ItemRef::from);
         assert_eq!(training(Class::Vanguard, &eq, &[]), vec![AbilityId::Charge]);
         assert!(training(Class::Warden, &eq, &[]).is_empty());
         assert!(training(Class::Vanguard, &eq, &[AbilityId::Charge]).is_empty());
-        assert!(training(Class::Scout, &starter_kit(Class::Scout), &[]).is_empty());
+        assert!(
+            training(
+                Class::Scout,
+                &starter_kit(Class::Scout).map(ItemRef::from),
+                &[]
+            )
+            .is_empty()
+        );
     }
 
     #[test]
@@ -127,15 +103,5 @@ mod tests {
         assert!(Class::Runeblade.unlocked_for(5, &[Sweep, Frost]));
         assert!(Class::Warden.unlocked_for(5, &[Charge, Radiance]));
         assert!(!Class::Warden.unlocked_for(5, &[Charge, Frost]));
-    }
-
-    #[test]
-    fn loot_is_deterministic_and_win_only() {
-        assert_eq!(loot(42, MatchResult::Win), loot(42, MatchResult::Win));
-        assert_eq!(loot(42, MatchResult::Loss), None);
-        let drops = (0..1000)
-            .filter(|&s| loot(s, MatchResult::Win).is_some())
-            .count();
-        assert!((400..600).contains(&drops), "{drops}");
     }
 }

@@ -2,7 +2,8 @@
 
 use crate::ability::AbilityId;
 use crate::class::{Class, MAX_LEVEL, Stats};
-use crate::item::{ItemId, sanitize_loadout};
+use crate::gear::{GearEffects, ItemRef};
+use crate::item::sanitize_loadout;
 use crate::map::{Dir, Pos};
 use crate::status::Status;
 
@@ -44,7 +45,7 @@ pub struct UnitSetup {
     pub xp: i32,
     /// Equipaggiamento (al massimo un oggetto per slot, adatto alla classe).
     #[cfg_attr(feature = "serde", serde(default))]
-    pub equipment: Vec<ItemId>,
+    pub equipment: Vec<ItemRef>,
     /// Abilità padroneggiate (di qualsiasi scuola; si usano quelle della classe attuale).
     #[cfg_attr(feature = "serde", serde(default))]
     pub mastered: Vec<AbilityId>,
@@ -63,8 +64,8 @@ impl UnitSetup {
         }
     }
 
-    pub fn with_equipment(mut self, items: &[ItemId]) -> Self {
-        self.equipment = items.to_vec();
+    pub fn with_equipment(mut self, items: &[impl Into<ItemRef> + Copy]) -> Self {
+        self.equipment = items.iter().map(|&i| i.into()).collect();
         self
     }
 }
@@ -78,7 +79,7 @@ pub struct Unit {
     pub class: Class,
     pub level: i32,
     pub xp: i32,
-    pub equipment: Vec<ItemId>,
+    pub equipment: Vec<ItemRef>,
     pub mastered: Vec<AbilityId>,
     pub stats: Stats,
     pub hp: i32,
@@ -123,13 +124,24 @@ impl Unit {
         }
     }
 
+    /// Effetti speciali dell'equipaggiamento (al colpo, resistenze, rigenerazione...).
+    pub fn gear_effects(&self) -> GearEffects {
+        let mut g = GearEffects::default();
+        for it in &self.equipment {
+            for e in it.effects() {
+                g.add(e);
+            }
+        }
+        g
+    }
+
     /// Abilità utilizzabili ora: Colpo, innate della classe, e quelle della
     /// scuola della classe se padroneggiate o insegnate da un oggetto equipaggiato.
     pub fn abilities(&self) -> Vec<AbilityId> {
         let mut v = vec![AbilityId::Strike];
         v.extend_from_slice(self.class.innate());
         for &a in self.class.learnable() {
-            let taught = self.equipment.iter().any(|i| i.def().teaches == Some(a));
+            let taught = self.equipment.iter().any(|i| i.teaches() == Some(a));
             if taught || self.mastered.contains(&a) {
                 v.push(a);
             }
@@ -208,10 +220,10 @@ impl Unit {
 }
 
 /// Statistiche di classe e livello più i bonus dell'equipaggiamento.
-pub fn stats_with(class: Class, level: i32, equipment: &[ItemId]) -> Stats {
+pub fn stats_with(class: Class, level: i32, equipment: &[ItemRef]) -> Stats {
     let mut s = equipment
         .iter()
-        .fold(class.stats_at(level), |acc, i| acc.plus(i.def().bonus));
+        .fold(class.stats_at(level), |acc, i| acc.plus(i.bonus()));
     s.max_hp = s.max_hp.max(1);
     s.max_mp = s.max_mp.max(0);
     s.spd = s.spd.max(1);
