@@ -24,6 +24,9 @@ pub struct AbilityInfo {
     aoe: i32,
     master_rp: i32,
     taught_by: Vec<&'static str>,
+    /// Descrizione dello status inflitto, es. "Veleno 80% per 4 turni".
+    status: Option<String>,
+    cleanse: bool,
 }
 
 fn ability_info(a: AbilityId) -> AbilityInfo {
@@ -36,7 +39,12 @@ fn ability_info(a: AbilityId) -> AbilityInfo {
             Kind::Physical => "fisica",
             Kind::Magic => "magica",
             Kind::Heal => "cura",
+            Kind::Support => "supporto",
         },
+        status: d
+            .effect
+            .map(|e| format!("{} {}% per {} turni", e.status.name(), e.chance, e.duration)),
+        cleanse: d.cleanse,
         element: d.element.map(|e| e.name()),
         power: d.power,
         mp_cost: d.mp_cost,

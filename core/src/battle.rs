@@ -11,6 +11,7 @@ use std::fmt;
 use crate::ability::{AbilityId, Element, Kind};
 use crate::map::{Dir, Map, MapParams, Pos, Terrain};
 use crate::rng::Rng;
+use crate::status::{Status, StatusEffect};
 use crate::statute::{EXPEL_AT, SUSPEND_TURNS, Statute, StatuteCtx};
 use crate::unit::{Condition, Unit, UnitId, UnitSetup};
 
@@ -116,6 +117,31 @@ pub enum Event {
         unit: UnitId,
         level: i32,
     },
+    StatusApplied {
+        unit: UnitId,
+        status: Status,
+    },
+    StatusResisted {
+        unit: UnitId,
+        status: Status,
+    },
+    StatusCleared {
+        unit: UnitId,
+        status: Status,
+    },
+    StatusExpired {
+        unit: UnitId,
+        status: Status,
+    },
+    StatusDamage {
+        unit: UnitId,
+        status: Status,
+        amount: i32,
+        hp: i32,
+    },
+    Asleep {
+        unit: UnitId,
+    },
     BattleEnded {
         winner: Option<u8>,
     },
@@ -130,6 +156,7 @@ pub enum ActionError {
     UnknownAbility,
     NotEnoughMp,
     OutOfRange,
+    Silenced,
 }
 
 impl fmt::Display for ActionError {
@@ -142,6 +169,7 @@ impl fmt::Display for ActionError {
             ActionError::UnknownAbility => "abilità non disponibile per questa classe",
             ActionError::NotEnoughMp => "MP insufficienti",
             ActionError::OutOfRange => "bersaglio fuori portata",
+            ActionError::Silenced => "l'unità è ridotta al silenzio",
         };
         f.write_str(s)
     }
@@ -156,6 +184,10 @@ pub struct Outcome {
     pub hit_pct: i32,
     pub amount: i32,
     pub heal: bool,
+    /// Status che l'abilità può applicare a questo bersaglio.
+    pub status: Option<StatusEffect>,
+    /// Rimuove gli status negativi del bersaglio.
+    pub cleanse: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -328,6 +360,9 @@ impl Battle {
     /// Caselle in cui l'unità può terminare il movimento (inclusa quella attuale).
     pub fn reachable(&self, idx: usize) -> Vec<Pos> {
         let u = &self.units[idx];
+        if u.has(Status::Root) {
+            return vec![u.pos];
+        }
         let w = self.map.width;
         let at = |p: Pos| (p.y * w + p.x) as usize;
         let mut best = vec![i32::MAX; (w * self.map.height) as usize];
@@ -376,6 +411,9 @@ impl Battle {
         if u.mp < ab.mp_cost {
             return Err(ActionError::NotEnoughMp);
         }
+        if u.has(Status::Silence) && matches!(ab.kind, Kind::Magic | Kind::Heal | Kind::Support) {
+            return Err(ActionError::Silenced);
+        }
         let (Some(tt), Some(ft)) = (self.map.tile(target), self.map.tile(from)) else {
             return Err(ActionError::OutOfRange);
         };
@@ -416,7 +454,17 @@ impl Battle {
                 continue;
             }
             let tile = self.map.tile(tpos).unwrap();
+            let ally = t.team == u.team;
+            // Gli status negativi colpiscono i nemici, quelli positivi gli alleati.
+            let status = ab.effect.filter(|e| e.status.is_negative() != ally);
+            let cleanse = ab.cleanse && ally;
             let (hit_pct, amount, heal) = match ab.kind {
+                Kind::Support => {
+                    if status.is_none() && !cleanse {
+                        continue;
+                    }
+                    (100, 0, false)
+                }
                 Kind::Heal => (100, u.stats.mag * ab.power / 100 * 2, true),
                 Kind::Physical => {
                     let raw = u.stats.atk * ab.power / 100 * 2;
@@ -424,7 +472,10 @@ impl Battle {
                     let mut dmg = raw * 100 / (100 + 5 * def);
                     let dh = (from_h - tile.height).clamp(-3, 3);
                     dmg = dmg * (100 + 10 * dh) / 100;
-                    let hit = if ti == idx {
+                    if t.has(Status::Aegis) {
+                        dmg = dmg * 2 / 3;
+                    }
+                    let hit = if ti == idx || t.has(Status::Sleep) {
                         100
                     } else {
                         (90 + facing_bonus(t.facing, tpos, from)
@@ -439,7 +490,7 @@ impl Battle {
                     (100, raw * 100 / (100 + 5 * t.stats.res), false)
                 }
             };
-            let amount = if heal {
+            let amount = if heal || ab.kind == Kind::Support {
                 amount
             } else {
                 match (ab.element, tile.terrain) {
@@ -452,8 +503,14 @@ impl Battle {
             out.push(Outcome {
                 target: ti,
                 hit_pct,
-                amount: amount.max(1),
+                amount: if ab.kind == Kind::Support {
+                    0
+                } else {
+                    amount.max(1)
+                },
                 heal,
+                status,
+                cleanse,
             });
         }
         out
@@ -552,6 +609,10 @@ impl Battle {
             if !self.units[o.target].is_active() {
                 continue;
             }
+            if ab.kind == Kind::Support {
+                xp += self.apply_support(o, ev);
+                continue;
+            }
             if o.heal {
                 let amount = self.vary(o.amount);
                 let t = &mut self.units[o.target];
@@ -603,6 +664,20 @@ impl Battle {
                     xp += 20;
                 }
             }
+            if thp == 0 {
+                self.units[o.target].statuses.clear();
+            } else {
+                // Il dolore sveglia; poi l'eventuale status dell'abilità.
+                if self.units[o.target].remove_status(Status::Sleep) {
+                    ev.push(Event::StatusCleared {
+                        unit: tid,
+                        status: Status::Sleep,
+                    });
+                }
+                if let Some(e) = o.status {
+                    self.try_status(o.target, e, ev);
+                }
+            }
             if ab.drain && o.target != idx && self.units[idx].is_active() {
                 let u = &mut self.units[idx];
                 let gain = (amount / 2).min(u.stats.max_hp - u.hp);
@@ -630,6 +705,104 @@ impl Battle {
             });
         }
         Ok(())
+    }
+
+    /// Tira la probabilità e applica uno status; restituisce se è riuscito.
+    fn try_status(&mut self, target: usize, e: StatusEffect, ev: &mut Vec<Event>) -> bool {
+        let id = self.units[target].id;
+        if !self.rng.percent(e.chance) {
+            ev.push(Event::StatusResisted {
+                unit: id,
+                status: e.status,
+            });
+            return false;
+        }
+        if let Some(gone) = self.units[target].add_status(e.status, e.duration) {
+            ev.push(Event::StatusCleared {
+                unit: id,
+                status: gone,
+            });
+        }
+        ev.push(Event::StatusApplied {
+            unit: id,
+            status: e.status,
+        });
+        true
+    }
+
+    /// Abilità di supporto: purificazione e/o status. Restituisce l'esperienza.
+    fn apply_support(&mut self, o: Outcome, ev: &mut Vec<Event>) -> i32 {
+        let mut xp = 0;
+        let id = self.units[o.target].id;
+        if o.cleanse {
+            for s in self.units[o.target].negative_statuses() {
+                self.units[o.target].remove_status(s);
+                ev.push(Event::StatusCleared {
+                    unit: id,
+                    status: s,
+                });
+                xp += 6;
+            }
+        }
+        if let Some(e) = o.status
+            && self.try_status(o.target, e, ev)
+        {
+            xp += 6;
+        }
+        xp
+    }
+
+    /// Effetti di fine turno dell'unità: veleno, rigenerazione, durate.
+    fn end_of_turn_effects(&mut self, idx: usize, ev: &mut Vec<Event>) {
+        let u = &mut self.units[idx];
+        if !u.is_active() {
+            return;
+        }
+        let id = u.id;
+        let tick = (u.stats.max_hp * crate::status::TICK_PCT / 100).max(1);
+        if u.has(Status::Poison) {
+            let amount = tick.min(u.hp);
+            u.hp -= amount;
+            u.tally.damage_taken += amount;
+            ev.push(Event::StatusDamage {
+                unit: id,
+                status: Status::Poison,
+                amount,
+                hp: u.hp,
+            });
+            if u.hp == 0 {
+                u.condition = Condition::Defeated;
+                u.statuses.clear();
+                ev.push(Event::Defeated { unit: id });
+                return;
+            }
+        }
+        if u.has(Status::Regen) {
+            let amount = tick.min(u.stats.max_hp - u.hp);
+            if amount > 0 {
+                u.hp += amount;
+                ev.push(Event::Healed {
+                    unit: id,
+                    by: id,
+                    amount,
+                    hp: u.hp,
+                });
+            }
+        }
+        let mut expired = Vec::new();
+        for (s, turns) in u.statuses.iter_mut() {
+            *turns -= 1;
+            if *turns <= 0 {
+                expired.push(*s);
+            }
+        }
+        for s in expired {
+            u.remove_status(s);
+            ev.push(Event::StatusExpired {
+                unit: id,
+                status: s,
+            });
+        }
     }
 
     fn penalize(&mut self, idx: usize, statute: Statute, ev: &mut Vec<Event>) {
@@ -680,6 +853,8 @@ impl Battle {
                 }
             }
         }
+        self.end_of_turn_effects(idx, ev);
+        let u = &mut self.units[idx];
         u.ct -= 60 + 20 * self.moved as i32 + 20 * self.acted as i32;
         self.active = None;
         self.check_victory(ev);
@@ -698,7 +873,7 @@ impl Battle {
             }
             while !self.units.iter().any(|u| u.is_active() && u.ct >= CT_READY) {
                 for u in self.units.iter_mut().filter(|u| u.is_active()) {
-                    u.ct += u.stats.spd.max(1);
+                    u.ct += u.effective_speed();
                 }
             }
             let mut pick: Option<usize> = None;
@@ -717,6 +892,18 @@ impl Battle {
                 ev.push(Event::TurnSkipped { unit: u.id });
                 continue;
             }
+            if u.has(Status::Sleep) {
+                u.ct -= 60;
+                let id = u.id;
+                ev.push(Event::Asleep { unit: id });
+                self.end_of_turn_effects(idx, ev);
+                self.check_victory(ev);
+                if self.winner.is_some() {
+                    return;
+                }
+                continue;
+            }
+            let u = &mut self.units[idx];
             u.mp = (u.mp + (u.stats.max_mp / 10).max(2)).min(u.stats.max_mp);
             self.active = Some(idx);
             self.moved = false;
@@ -778,6 +965,9 @@ impl Battle {
                 u.penalties,
             ] {
                 h.i32(v);
+            }
+            for (st, turns) in &u.statuses {
+                h.i32(*st as i32 * 1000 + turns);
             }
         }
         h.0

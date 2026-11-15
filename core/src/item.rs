@@ -48,6 +48,13 @@ pub enum ItemId {
     WardenPlate,
     SwiftBoots,
     Charm,
+    SerpentBow,
+    QuietRod,
+    AegisPendant,
+    SproutStaff,
+    WhiteVestment,
+    WarHorn,
+    Flail,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,7 +106,7 @@ use AbilityId as A;
 use Class::*;
 
 /// Indicizzata per `ItemId as usize`.
-static TABLE: [Item; 22] = [
+static TABLE: [Item; 29] = [
     item!(
         IronSword,
         "iron_sword",
@@ -358,13 +365,93 @@ static TABLE: [Item; 22] = [
         250,
         true
     ),
+    item!(
+        SerpentBow,
+        "serpent_bow",
+        "Arco del serpente",
+        Weapon,
+        &[Scout],
+        bonus(4, 0, 0, 0, 0, 0),
+        Some(A::VenomDart),
+        460,
+        true
+    ),
+    item!(
+        QuietRod,
+        "quiet_rod",
+        "Verga della quiete",
+        Weapon,
+        &[Arcanist],
+        bonus(0, 0, 4, 1, 0, 0),
+        Some(A::Torpor),
+        520,
+        true
+    ),
+    item!(
+        AegisPendant,
+        "aegis_pendant",
+        "Pendaglio dell'egida",
+        Accessory,
+        ALL_CLASSES,
+        bonus(0, 1, 0, 1, 0, 0),
+        Some(A::Aegis),
+        380,
+        true
+    ),
+    item!(
+        SproutStaff,
+        "sprout_staff",
+        "Bastone del germoglio",
+        Weapon,
+        &[Mender],
+        bonus(0, 0, 4, 0, 0, 5),
+        Some(A::Sprout),
+        480,
+        true
+    ),
+    item!(
+        WhiteVestment,
+        "white_vestment",
+        "Veste candida",
+        Armor,
+        &[Mender, Warden, Arcanist],
+        bonus(0, 1, 0, 4, 0, 8),
+        Some(A::Purify),
+        420,
+        true
+    ),
+    item!(
+        WarHorn,
+        "war_horn",
+        "Corno da battaglia",
+        Accessory,
+        ALL_CLASSES,
+        Stats {
+            spd: 1,
+            ..Stats::ZERO
+        },
+        Some(A::Rally),
+        520,
+        true
+    ),
+    item!(
+        Flail,
+        "flail",
+        "Flagello",
+        Weapon,
+        &[Warden],
+        bonus(5, 0, 1, 0, 0, 0),
+        Some(A::Chains),
+        540,
+        true
+    ),
 ];
 
 impl ItemId {
-    pub const ALL: [ItemId; 22] = {
-        let mut out = [ItemId::IronSword; 22];
+    pub const ALL: [ItemId; 29] = {
+        let mut out = [ItemId::IronSword; 29];
         let mut i = 0;
-        while i < 22 {
+        while i < 29 {
             out[i] = TABLE[i].id;
             i += 1;
         }

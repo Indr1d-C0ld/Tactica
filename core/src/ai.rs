@@ -2,9 +2,12 @@
 //! punteggio atteso migliore, rispettando gli statuti. Serve per PNG in co-op,
 //! per riempire squadre e per i test.
 
+use crate::ability::Kind;
 use crate::battle::{Action, Battle, Event};
 use crate::class::Class;
 use crate::map::{Dir, Pos, Terrain};
+use crate::status::Status;
+use crate::unit::Unit;
 
 const VIOLATION_SCORE: i32 = -1000;
 
@@ -106,6 +109,15 @@ fn score(
     for o in b.outcomes(idx, from, ability, target) {
         let t = &b.units[o.target];
         let ally = t.team == u.team;
+        if let Some(e) = o.status {
+            s += status_value(t, e.status) * e.chance / 100 * o.hit_pct / 100;
+        }
+        if o.cleanse {
+            s += 20 * t.negative_statuses().len() as i32;
+        }
+        if o.amount == 0 && !o.heal {
+            continue;
+        }
         if o.heal {
             let eff = o.amount.min(t.stats.max_hp - t.hp);
             s += if ally { eff * 3 / 2 } else { -eff };
@@ -123,6 +135,34 @@ fn score(
         }
     }
     s - ability.def().mp_cost / 2
+}
+
+/// Valore stimato di uno status sul bersaglio (positivo: utile a chi agisce,
+/// perché gli status negativi vanno ai nemici e quelli positivi agli alleati).
+fn status_value(t: &Unit, s: Status) -> i32 {
+    let base = match s {
+        Status::Poison => 24,
+        Status::Sleep => 35,
+        Status::Silence => {
+            let caster = t.abilities().iter().any(|a| {
+                let d = a.def();
+                d.mp_cost > 0 && matches!(d.kind, Kind::Magic | Kind::Heal | Kind::Support)
+            });
+            if caster { 30 } else { 4 }
+        }
+        Status::Slow => 18,
+        Status::Root => 12,
+        Status::Haste => 26,
+        Status::Aegis => 20,
+        Status::Regen => {
+            if t.hp < t.stats.max_hp {
+                18
+            } else {
+                6
+            }
+        }
+    };
+    if t.has(s) { base / 4 } else { base }
 }
 
 fn nearest_enemy(b: &Battle, idx: usize, from: Pos) -> Option<Pos> {

@@ -18,6 +18,11 @@ const TERRAIN_ROW := {"Grass": 0, "Stone": 1, "Sand": 2, "Water": 3, "Lava": 4, 
 const DIR_VEC := {"N": Vector3(0, 0, -1), "E": Vector3(1, 0, 0), "S": Vector3(0, 0, 1), "W": Vector3(-1, 0, 0)}
 const FACE_SHADE := {Vector2i(1, 0): 0.8, Vector2i(0, 1): 0.66, Vector2i(-1, 0): 0.9, Vector2i(0, -1): 0.74}
 
+const STATUS_COLORS := {
+	"poison": Color(0.45, 0.85, 0.3), "sleep": Color(0.55, 0.65, 1.0), "silence": Color(0.95, 0.95, 0.95),
+	"slow": Color(0.7, 0.5, 0.3), "root": Color(0.25, 0.55, 0.25), "haste": Color(1.0, 0.85, 0.2),
+	"aegis": Color(0.4, 0.9, 1.0), "regen": Color(1.0, 0.55, 0.75),
+}
 const PITCH_MIN := 20.0
 const PITCH_MAX := 70.0
 const ZOOM_MIN := 5.0
@@ -503,6 +508,13 @@ func draw_hud(ci: CanvasItem, scale: float, font: Font) -> void:
 		ci.draw_rect(Rect2(bar.position + Vector2(-scale * 3, -scale), Vector2(scale * 2, scale * 4)), team_col)
 		if int(u["suspended"]) > 0:
 			ci.draw_rect(Rect2(bar.end + Vector2(scale * 2, -scale * 3), Vector2(scale * 3, scale * 3)), UI.ACCENT)
+		# Icone degli status: quadratini colorati sopra la barra.
+		var sx := bar.position.x
+		for st in u.get("statuses", []):
+			var col: Color = STATUS_COLORS.get(str(st["key"]), Color.WHITE)
+			ci.draw_rect(Rect2(Vector2(sx, bar.position.y - scale * 4), Vector2(scale * 3, scale * 3)), Color(0.05, 0.03, 0.1))
+			ci.draw_rect(Rect2(Vector2(sx + scale * 0.5, bar.position.y - scale * 3.5), Vector2(scale * 2, scale * 2)), col)
+			sx += scale * 4
 		if i == champion:
 			# Corona a pixel sopra il campione.
 			var c := head + Vector2(0, -scale * 5)

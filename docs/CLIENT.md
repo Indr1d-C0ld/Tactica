@@ -60,6 +60,7 @@ godot --path client --editor
   - **Pannello sinistro:** scheda dell'unità attiva (o di quella sotto il mouse) e azioni: muovi, abilità con costo in MP, fine turno con scelta della direzione, suggerimento dell'IA, abbandono.
   - **Anteprima al passaggio sul bersaglio:** area d'effetto, danni e probabilità di colpire per ogni unità, avviso se l'azione viola uno statuto.
   - **Registro degli eventi** in italiano, con numeri fluttuanti per danni, cure, mancati, sanzioni e livelli.
+  - **Status alterati:** icone colorate sopra la barra degli HP, elenco con i turni rimanenti nella scheda dell'unità, scritte fluttuanti (status applicato, "resiste", "Zzz"), probabilità di status nell'anteprima dell'attacco.
   - **Fine partita:** risultato, ELO, punteggio stagionale, monete (con il bonus del clan), punti clan, bottino, esperienza e punti risonanza per unità.
 
 Comandi:

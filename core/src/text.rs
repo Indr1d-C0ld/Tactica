@@ -39,6 +39,7 @@ pub fn describe_event(e: &Event, n: &dyn Fn(UnitId) -> String) -> Option<String>
         } => {
             format!("  {} subisce {amount} danni (HP {hp})", n(*unit))
         }
+        Event::Healed { amount: 0, .. } => return None,
         Event::Healed {
             unit, amount, hp, ..
         } => format!("  {} recupera {amount} HP (HP {hp})", n(*unit)),
@@ -62,6 +63,31 @@ pub fn describe_event(e: &Event, n: &dyn Fn(UnitId) -> String) -> Option<String>
         Event::Suspended { unit, turns } => format!("  ! {} sospeso per {turns} turni", n(*unit)),
         Event::Expelled { unit } => format!("  ! {} espulso dalla battaglia", n(*unit)),
         Event::LevelUp { unit, level } => format!("  {} sale al livello {level}", n(*unit)),
+        Event::StatusApplied { unit, status } => {
+            format!("  {} è colpito da {}", n(*unit), status.name())
+        }
+        Event::StatusResisted { unit, status } => {
+            format!("  {} resiste a {}", n(*unit), status.name())
+        }
+        Event::StatusCleared { unit, status } => {
+            format!("  {} non è più affetto da {}", n(*unit), status.name())
+        }
+        Event::StatusExpired { unit, status } => {
+            format!("  {} svanisce da {}", status.name(), n(*unit))
+        }
+        Event::StatusDamage {
+            unit,
+            status,
+            amount,
+            hp,
+        } => {
+            format!(
+                "  {} subisce {amount} danni da {} (HP {hp})",
+                n(*unit),
+                status.name()
+            )
+        }
+        Event::Asleep { unit } => format!("  {} dorme e salta il turno", n(*unit)),
         Event::BattleEnded { .. } => "Battaglia conclusa".to_string(),
     })
 }

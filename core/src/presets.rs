@@ -123,3 +123,18 @@ pub fn mission(seed: u64, allies: &[UnitSetup], difficulty: u8) -> Mission {
         statutes: if d >= 2 { 2 } else { 1 },
     }
 }
+
+/// Squadra che usa le abilità di status (test e bilanciamento).
+pub fn status_party(team: u8, level: i32, names: [&str; 4]) -> Vec<UnitSetup> {
+    use ItemId::*;
+    let kits: [(Class, [ItemId; 2]); 4] = [
+        (Class::Vanguard, [Greatblade, WarHorn]),
+        (Class::Scout, [SerpentBow, Leather]),
+        (Class::Arcanist, [QuietRod, Robe]),
+        (Class::Mender, [SproutStaff, WhiteVestment]),
+    ];
+    kits.iter()
+        .zip(names)
+        .map(|((class, kit), name)| UnitSetup::new(name, team, *class, level).with_equipment(kit))
+        .collect()
+}

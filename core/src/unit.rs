@@ -4,6 +4,7 @@ use crate::ability::AbilityId;
 use crate::class::{Class, MAX_LEVEL, Stats};
 use crate::item::{ItemId, sanitize_loadout};
 use crate::map::{Dir, Pos};
+use crate::status::Status;
 
 pub type UnitId = u32;
 
@@ -89,6 +90,9 @@ pub struct Unit {
     pub suspended: i32,
     pub penalties: i32,
     pub tally: Tally,
+    /// Status attivi con i turni rimanenti (ordine d'arrivo, deterministico).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub statuses: Vec<(Status, i32)>,
 }
 
 impl Unit {
@@ -115,6 +119,7 @@ impl Unit {
             suspended: 0,
             penalties: 0,
             tally: Tally::default(),
+            statuses: Vec::new(),
         }
     }
 
@@ -134,6 +139,47 @@ impl Unit {
 
     pub fn can_use(&self, a: AbilityId) -> bool {
         self.abilities().contains(&a)
+    }
+
+    pub fn has(&self, s: Status) -> bool {
+        self.statuses.iter().any(|(x, _)| *x == s)
+    }
+
+    /// Aggiunge (o rinnova) uno status; annulla quello opposto. Restituisce
+    /// lo status opposto rimosso, se c'era.
+    pub fn add_status(&mut self, s: Status, turns: i32) -> Option<Status> {
+        let removed = s.opposite().filter(|o| self.remove_status(*o));
+        match self.statuses.iter_mut().find(|(x, _)| *x == s) {
+            Some(e) => e.1 = e.1.max(turns),
+            None => self.statuses.push((s, turns)),
+        }
+        removed
+    }
+
+    pub fn remove_status(&mut self, s: Status) -> bool {
+        let before = self.statuses.len();
+        self.statuses.retain(|(x, _)| *x != s);
+        self.statuses.len() != before
+    }
+
+    pub fn negative_statuses(&self) -> Vec<Status> {
+        self.statuses
+            .iter()
+            .map(|(s, _)| *s)
+            .filter(|s| s.is_negative())
+            .collect()
+    }
+
+    /// Velocità effettiva per l'iniziativa.
+    pub fn effective_speed(&self) -> i32 {
+        let mut spd = self.stats.spd.max(1);
+        if self.has(Status::Haste) {
+            spd = spd * 3 / 2;
+        }
+        if self.has(Status::Slow) {
+            spd /= 2;
+        }
+        spd.max(1)
     }
 
     pub fn is_active(&self) -> bool {

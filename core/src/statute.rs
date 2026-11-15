@@ -18,6 +18,8 @@ pub enum Statute {
     NoEcho,
     /// Vietato colpire bersagli più in basso di sé.
     NoDownwardStrike,
+    /// Vietato infliggere status negativi.
+    NoAilments,
 }
 
 pub struct StatuteCtx {
@@ -27,7 +29,7 @@ pub struct StatuteCtx {
 }
 
 impl Statute {
-    pub const POOL: [Statute; 8] = [
+    pub const POOL: [Statute; 9] = [
         Statute::NoHealing,
         Statute::NoElement(Element::Fire),
         Statute::NoElement(Element::Ice),
@@ -36,6 +38,7 @@ impl Statute {
         Statute::NoMagic,
         Statute::NoEcho,
         Statute::NoDownwardStrike,
+        Statute::NoAilments,
     ];
 
     pub fn name(self) -> String {
@@ -46,6 +49,7 @@ impl Statute {
             Statute::NoMagic => "Niente magia offensiva".into(),
             Statute::NoEcho => "Divieto d'eco".into(),
             Statute::NoDownwardStrike => "Divieto di colpire dall'alto".into(),
+            Statute::NoAilments => "Niente alterazioni".into(),
         }
     }
 
@@ -57,8 +61,10 @@ impl Statute {
             Statute::NoMagic => ab.kind == Kind::Magic,
             Statute::NoEcho => ctx.previous_ability == Some(ab.id),
             Statute::NoDownwardStrike => {
-                ab.kind != Kind::Heal && ctx.target_height < ctx.user_height
+                !matches!(ab.kind, Kind::Heal | Kind::Support)
+                    && ctx.target_height < ctx.user_height
             }
+            Statute::NoAilments => ab.effect.is_some_and(|e| e.status.is_negative()),
         }
     }
 

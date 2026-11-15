@@ -122,12 +122,12 @@ impl Class {
     pub fn learnable(self) -> &'static [AbilityId] {
         use AbilityId::*;
         match self {
-            Class::Vanguard => &[Sweep, Charge],
-            Class::Scout => &[AimedShot, Volley],
-            Class::Arcanist => &[Frost, Bolt, Inferno],
-            Class::Mender => &[Radiance, GreatMend],
+            Class::Vanguard => &[Sweep, Charge, Rally],
+            Class::Scout => &[AimedShot, Volley, VenomDart],
+            Class::Arcanist => &[Frost, Bolt, Inferno, Torpor],
+            Class::Mender => &[Radiance, GreatMend, Aegis, Sprout, Purify],
             Class::Runeblade => &[DrainBlade, FrostEdge],
-            Class::Warden => &[Sanctuary, Judgment],
+            Class::Warden => &[Sanctuary, Judgment, Chains],
         }
     }
 

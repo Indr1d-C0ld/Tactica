@@ -16,11 +16,12 @@ Gioco tattico fantasy originale, ispirato ai classici tattici a turni per consol
 - `core/`: motore di regole deterministico (solo aritmetica intera, nessuna dipendenza). Comprende:
   - mappe procedurali per 5 biomi, con verifica che gli schieramenti siano collegati;
   - 6 classi (4 base, 2 avanzate da sbloccare);
-  - 20 abilità;
-  - 22 oggetti che danno bonus e insegnano abilità, padroneggiabili con i punti risonanza;
+  - 27 abilità;
+  - 29 oggetti che danno bonus e insegnano abilità, padroneggiabili con i punti risonanza;
   - turni a CT;
   - danno con altezza, lato d'attacco e terreno;
-  - 8 statuti con sospensione ed espulsione;
+  - 9 statuti con sospensione ed espulsione;
+  - 8 status alterati (veleno, sonno, silenzio, lentezza, radici, rapidità, egida, rigenerazione);
   - esperienza e livelli;
   - contatori statistici per unità;
   - IA golosa che rispetta gli statuti;
@@ -77,5 +78,5 @@ cargo build -p tactica-godot && godot --path client
 
 ## Prossimi passi
 
-1. **Status alterati**, tornei fra clan, matchmaking per ELO; rate limiting prima dell'apertura su Internet.
+1. **Tornei fra clan**, matchmaking per ELO; rate limiting prima dell'apertura su Internet.
 2. **Audio ed effetti** originali (musiche, suoni, effetti delle abilità); font in pixel-art.

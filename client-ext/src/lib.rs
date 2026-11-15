@@ -102,10 +102,13 @@ impl TacticaEngine {
         } else {
             ["Ezio", "Fosca", "Gualtiero", "Ilaria"]
         };
-        gs(
-            serde_json::to_string(&presets::demo_party(team as u8, level as i32, names))
-                .expect("json"),
-        )
+        gs(serde_json::to_string(&if team == 0 {
+            // La squadra blu usa l'equipaggiamento con gli status, per mostrarli in azione.
+            presets::status_party(0, level as i32, names)
+        } else {
+            presets::demo_party(1, level as i32, names)
+        })
+        .expect("json"))
     }
 
     #[func]
@@ -189,8 +192,11 @@ impl TacticaEngine {
                     "hit": o.hit_pct,
                     "amount": o.amount,
                     "heal": o.heal,
-                    "lethal": !o.heal && o.amount >= tu.hp,
+                    "lethal": !o.heal && o.amount > 0 && o.amount >= tu.hp,
                     "ally": tu.team == u.team,
+                    "status": o.status.map(|e| e.status.name()),
+                    "status_chance": o.status.map_or(0, |e| e.chance * o.hit_pct / 100),
+                    "cleanse": o.cleanse,
                 })
             })
             .collect();
@@ -227,6 +233,7 @@ impl TacticaEngine {
                     "range": [d.range_min, d.range_max],
                     "aoe": d.aoe,
                     "element": d.element.map(|e| e.name()),
+                    "status": d.effect.map(|e| e.status.name()),
                 })
             })
             .collect();
@@ -329,6 +336,9 @@ impl TacticaEngine {
                     "condition": format!("{:?}", u.condition),
                     "suspended": u.suspended,
                     "penalties": u.penalties,
+                    "statuses": u.statuses.iter().map(|(s, t)| json!({
+                        "key": s.key(), "name": s.name(), "turns": t, "negative": s.is_negative(),
+                    })).collect::<Vec<_>>(),
                     "stats": {
                         "atk": u.stats.atk, "def": u.stats.def, "mag": u.stats.mag,
                         "res": u.stats.res, "spd": u.stats.spd, "mov": u.stats.mov,

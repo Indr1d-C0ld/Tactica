@@ -889,6 +889,10 @@ async fn coop_clan_mission() {
     // Partita registrata con entrambi i giocatori e il replay riproducibile.
     let (_, m) = srv.get(&format!("/api/matches/{match_id}"), None).await;
     assert_eq!(m["mode"], "coop");
+    assert_eq!(
+        m["rules_version"].as_i64(),
+        Some(tactica_core::RULES_VERSION as i64)
+    );
     let setup: BattleSetup = serde_json::from_value(m["setup"].clone()).unwrap();
     let actions: Vec<Action> = serde_json::from_value(m["actions"].clone()).unwrap();
     let (mut replay, _) = Battle::new(&setup);

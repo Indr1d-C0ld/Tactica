@@ -81,8 +81,8 @@ pub async fn save_match(
 
     let match_id = sqlx::query(
         "INSERT INTO matches (mode, seed, setup, actions, finished, winner_team, turns, biome,
-                              final_hash, started_at, ended_at, mission)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                              final_hash, started_at, ended_at, mission, rules_version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(mode.key())
     .bind(setup.seed as i64)
@@ -96,6 +96,7 @@ pub async fn save_match(
     .bind(started)
     .bind(now())
     .bind(mission.map(|m| m.name.clone()))
+    .bind(tactica_core::RULES_VERSION as i64)
     .execute(&mut *tx)
     .await?
     .last_insert_rowid();
@@ -656,6 +657,8 @@ pub struct MatchDetail {
     pub final_hash: String,
     pub started_at: i64,
     pub ended_at: i64,
+    /// Versione delle regole: il replay si riproduce solo con la stessa.
+    pub rules_version: i64,
 }
 
 pub async fn match_detail(db: &SqlitePool, id: i64) -> anyhow::Result<Option<MatchDetail>> {
@@ -673,10 +676,11 @@ pub async fn match_detail(db: &SqlitePool, id: i64) -> anyhow::Result<Option<Mat
             String,
             i64,
             i64,
+            i64,
         ),
     >(
         "SELECT id, mode, setup, actions, finished, winner_team, turns, biome, final_hash,
-                started_at, ended_at FROM matches WHERE id = ?",
+                started_at, ended_at, rules_version FROM matches WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(db)
@@ -694,5 +698,6 @@ pub async fn match_detail(db: &SqlitePool, id: i64) -> anyhow::Result<Option<Mat
         final_hash: r.8,
         started_at: r.9,
         ended_at: r.10,
+        rules_version: r.11,
     }))
 }

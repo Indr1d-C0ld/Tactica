@@ -317,3 +317,117 @@ fn missions_scale_and_champion_wins() {
         "nessuna vittoria anticipata per caduta del campione"
     );
 }
+
+mod statuses {
+    use super::*;
+    use tactica_core::status::Status;
+
+    fn status_setup(seed: u64) -> BattleSetup {
+        let mut units = presets::status_party(0, 4, ["A", "B", "C", "D"]);
+        units.extend(presets::demo_party(1, 4, ["a", "b", "c", "d"]));
+        BattleSetup {
+            seed,
+            map: None,
+            units,
+            statutes: 1,
+            objective: Default::default(),
+        }
+    }
+
+    #[test]
+    fn root_and_silence() {
+        let (mut b, _) = Battle::new(&setup(21));
+        let idx = b.active_index().unwrap();
+        b.units[idx].add_status(Status::Root, 2);
+        assert_eq!(b.reachable(idx), vec![b.units[idx].pos]);
+        // Silenzio: niente incantesimi (un Colpo resta possibile).
+        let u = &mut b.units[idx];
+        u.add_status(Status::Silence, 2);
+        u.class = Class::Mender;
+        u.equipment.clear();
+        let pos = u.pos;
+        assert_eq!(
+            b.check_target(idx, pos, AbilityId::Mend, pos),
+            Err(ActionError::Silenced)
+        );
+    }
+
+    #[test]
+    fn poison_ticks_and_statuses_expire() {
+        let (mut b, _) = Battle::new(&setup(22));
+        let idx = b.active_index().unwrap();
+        let max = b.units[idx].stats.max_hp;
+        b.units[idx].add_status(Status::Poison, 1);
+        let hp = b.units[idx].hp;
+        let facing = b.units[idx].facing;
+        let ev = b.apply(Action::EndTurn(facing)).unwrap();
+        assert!(ev.iter().any(|e| matches!(
+            e,
+            Event::StatusDamage {
+                status: Status::Poison,
+                ..
+            }
+        )));
+        assert_eq!(b.units[idx].hp, hp - (max * 8 / 100).max(1));
+        assert!(ev.iter().any(|e| matches!(
+            e,
+            Event::StatusExpired {
+                status: Status::Poison,
+                ..
+            }
+        )));
+        assert!(!b.units[idx].has(Status::Poison));
+    }
+
+    #[test]
+    fn sleepers_skip_turns_and_haste_cancels_slow() {
+        let (mut b, _) = Battle::new(&setup(23));
+        let first = b.active_index().unwrap();
+        // Addormenta tutti gli altri: i loro turni vengono saltati.
+        let sleeper = (first + 1) % b.units.len();
+        b.units[sleeper].add_status(Status::Sleep, 2);
+        let mut skipped = 0;
+        for _ in 0..40 {
+            let a = b.active_index().unwrap();
+            let f = b.units[a].facing;
+            let ev = b.apply(Action::EndTurn(f)).unwrap();
+            skipped += ev
+                .iter()
+                .filter(|e| matches!(e, Event::Asleep { unit } if *unit as usize == sleeper))
+                .count();
+            if !b.units[sleeper].has(Status::Sleep) {
+                break;
+            }
+        }
+        assert_eq!(skipped, 2, "dorme per due dei suoi turni");
+
+        let u = &mut b.units[first];
+        u.add_status(Status::Haste, 3);
+        assert_eq!(u.add_status(Status::Slow, 3), Some(Status::Haste));
+        assert!(u.has(Status::Slow) && !u.has(Status::Haste));
+    }
+
+    #[test]
+    fn status_battles_are_deterministic_and_use_statuses() {
+        let mut seen = std::collections::HashSet::new();
+        for seed in 0..25 {
+            let s = status_setup(seed);
+            let (mut live, _) = Battle::new(&s);
+            let (actions, events) = ai::autoplay(&mut live, 20_000);
+            assert!(live.is_over());
+            for e in &events {
+                if let Event::StatusApplied { status, .. } = e {
+                    seen.insert(*status);
+                }
+            }
+            let (mut replay, _) = Battle::new(&s);
+            for a in actions {
+                replay.apply(a).unwrap();
+            }
+            assert_eq!(live.state_hash(), replay.state_hash(), "seed {seed}");
+        }
+        for s in [Status::Poison, Status::Sleep, Status::Haste, Status::Regen] {
+            assert!(seen.contains(&s), "{s:?} mai applicato; visti {seen:?}");
+        }
+    }
+}

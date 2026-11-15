@@ -5,6 +5,7 @@
 //! padroneggiate accumulando punti risonanza (vedi `progression`).
 
 use crate::class::Class;
+use crate::status::{Status, StatusEffect};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -12,6 +13,8 @@ pub enum Kind {
     Physical,
     Magic,
     Heal,
+    /// Nessun danno né cura: applica uno status o ne rimuove.
+    Support,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -57,6 +60,13 @@ pub enum AbilityId {
     Rebuke,
     Sanctuary,
     Judgment,
+    VenomDart,
+    Torpor,
+    Aegis,
+    Sprout,
+    Purify,
+    Rally,
+    Chains,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -80,6 +90,10 @@ pub struct Ability {
     pub drain: bool,
     /// Punti risonanza per padroneggiarla (0 = innata, non si impara).
     pub master_rp: i32,
+    /// Status inflitto (ai nemici se negativo, agli alleati se positivo).
+    pub effect: Option<StatusEffect>,
+    /// Rimuove gli status negativi dagli alleati colpiti.
+    pub cleanse: bool,
 }
 
 const BASE: Ability = Ability {
@@ -97,7 +111,17 @@ const BASE: Ability = Ability {
     ranged: false,
     drain: false,
     master_rp: 0,
+    effect: None,
+    cleanse: false,
 };
+
+const fn fx(status: Status, chance: i32, duration: i32) -> Option<StatusEffect> {
+    Some(StatusEffect {
+        status,
+        chance,
+        duration,
+    })
+}
 
 macro_rules! ab {
     ($id:ident, $key:literal, $name:literal, $kind:ident, $power:literal, $mp:literal, ($rmin:literal, $rmax:literal) $(, $f:ident: $v:expr)*) => {
@@ -119,7 +143,7 @@ macro_rules! ab {
 use Element::*;
 
 /// Indicizzata per `AbilityId as usize`: l'ordine deve coincidere con l'enum.
-static TABLE: [Ability; 20] = [
+static TABLE: [Ability; 27] = [
     ab!(Strike, "strike", "Colpo", Physical, 100, 0, (1, 1)),
     ab!(
         HeavyBlow,
@@ -136,25 +160,42 @@ static TABLE: [Ability; 20] = [
     ab!(AimedShot, "aimed_shot", "Tiro mirato", Physical, 140, 8, (2, 6), vertical: 6, ranged: true, master_rp: 80),
     ab!(Volley, "volley", "Raffica", Physical, 70, 10, (3, 5), aoe: 1, vertical: 5, ranged: true, master_rp: 120),
     ab!(Flame, "flame", "Fiamma", Magic, 110, 8, (0, 4), aoe: 1, vertical: 4, element: Some(Fire)),
-    ab!(Frost, "frost", "Gelo", Magic, 110, 8, (0, 4), aoe: 1, vertical: 4, element: Some(Ice), master_rp: 80),
-    ab!(Bolt, "bolt", "Folgore", Magic, 160, 14, (1, 4), vertical: 6, element: Some(Thunder), master_rp: 100),
+    ab!(Frost, "frost", "Gelo", Magic, 110, 8, (0, 4), aoe: 1, vertical: 4, element: Some(Ice), master_rp: 80,
+        effect: fx(Status::Slow, 30, 3)),
+    ab!(Bolt, "bolt", "Folgore", Magic, 160, 14, (1, 4), vertical: 6, element: Some(Thunder), master_rp: 100,
+        effect: fx(Status::Root, 25, 2)),
     ab!(Inferno, "inferno", "Vampa", Magic, 150, 18, (2, 4), aoe: 1, vertical: 4, element: Some(Fire), master_rp: 150),
     ab!(Mend, "mend", "Cura", Heal, 100, 6, (0, 3), aoe: 1, vertical: 4),
     ab!(Radiance, "radiance", "Luce", Magic, 90, 6, (1, 3), vertical: 4, element: Some(Holy), master_rp: 80),
     ab!(GreatMend, "great_mend", "Cura maggiore", Heal, 140, 14, (0, 3), aoe: 1, vertical: 4, master_rp: 120),
     ab!(RuneEdge, "rune_edge", "Lama runica", Physical, 120, 4, (1, 1), element: Some(Thunder)),
     ab!(DrainBlade, "drain_blade", "Lama vorace", Physical, 110, 6, (1, 1), drain: true, master_rp: 100),
-    ab!(FrostEdge, "frost_edge", "Taglio gelido", Physical, 130, 8, (1, 1), element: Some(Ice), master_rp: 100),
-    ab!(Rebuke, "rebuke", "Ammonimento", Magic, 80, 4, (1, 3), vertical: 4, element: Some(Holy)),
+    ab!(FrostEdge, "frost_edge", "Taglio gelido", Physical, 130, 8, (1, 1), element: Some(Ice), master_rp: 100,
+        effect: fx(Status::Slow, 35, 3)),
+    ab!(Rebuke, "rebuke", "Ammonimento", Magic, 80, 4, (1, 3), vertical: 4, element: Some(Holy),
+        effect: fx(Status::Silence, 40, 3)),
     ab!(Sanctuary, "sanctuary", "Santuario", Heal, 60, 12, (0, 2), aoe: 2, vertical: 4, master_rp: 120),
     ab!(Judgment, "judgment", "Giudizio", Magic, 140, 16, (1, 4), vertical: 6, element: Some(Holy), master_rp: 140),
+    ab!(VenomDart, "venom_dart", "Dardo velenoso", Physical, 70, 6, (2, 5), vertical: 5, ranged: true, master_rp: 90,
+        effect: fx(Status::Poison, 80, 4)),
+    ab!(Torpor, "torpor", "Torpore", Support, 0, 10, (1, 4), aoe: 1, vertical: 4, master_rp: 110,
+        effect: fx(Status::Sleep, 70, 2)),
+    ab!(Aegis, "aegis", "Egida", Support, 0, 6, (0, 3), vertical: 4, master_rp: 80,
+        effect: fx(Status::Aegis, 100, 3)),
+    ab!(Sprout, "sprout", "Germoglio", Support, 0, 8, (0, 3), aoe: 1, vertical: 4, master_rp: 100,
+        effect: fx(Status::Regen, 100, 3)),
+    ab!(Purify, "purify", "Purificazione", Support, 0, 6, (0, 3), aoe: 1, vertical: 4, master_rp: 90, cleanse: true),
+    ab!(Rally, "rally", "Slancio", Support, 0, 8, (0, 0), aoe: 1, vertical: 4, master_rp: 110,
+        effect: fx(Status::Haste, 100, 3)),
+    ab!(Chains, "chains", "Catene", Magic, 50, 8, (1, 3), vertical: 4, master_rp: 100,
+        effect: fx(Status::Root, 75, 2)),
 ];
 
 impl AbilityId {
-    pub const ALL: [AbilityId; 20] = {
-        let mut out = [AbilityId::Strike; 20];
+    pub const ALL: [AbilityId; 27] = {
+        let mut out = [AbilityId::Strike; 27];
         let mut i = 0;
-        while i < 20 {
+        while i < 27 {
             out[i] = TABLE[i].id;
             i += 1;
         }

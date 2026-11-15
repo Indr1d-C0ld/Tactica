@@ -18,7 +18,13 @@ fn main() {
     let mut by_biome: BTreeMap<&str, [u32; 3]> = BTreeMap::new();
 
     for seed in 0..n {
-        let mut units = presets::demo_party(0, 3, ["", "", "", ""]);
+        // Con TACTICA_STATUS=1 la squadra 0 usa l'equipaggiamento con gli status.
+        let status = std::env::var("TACTICA_STATUS").is_ok_and(|v| v == "1");
+        let mut units = if status {
+            presets::status_party(0, 3, ["", "", "", ""])
+        } else {
+            presets::demo_party(0, 3, ["", "", "", ""])
+        };
         units.extend(presets::demo_party(1, 3, ["", "", "", ""]));
         let (mut b, _) = Battle::new(&BattleSetup {
             seed,

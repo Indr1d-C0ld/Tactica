@@ -55,7 +55,7 @@ Le rotte indicate con 🔒 richiedono l'header `Authorization: Bearer <token>`.
 | `GET /api/players/{name}` | statistiche personali: vittorie, sconfitte, totali, classi, roster, ultime partite |
 | `GET /api/leaderboard?limit=20` | classifica ELO |
 | `GET /api/stats` | statistiche globali: classi (uso, % vittorie, medie), biomi, statuti |
-| `GET /api/matches/{id}` | replay: setup con seed, azioni, hash finale |
+| `GET /api/matches/{id}` | replay: setup con seed, azioni, hash finale e versione delle regole (`rules_version`): il replay si riproduce solo con un motore della stessa versione |
 | `GET /api/clans` | elenco dei clan con membri e punti della stagione |
 | `POST /api/clans` 🔒 `{name, tag, motto?, open?}` | fonda un clan (costa 200 monete; nome di 3-24 caratteri, sigla di 2-5) |
 | `GET /api/clans/{tag}` | dettaglio: membri e ruoli, punti stagionali, storico delle stagioni |
@@ -106,6 +106,38 @@ Ogni unità del roster riporta anche:
   
   Il bottino si ricava in modo deterministico dal seed della partita e dall'account, quindi è verificabile.
 - **IA in PvE:** rispecchia classi, livelli, equipaggiamento e padronanze della squadra del giocatore.
+
+## Status alterati
+
+Le durate si contano nei turni dell'unità colpita: diminuiscono alla fine di ogni suo turno, anche se lo salta dormendo.
+
+| Status | Effetto |
+|---|---|
+| Veleno | perde l'8% degli HP massimi a fine turno |
+| Sonno | salta i turni; i colpi fisici contro di lui vanno sempre a segno; si sveglia se subisce danni |
+| Silenzio | niente magie, cure né incantesimi di supporto |
+| Lentezza | accumula iniziativa a metà velocità |
+| Radici | non può muoversi |
+| Rapidità | accumula iniziativa 1,5 volte più in fretta; annulla Lentezza e viceversa |
+| Egida | danni fisici subiti ridotti di un terzo |
+| Rigenerazione | recupera l'8% degli HP massimi a fine turno |
+
+- **A chi si applicano:** gli status negativi colpiscono solo i nemici, quelli positivi solo gli alleati. Gli attacchi applicano il loro status solo se vanno a segno, con la probabilità indicata.
+- **Abilità che infliggono status:**
+  - Gelo (Lentezza 30%);
+  - Folgore (Radici 25%);
+  - Taglio gelido (Lentezza 35%);
+  - Ammonimento (Silenzio 40%).
+- **Nuove abilità:** tipo "supporto" se non fanno danni né curano.
+  - Dardo velenoso (Esploratore);
+  - Torpore (Arcanista, Sonno ad area);
+  - Egida, Germoglio e Purificazione (Guaritore; Purificazione rimuove gli status negativi);
+  - Slancio (Avanguardia, Rapidità attorno a sé);
+  - Catene (Custode, Radici).
+- **Nuovi oggetti che le insegnano:** Arco del serpente, Verga della quiete, Pendaglio dell'egida, Bastone del germoglio, Veste candida, Corno da battaglia e Flagello. Pendaglio e Corno sono accessori che chiunque può indossare, ma insegnano solo alla classe della scuola.
+- **Nuovo statuto:** "Niente alterazioni" (vietato infliggere status negativi).
+- **IA:** valuta gli status in base al bersaglio (ad esempio il Silenzio vale soprattutto contro chi lancia incantesimi) ed evita di riapplicare quelli già presenti.
+- **Bilanciamento:** con l'equipaggiamento da status contro quello da danno, su 2000 battaglie il risultato è 991 vittorie a 969.
 
 ## Clan e stagioni
 

@@ -262,6 +262,11 @@ func _show_card(i: int) -> void:
 		team_col, u["name"], u["class_name"], int(u["level"]), int(u["hp"]), int(u["max_hp"]),
 		int(u["mp"]), int(u["max_mp"]), int(st["atk"]), int(st["def"]), int(st["mag"]),
 		int(st["res"]), int(st["spd"]), int(st["mov"]), int(st["jump"]), int(st["evade"])]
+	var sts: Array[String] = []
+	for status in u.get("statuses", []):
+		sts.append("[color=%s]%s (%d)[/color]" % ["#f9a" if bool(status["negative"]) else "#9fc", status["name"], int(status["turns"])])
+	if not sts.is_empty():
+		_card.text += "\n" + ", ".join(sts)
 	if not mine.is_empty() and int(u["team"]) == my_team:
 		_card.text += "\n[color=#9cf]%s[/color]" % ("Tua unità" if mine.has(i) else "Unità di un alleato")
 	if int(u["penalties"]) > 0:
@@ -300,6 +305,8 @@ func _rebuild_actions() -> void:
 			var key := str(ab["key"])
 			var cost := int(ab["mp_cost"])
 			var txt := str(ab["name"]) + ("" if cost == 0 else "  (%d MP)" % cost)
+			if ab.get("status") != null:
+				txt += " · " + str(ab["status"])
 			var b := UI.button(txt, func() -> void: _set_mode("ability", key))
 			b.disabled = not bool(ab["usable"])
 			_actions.add_child(b)
@@ -352,12 +359,20 @@ func _preview(t: Vector2i) -> void:
 	var parts: Array[String] = []
 	for o in p.get("outcomes", []):
 		var who := str(o["name"])
+		var extra := ""
+		if o.get("status") != null:
+			extra = " [color=#c9f]%s %d%%[/color]" % [o["status"], int(o["status_chance"])]
+		if bool(o.get("cleanse", false)):
+			extra += " [color=#9fc]purifica[/color]"
+		if int(o["amount"]) == 0 and not bool(o["heal"]):
+			parts.append("%s%s" % [who, extra])
+			continue
 		if bool(o["heal"]):
 			parts.append("[color=#7f7]%s +%d[/color]" % [who, int(o["amount"])])
 		else:
 			var col := "#fc6" if bool(o["ally"]) else "#f88"
 			var ko := " KO" if bool(o["lethal"]) else ""
-			parts.append("[color=%s]%s -%d (%d%%)%s[/color]" % [col, who, int(o["amount"]), int(o["hit"]), ko])
+			parts.append("[color=%s]%s -%d (%d%%)%s[/color]%s" % [col, who, int(o["amount"]), int(o["hit"]), ko, extra])
 	var txt := "  ".join(parts) if not parts.is_empty() else "[color=#999]nessun bersaglio[/color]"
 	var v: Array = p.get("violations", [])
 	if not v.is_empty():
@@ -472,7 +487,9 @@ func _announce(msg: Dictionary, raw: String) -> void:
 			board.play(int(v["unit"]), "act")
 		elif kind == "Damaged" or kind == "TerrainDamage":
 			board.play(int(v["unit"]), "hurt", 0.3)
-		if ANNOUNCE.has(kind):
+		if ANNOUNCE.has(kind) and int(v.get("amount", 1)) == 0:
+			pass
+		elif ANNOUNCE.has(kind):
 			board.add_float(at, ANNOUNCE[kind][1] % int(v["amount"]), ANNOUNCE[kind][0])
 		elif kind == "Missed":
 			board.add_float(at, "mancato", Color(0.8, 0.8, 0.8))
@@ -482,6 +499,15 @@ func _announce(msg: Dictionary, raw: String) -> void:
 			board.add_float(at, "Livello %d!" % int(v["level"]), UI.ACCENT)
 		elif kind == "Defeated":
 			board.add_float(at, "KO", UI.BAD)
+		elif kind == "StatusApplied":
+			var neg := str(v["status"]) in ["Poison", "Sleep", "Silence", "Slow", "Root"]
+			board.add_float(at, _status_name(str(v["status"])), Color(0.85, 0.55, 1.0) if neg else Color(0.5, 1.0, 0.85))
+		elif kind == "StatusResisted":
+			board.add_float(at, "resiste", Color(0.8, 0.8, 0.8))
+		elif kind == "Asleep":
+			board.add_float(at, "Zzz", Color(0.6, 0.75, 1.0))
+		elif kind == "StatusDamage":
+			board.add_float(at, "-%d" % int(v["amount"]), Color(0.6, 0.95, 0.4))
 
 
 func _after_change() -> void:
@@ -546,6 +572,14 @@ func _autoplay_tick() -> void:
 
 
 ## Le azioni JSON usano i nomi delle varianti Rust ("AimedShot"); i pulsanti le chiavi ("aimed_shot").
+const STATUS_NAMES := {"Poison": "Veleno", "Sleep": "Sonno", "Silence": "Silenzio", "Slow": "Lentezza",
+	"Root": "Radici", "Haste": "Rapidità", "Aegis": "Egida", "Regen": "Rigenerazione"}
+
+
+func _status_name(variant: String) -> String:
+	return STATUS_NAMES.get(variant, variant)
+
+
 func _ability_key(variant: String) -> String:
 	for ab in JSON.parse_string(engine.abilities_json(_active())):
 		if str(ab["key"]).replace("_", "") == variant.to_lower():
