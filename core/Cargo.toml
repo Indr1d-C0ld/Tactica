@@ -1,0 +1,8 @@
+[package]
+name = "tactica-core"
+description = "Motore di regole deterministico: mappe procedurali, classi, combattimento, statuti, IA"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]

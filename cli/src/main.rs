@@ -1,0 +1,200 @@
+//! Demo: battaglia IA contro IA su mappa procedurale, con verifica del replay.
+//!
+//! Uso: tactica-cli [SEED] [--quiet]
+
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use tactica_core::ai;
+use tactica_core::class::Class;
+use tactica_core::{Battle, BattleSetup, Event, UnitSetup};
+
+const NAMES: [[&str; 4]; 2] = [
+    ["Alda", "Brenno", "Cora", "Dario"],
+    ["Ezio", "Fosca", "Gualtiero", "Ilaria"],
+];
+
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let quiet = args.iter().any(|a| a == "--quiet" || a == "-q");
+    let seed = args
+        .iter()
+        .find_map(|a| a.parse::<u64>().ok())
+        .unwrap_or_else(|| {
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(1, |d| d.as_nanos() as u64)
+        });
+
+    let setup = demo_setup(seed);
+    let (mut b, start_events) = Battle::new(&setup);
+
+    println!("Seed {seed}");
+    println!(
+        "Bioma: {} {}x{}",
+        b.map.biome.name(),
+        b.map.width,
+        b.map.height
+    );
+    println!(
+        "Statuti: {}",
+        b.statutes
+            .iter()
+            .map(|s| s.name())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    println!("{}", render(&b));
+    println!("Legenda: . erba  # roccia  : sabbia  ~ acqua  ^ lava  \" boscaglia; cifra = altezza");
+    println!("Squadra 0 = A-D, squadra 1 = a-d\n");
+
+    let (actions, events) = ai::autoplay(&mut b, 10_000);
+    if !quiet {
+        for e in start_events.iter().chain(&events) {
+            if let Some(line) = describe(&b, e) {
+                println!("{line}");
+            }
+        }
+        println!();
+        println!("{}", render(&b));
+    }
+
+    match b.winner() {
+        Some(Some(t)) => println!("Vince la squadra {t} al turno {}", b.turn()),
+        Some(None) => println!("Pareggio al turno {}", b.turn()),
+        None => println!("Interrotta al turno {}", b.turn()),
+    }
+    println!(
+        "\n{:<10} {:<12} {:>3} {:>8} {:>6} {:>6} {:>6} {:>5} {:>5}",
+        "Unità", "Classe", "Lv", "HP", "Danni", "Subiti", "Cure", "KO", "Viol"
+    );
+    for u in &b.units {
+        println!(
+            "{:<10} {:<12} {:>3} {:>4}/{:<3} {:>6} {:>6} {:>6} {:>5} {:>5}",
+            u.name,
+            u.class.name(),
+            u.level,
+            u.hp,
+            u.stats.max_hp,
+            u.tally.damage_dealt,
+            u.tally.damage_taken,
+            u.tally.healing_done,
+            u.tally.kills,
+            u.tally.violations
+        );
+    }
+
+    // Replay: seed + azioni devono riprodurre esattamente lo stesso stato.
+    let (mut replay, _) = Battle::new(&setup);
+    for a in &actions {
+        replay.apply(*a).expect("azione del replay rifiutata");
+    }
+    let (h1, h2) = (b.state_hash(), replay.state_hash());
+    println!(
+        "\nAzioni: {}  hash: {h1:016x}  replay: {}",
+        actions.len(),
+        if h1 == h2 { "identico" } else { "DIVERSO" }
+    );
+    if h1 != h2 {
+        std::process::exit(1);
+    }
+}
+
+fn demo_setup(seed: u64) -> BattleSetup {
+    let units = (0..2u8)
+        .flat_map(|team| {
+            Class::ALL
+                .iter()
+                .enumerate()
+                .map(move |(i, &class)| UnitSetup {
+                    name: NAMES[team as usize][i].to_string(),
+                    team,
+                    class,
+                    level: 3,
+                })
+        })
+        .collect();
+    BattleSetup {
+        seed,
+        map: None,
+        units,
+        statutes: 2,
+    }
+}
+
+fn letter(b: &Battle, id: usize) -> char {
+    let u = &b.units[id];
+    let i = b.units[..id].iter().filter(|o| o.team == u.team).count() as u8;
+    if u.team == 0 {
+        (b'A' + i) as char
+    } else {
+        (b'a' + i) as char
+    }
+}
+
+fn render(b: &Battle) -> String {
+    b.map.render(&|p| b.unit_at(p).map(|i| letter(b, i)))
+}
+
+fn describe(b: &Battle, e: &Event) -> Option<String> {
+    let n = |id: u32| {
+        let u = &b.units[id as usize];
+        format!("{}({})", u.name, letter(b, id as usize))
+    };
+    Some(match e {
+        Event::TurnStarted { .. } => return None,
+        Event::TurnSkipped { unit } => format!("  {} è sospeso e salta il turno", n(*unit)),
+        Event::Moved { unit, from, to } if from != to => {
+            format!(
+                "{} si sposta ({},{}) -> ({},{})",
+                n(*unit),
+                from.x,
+                from.y,
+                to.x,
+                to.y
+            )
+        }
+        Event::Moved { .. } => return None,
+        Event::AbilityUsed {
+            unit,
+            ability,
+            target,
+        } => {
+            format!(
+                "{} usa {} su ({},{})",
+                n(*unit),
+                ability.def().name,
+                target.x,
+                target.y
+            )
+        }
+        Event::Damaged {
+            unit, amount, hp, ..
+        } => {
+            format!("  {} subisce {amount} danni (HP {hp})", n(*unit))
+        }
+        Event::Healed {
+            unit, amount, hp, ..
+        } => format!("  {} recupera {amount} HP (HP {hp})", n(*unit)),
+        Event::Missed { unit, .. } => format!("  mancato {}", n(*unit)),
+        Event::Defeated { unit } => format!("  {} è fuori combattimento", n(*unit)),
+        Event::TerrainDamage {
+            unit,
+            terrain,
+            amount,
+            hp,
+        } => {
+            format!(
+                "  {} subisce {amount} danni da {} (HP {hp})",
+                n(*unit),
+                terrain.name()
+            )
+        }
+        Event::StatuteViolated { unit, statute } => {
+            format!("  ! {} viola lo statuto «{}»", n(*unit), statute.name())
+        }
+        Event::Suspended { unit, turns } => format!("  ! {} sospeso per {turns} turni", n(*unit)),
+        Event::Expelled { unit } => format!("  ! {} espulso dalla battaglia", n(*unit)),
+        Event::LevelUp { unit, level } => format!("  {} sale al livello {level}", n(*unit)),
+        Event::BattleEnded { .. } => "Battaglia conclusa".to_string(),
+    })
+}

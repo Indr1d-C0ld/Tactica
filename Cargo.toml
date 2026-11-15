@@ -1,0 +1,11 @@
+[workspace]
+resolver = "3"
+members = ["core", "cli"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "Proprietary"
+
+[profile.release]
+debug = 1
