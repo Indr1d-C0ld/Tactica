@@ -30,6 +30,8 @@ La configurazione si fa con variabili d'ambiente:
 | `TACTICA_SEASON_DAYS` | `28` | durata di una stagione classificata |
 | `TACTICA_COOP_MIN_PLAYERS` | `2` | giocatori minimi per avviare una missione cooperativa |
 | `TACTICA_WAR_MIN_PLAYERS` | `1` | giocatori minimi per lato in una guerra fra clan |
+| `TACTICA_AUTH_PER_MINUTE` | `30` | richieste di accesso o registrazione al minuto per indirizzo IP |
+| `TACTICA_REGISTER_PER_HOUR` | `5` | registrazioni all'ora per indirizzo IP |
 | `RUST_LOG` | `info,sqlx=warn` | livello dei log |
 
 ## API HTTP
@@ -81,6 +83,15 @@ Le rotte indicate con 🔒 richiedono l'header `Authorization: Bearer <token>`.
 | `GET /health` | `ok` |
 
 Password: hash Argon2id. Token: nel database si salva solo il loro SHA-256.
+
+**Limiti ai tentativi** (in memoria, si azzerano al riavvio). Oltre il limite la risposta è `429`:
+
+- per indirizzo IP, richieste di accesso o registrazione al minuto e registrazioni all'ora (variabili nella tabella sopra);
+- per nome utente, dopo 5 password sbagliate in 5 minuti l'accesso resta bloccato fino allo scadere dei 5 minuti, anche con la password giusta. Un accesso riuscito azzera il conteggio.
+
+L'indirizzo è quello della connessione. Se la connessione arriva da localhost, cioè da Caddy, conta il primo indirizzo di `X-Forwarded-For`. Caddy scarta quello inviato dal client e lo riscrive, quindi non si può falsificare.
+
+**Coda PvP per ELO:** chi entra in coda accetta avversari con uno scarto di ELO fino a 100 punti. Lo scarto cresce di 50 ogni 10 secondi d'attesa, e dopo 90 secondi si accetta chiunque, perché su un server con pochi giocatori nessuno resti in coda per sempre. A parità di condizioni si sceglie l'avversario con l'ELO più vicino. La coda si riesamina ogni 2 secondi.
 
 Ogni unità del roster riporta anche:
 
@@ -270,35 +281,39 @@ Lo `snapshot` è lo stato pubblico completo: mappa, unità, statuti, turno, unit
 
 ## Deploy su Debian
 
+Sul server, come utente normale, compila il binario:
+
 ```bash
 cargo build --release -p tactica-server
 ```
 
-```bash
-sudo install -m 755 target/release/tactica-server /usr/local/bin/
-```
+Poi installa servizio e Caddy (TLS automatico con Let's Encrypt) con lo script, dalla radice del repository:
 
 ```bash
-sudo install -m 644 deploy/tactica-server.service /etc/systemd/system/
+sudo deploy/install.sh --domain gioco.esempio.it --email tua@email.it
 ```
 
-```bash
-sudo systemctl daemon-reload && sudo systemctl enable --now tactica-server
-```
+Lo script:
 
-```bash
-journalctl -u tactica-server -f
-```
+1. installa il binario in `/usr/local/bin` e il servizio `tactica-server`, poi lo avvia o lo riavvia;
+2. aspetta che `/health` risponda;
+3. con `--domain`, installa Caddy dai pacchetti Debian se manca, scrive il sito in `/etc/caddy/tactica.caddy` e lo importa da `/etc/caddy/Caddyfile` (con una copia `Caddyfile.bak`), poi valida la configurazione e ricarica Caddy.
+
+Senza `--domain` installa solo il servizio, raggiungibile da `127.0.0.1:7777`. Con `--dry-run` mostra i comandi senza eseguirli e non serve `sudo`.
+
+Prima di aprire il server su Internet:
+
+- il DNS del dominio deve puntare all'IP pubblico della macchina;
+- le porte 80 e 443 devono essere aperte sul router e sul firewall. La porta 7777 resta chiusa: il server ascolta solo su `127.0.0.1`.
 
 Note sul deploy:
 
 - **Isolamento:** il servizio gira con `DynamicUser` e tiene i dati in `/var/lib/tactica` (database e cartella `backup/`).
-- **Esposizione su Internet:** metti davanti Caddy usando `deploy/Caddyfile`, così ottieni TLS automatico e il proxy dei WebSocket. Il server ascolta solo su `127.0.0.1`.
-- **Aggiornamenti:** ricompila, reinstalla il binario e lancia `sudo systemctl restart tactica-server`. Le migrazioni dello schema partono da sole all'avvio.
+- **Aggiornamenti:** `git pull`, ricompila e rilancia lo script; le migrazioni dello schema partono da sole all'avvio.
+- **Log:** `journalctl -u tactica-server -f` (server) e `journalctl -u caddy -e` (certificati).
+- **Configurazione:** per cambiare una variabile senza toccare il file del servizio usa `sudo systemctl edit tactica-server` e aggiungi righe `Environment=NOME=valore` nella sezione `[Service]`.
 
 ## Limiti attuali, prossimi passi
 
-- **Matchmaking:** una sola coda PvP a un posto. Mancano lo scarto ELO e la gestione di più livelli.
 - **Livelli in PvP:** il PvP usa i livelli reali del roster; si valuta una modalità classificata con livelli normalizzati.
-- **Rate limiting:** manca su login e registrazione; va aggiunto prima di aprire il server su Internet.
 - **Contenuti mancanti:** seconda scuola equipaggiabile, scadenze per gli incontri di torneo (oggi un incontro resta aperto finché non si gioca).

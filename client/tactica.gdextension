@@ -6,5 +6,5 @@ reloadable = true
 [libraries]
 linux.debug.x86_64 = "res://../target/debug/libtactica_godot.so"
 linux.release.x86_64 = "res://../target/release/libtactica_godot.so"
-windows.debug.x86_64 = "res://../target/debug/tactica_godot.dll"
-windows.release.x86_64 = "res://../target/release/tactica_godot.dll"
+windows.debug.x86_64 = "res://../target/x86_64-pc-windows-gnullvm/debug/tactica_godot.dll"
+windows.release.x86_64 = "res://../target/x86_64-pc-windows-gnullvm/release/tactica_godot.dll"

@@ -28,10 +28,10 @@ Gioco tattico fantasy originale, ispirato ai classici tattici a turni per consol
   - replay (seed più azioni).
 - `cli/`: demo da terminale con una battaglia tra IA e la verifica del replay.
 - `server/`: server autoritativo (axum, WebSocket, SQLite WAL). Comprende:
-  - account Argon2id;
+  - account Argon2id, con limiti ai tentativi di accesso e registrazione;
   - roster persistente con esperienza, livelli, equipaggiamento e padronanze;
   - inventario, negozio e bottino;
-  - partite PvE contro l'IA e PvP con ELO;
+  - partite PvE contro l'IA e PvP con ELO, con una coda che abbina giocatori di ELO vicino;
   - IA che subentra a chi si disconnette o va oltre il tempo;
   - replay verificabili;
   - statistiche personali e globali;
@@ -79,7 +79,17 @@ cargo run --release -p tactica-server
 cargo build -p tactica-godot && godot --path client
 ```
 
+```bash
+tools/package/build.sh --server https://gioco.esempio.it
+```
+
+```bash
+sudo deploy/install.sh --domain gioco.esempio.it
+```
+
+Pacchetti del client (Linux e Windows): [docs/CLIENT.md](docs/CLIENT.md). Installazione del server: [docs/SERVER.md](docs/SERVER.md).
+
 ## Prossimi passi
 
-1. **Matchmaking per ELO**, scadenze per gli incontri di torneo; rate limiting prima dell'apertura su Internet.
+1. **Prova sul campo** con altri giocatori; scadenze per gli incontri di torneo.
 2. **Grafica definitiva** di un pixel artist (kit pronto: [docs/ARTE.md](docs/ARTE.md)).

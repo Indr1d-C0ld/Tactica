@@ -22,6 +22,10 @@ pub struct Config {
     pub coop_min_players: usize,
     /// Giocatori minimi per lato in una guerra fra clan.
     pub war_min_players: usize,
+    /// Richieste di accesso o registrazione al minuto per indirizzo IP.
+    pub auth_per_minute: u32,
+    /// Registrazioni all'ora per indirizzo IP.
+    pub register_per_hour: u32,
 }
 
 impl Config {
@@ -41,6 +45,8 @@ impl Config {
             season_days: num("TACTICA_SEASON_DAYS", 28).max(1) as i64,
             coop_min_players: num("TACTICA_COOP_MIN_PLAYERS", 2).clamp(1, 6) as usize,
             war_min_players: num("TACTICA_WAR_MIN_PLAYERS", 1).clamp(1, 6) as usize,
+            auth_per_minute: num("TACTICA_AUTH_PER_MINUTE", 30).max(1) as u32,
+            register_per_hour: num("TACTICA_REGISTER_PER_HOUR", 5).max(1) as u32,
         }
     }
 }

@@ -60,6 +60,27 @@ Per aprire il progetto nell'editor:
 godot --path client --editor
 ```
 
+## Pacchetti per i giocatori
+
+```bash
+tools/package/build.sh --server https://gioco.esempio.it
+```
+
+Lo script esporta il gioco con i modelli di Godot e crea due archivi in `dist/`:
+
+| Archivio | Dimensione | Contenuto |
+|---|---|---|
+| `tactica-linux.tar.gz` | circa 30 MB | `Tactica.x86_64`, `Tactica.pck`, `libtactica_godot.so` |
+| `tactica-windows.zip` | circa 39 MB | `Tactica.exe`, `Tactica.pck`, `tactica_godot.dll` (Windows 10/11 a 64 bit) |
+
+In entrambi ci sono anche `server.txt`, con l'indirizzo del server predefinito, e `LEGGIMI.txt`. Il giocatore estrae l'archivio e avvia l'eseguibile. L'indirizzo si può cambiare nella schermata di accesso, oppure per sempre in `server.txt`; `-- --server=URL` ha la precedenza su entrambi. Con `tools/package/build.sh … linux` (o `windows`) si crea un solo pacchetto.
+
+Requisiti, già installati su questa macchina:
+
+- **Modelli di esportazione di Godot 4.7.2** in `~/.local/share/godot/export_templates/4.7.2.stable/`. Ci sono solo quelli per Linux e Windows x86_64, presi dall'archivio ufficiale (verificato con SHA-512).
+- **Per Windows, llvm-mingw** (release 20261020, verificata con SHA-256) in `~/Android/llvm-mingw`, più il target Rust `x86_64-pc-windows-gnullvm`. La DLL usa solo librerie di sistema di Windows (UCRT), quindi non servono altri file.
+
+Il pacchetto Windows è stato provato con Wine, offline e contro un server locale.
 ## Schermate
 
 - **Accesso:** indirizzo del server, accesso o registrazione, schermaglia offline contro l'IA senza server.

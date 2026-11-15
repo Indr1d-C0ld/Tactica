@@ -1,6 +1,7 @@
 //! Coda PvP, stanze di missione cooperative e canali verso le connessioni.
 
 use std::collections::BTreeMap;
+use std::time::{Duration, Instant};
 
 use tactica_core::presets;
 use tokio::sync::mpsc;
@@ -132,33 +133,104 @@ impl WarRoom {
     }
 }
 
+/// Scarto di ELO accettato da chi è appena entrato in coda.
+pub const ELO_WINDOW_START: i64 = 100;
+/// Di quanto si allarga lo scarto ogni 10 secondi d'attesa.
+pub const ELO_WINDOW_STEP: i64 = 50;
+/// Dopo questa attesa si accetta qualsiasi avversario (server con pochi giocatori).
+pub const ELO_ANY_AFTER: Duration = Duration::from_secs(90);
+
+/// Scarto di ELO accettato dopo un'attesa `waited`.
+pub fn elo_window(waited: Duration) -> i64 {
+    if waited >= ELO_ANY_AFTER {
+        i64::MAX
+    } else {
+        ELO_WINDOW_START + ELO_WINDOW_STEP * (waited.as_secs() / 10) as i64
+    }
+}
+
+struct Queued {
+    e: Entrant,
+    since: Instant,
+}
+
 #[derive(Default)]
 pub struct Lobby {
-    waiting: Option<Entrant>,
+    /// Coda PvP: ognuno accetta avversari entro uno scarto di ELO che cresce con l'attesa.
+    waiting: Vec<Queued>,
     rooms: BTreeMap<u64, Room>,
     next_room: u64,
     wars: BTreeMap<i64, WarRoom>,
 }
 
 impl Lobby {
-    /// Mette in coda; se c'è già un avversario valido restituisce la coppia.
-    pub fn enqueue_pvp(&mut self, e: Entrant) -> Option<(Entrant, Entrant)> {
-        match self.waiting.take() {
-            Some(w) if w.account_id != e.account_id && !w.conn.is_closed() => Some((w, e)),
-            _ => {
-                self.waiting = Some(e);
+    /// Mette in coda; se c'è già un avversario compatibile restituisce la coppia
+    /// (prima chi aspettava, poi il nuovo arrivato).
+    pub fn enqueue_pvp(&mut self, e: Entrant, now: Instant) -> Option<(Entrant, Entrant)> {
+        self.waiting
+            .retain(|q| !q.e.conn.is_closed() && q.e.account_id != e.account_id);
+        let fresh = elo_window(Duration::ZERO);
+        let best = self
+            .waiting
+            .iter()
+            .enumerate()
+            .filter(|(_, q)| {
+                let gap = (q.e.elo - e.elo).abs();
+                gap <= fresh.max(elo_window(now.duration_since(q.since)))
+            })
+            .min_by_key(|(_, q)| ((q.e.elo - e.elo).abs(), q.since))
+            .map(|(i, _)| i);
+        match best {
+            Some(i) => Some((self.waiting.remove(i).e, e)),
+            None => {
+                self.waiting.push(Queued { e, since: now });
                 None
             }
         }
     }
 
-    pub fn cancel(&mut self, conn_id: u64) -> bool {
-        if self.waiting.as_ref().is_some_and(|w| w.conn_id == conn_id) {
-            self.waiting = None;
-            true
-        } else {
-            false
+    /// Riesamina la coda (lo scarto accettato cresce col tempo): restituisce le
+    /// coppie ora compatibili, servendo per primi quelli che aspettano da più tempo.
+    pub fn match_pvp(&mut self, now: Instant) -> Vec<(Entrant, Entrant)> {
+        self.waiting.retain(|q| !q.e.conn.is_closed());
+        self.waiting.sort_by_key(|q| q.since);
+        let mut pairs = Vec::new();
+        let mut i = 0;
+        while i < self.waiting.len() {
+            let a = &self.waiting[i];
+            let wa = elo_window(now.duration_since(a.since));
+            let best = self
+                .waiting
+                .iter()
+                .enumerate()
+                .skip(i + 1)
+                .filter(|(_, b)| {
+                    b.e.account_id != a.e.account_id
+                        && (b.e.elo - a.e.elo).abs()
+                            <= wa.max(elo_window(now.duration_since(b.since)))
+                })
+                .min_by_key(|(_, b)| (b.e.elo - a.e.elo).abs())
+                .map(|(j, _)| j);
+            match best {
+                Some(j) => {
+                    let b = self.waiting.remove(j).e;
+                    let a = self.waiting.remove(i).e;
+                    pairs.push((a, b));
+                }
+                None => i += 1,
+            }
         }
+        pairs
+    }
+
+    pub fn queued_pvp(&self) -> usize {
+        self.waiting.len()
+    }
+
+    pub fn cancel(&mut self, conn_id: u64) -> bool {
+        let before = self.waiting.len();
+        self.waiting.retain(|q| q.e.conn_id != conn_id);
+        self.waiting.len() != before
     }
 
     pub fn room_of(&self, conn_id: u64) -> Option<u64> {
@@ -249,7 +321,7 @@ impl Lobby {
     pub fn is_engaged(&self, conn_id: u64) -> bool {
         self.room_of(conn_id).is_some()
             || self.war_room_of(conn_id).is_some()
-            || self.waiting.as_ref().is_some_and(|w| w.conn_id == conn_id)
+            || self.waiting.iter().any(|q| q.e.conn_id == conn_id)
     }
 
     pub fn join_war(
@@ -317,5 +389,79 @@ impl Lobby {
 
     pub fn close_war_room(&mut self, id: i64) -> Option<WarRoom> {
         self.wars.remove(&id)
+    }
+}
+
+#[cfg(test)]
+mod pvp_tests {
+    use super::*;
+
+    fn entrant(conn_id: u64, elo: i64) -> (Entrant, mpsc::UnboundedReceiver<ToConn>) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        (
+            Entrant {
+                conn_id,
+                account_id: conn_id as i64,
+                username: format!("p{conn_id}"),
+                elo,
+                units: Vec::new(),
+                conn: tx,
+            },
+            rx,
+        )
+    }
+
+    #[test]
+    fn window_grows_with_wait() {
+        assert_eq!(elo_window(Duration::ZERO), 100);
+        assert_eq!(elo_window(Duration::from_secs(25)), 200);
+        assert_eq!(elo_window(ELO_ANY_AFTER), i64::MAX);
+    }
+
+    #[test]
+    fn pairs_close_ratings_first() {
+        let t0 = Instant::now();
+        let mut l = Lobby::default();
+        let (a, _ra) = entrant(1, 1000);
+        let (b, _rb) = entrant(2, 1400);
+        let (c, _rc) = entrant(3, 1060);
+        assert!(l.enqueue_pvp(a, t0).is_none());
+        // 400 punti di scarto: troppi per chi è appena arrivato.
+        assert!(l.enqueue_pvp(b, t0).is_none());
+        let (x, y) = l.enqueue_pvp(c, t0).expect("1000 e 1060 sono vicini");
+        assert_eq!((x.conn_id, y.conn_id), (1, 3));
+        assert_eq!(l.queued_pvp(), 1);
+    }
+
+    #[test]
+    fn wide_gap_matches_after_waiting() {
+        let t0 = Instant::now();
+        let mut l = Lobby::default();
+        let (a, _ra) = entrant(1, 1000);
+        let (b, _rb) = entrant(2, 1250);
+        l.enqueue_pvp(a, t0);
+        l.enqueue_pvp(b, t0);
+        assert!(l.match_pvp(t0 + Duration::from_secs(10)).is_empty());
+        // Dopo 30 s lo scarto accettato è 250.
+        let pairs = l.match_pvp(t0 + Duration::from_secs(30));
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(l.queued_pvp(), 0);
+    }
+
+    #[test]
+    fn closed_and_cancelled_leave_the_queue() {
+        let t0 = Instant::now();
+        let mut l = Lobby::default();
+        let (a, ra) = entrant(1, 1000);
+        let (b, _rb) = entrant(2, 1000);
+        l.enqueue_pvp(a, t0);
+        drop(ra);
+        assert!(
+            l.enqueue_pvp(b, t0).is_none(),
+            "chi ha chiuso la connessione non gioca"
+        );
+        assert!(l.is_engaged(2));
+        assert!(l.cancel(2));
+        assert_eq!(l.queued_pvp(), 0);
     }
 }

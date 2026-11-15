@@ -309,7 +309,11 @@ async fn queue(state: &AppState, conn: &mut Conn, mode: Mode, ids: Vec<i64>) {
     match mode {
         Mode::Pve => game::start_match(state.clone(), mode, [Seat::Human(entrant), Seat::Ai]),
         Mode::Pvp => {
-            let pair = state.lobby.lock().unwrap().enqueue_pvp(entrant);
+            let pair = state
+                .lobby
+                .lock()
+                .unwrap()
+                .enqueue_pvp(entrant, std::time::Instant::now());
             match pair {
                 Some((a, b)) => {
                     game::start_match(state.clone(), mode, [Seat::Human(a), Seat::Human(b)])

@@ -46,9 +46,12 @@ async fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind(&config.addr).await?;
     tracing::info!(addr = %listener.local_addr()?, db = %config.db_url, "server in ascolto");
 
-    axum::serve(listener, router(state))
-        .with_graceful_shutdown(shutdown())
-        .await?;
+    axum::serve(
+        listener,
+        router(state).into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown())
+    .await?;
     tracing::info!("arresto completato");
     Ok(())
 }

@@ -10,6 +10,10 @@ use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 
 use crate::AppState;
+use crate::ratelimit::{ClientIp, FAILURE_WINDOW, LOGIN_FAILURES, too_many};
+
+const MINUTE: std::time::Duration = std::time::Duration::from_secs(60);
+const HOUR: std::time::Duration = std::time::Duration::from_secs(3600);
 use crate::db::now;
 use crate::error::{ApiError, ApiResult};
 
@@ -98,8 +102,13 @@ async fn issue_session(
 
 pub async fn register(
     State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
     Json(c): Json<Credentials>,
 ) -> ApiResult<Json<Session>> {
+    let lim = &state.limiter;
+    if !lim.hit(&format!("auth:{ip}"), state.config.auth_per_minute, MINUTE) {
+        return Err(too_many());
+    }
     if !valid_username(&c.username) {
         return Err(ApiError::bad_request(
             "nome utente: 3-20 caratteri, lettere, cifre o _",
@@ -109,6 +118,10 @@ pub async fn register(
         return Err(ApiError::bad_request(
             "la password deve avere almeno 8 caratteri",
         ));
+    }
+    // Un nome o una password non validi non consumano il limite orario.
+    if !lim.hit(&format!("reg:{ip}"), state.config.register_per_hour, HOUR) {
+        return Err(too_many());
     }
     let password = c.password.clone();
     let hash = tokio::task::spawn_blocking(move || {
@@ -140,8 +153,17 @@ pub async fn register(
 
 pub async fn login(
     State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
     Json(c): Json<Credentials>,
 ) -> ApiResult<Json<Session>> {
+    let lim = state.limiter.clone();
+    if !lim.hit(&format!("auth:{ip}"), state.config.auth_per_minute, MINUTE) {
+        return Err(too_many());
+    }
+    let fail_key = format!("fail:{}", c.username.to_lowercase());
+    if lim.exceeded(&fail_key, LOGIN_FAILURES, FAILURE_WINDOW) {
+        return Err(too_many());
+    }
     let row: Option<(i64, String, String)> =
         sqlx::query_as("SELECT id, username, password_hash FROM accounts WHERE username = ?")
             .bind(&c.username)
@@ -154,6 +176,7 @@ pub async fn login(
         )
     };
     let Some((id, username, hash)) = row else {
+        lim.hit(&fail_key, LOGIN_FAILURES, FAILURE_WINDOW);
         return Err(wrong());
     };
     let ok = tokio::task::spawn_blocking(move || {
@@ -168,8 +191,12 @@ pub async fn login(
     .await
     .map_err(ApiError::internal)?;
     if !ok {
+        if !lim.hit(&fail_key, LOGIN_FAILURES, FAILURE_WINDOW) {
+            tracing::warn!(user = %username, %ip, "accesso bloccato: troppe password sbagliate");
+        }
         return Err(wrong());
     }
+    lim.reset(&fail_key);
     issue_session(&state, id, username).await
 }
 

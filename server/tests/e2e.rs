@@ -23,7 +23,11 @@ struct Server {
 }
 
 async fn start() -> Server {
-    let config = Config {
+    start_with(|_| {}).await
+}
+
+async fn start_with(tweak: impl FnOnce(&mut Config)) -> Server {
+    let mut config = Config {
         addr: "127.0.0.1:0".into(),
         db_url: "sqlite::memory:".into(),
         turn_secs: 10,
@@ -35,12 +39,22 @@ async fn start() -> Server {
         season_days: 28,
         coop_min_players: 2,
         war_min_players: 1,
+        auth_per_minute: 1000,
+        register_per_hour: 1000,
     };
+    tweak(&mut config);
     let state = AppState::new(config).await.unwrap();
     let db = state.db.clone();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move { axum::serve(listener, router(state)).await.unwrap() });
+    tokio::spawn(async move {
+        axum::serve(
+            listener,
+            router(state).into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .unwrap()
+    });
     Server {
         db,
         base: format!("http://{addr}"),
@@ -1420,4 +1434,89 @@ async fn campaign_progress() {
     assert_eq!(c["regions"][0]["nodes"][1]["unlocked"], true);
     let (_, p) = srv.get("/api/players/alice", None).await;
     assert_eq!(p["recent"][0]["mode"], "campaign");
+}
+
+#[tokio::test]
+async fn auth_rate_limits() {
+    let s = start_with(|c| {
+        c.register_per_hour = 2;
+        c.auth_per_minute = 1000;
+    })
+    .await;
+    let cred = |u: &str, p: &str| json!({"username": u, "password": p});
+    // Registrazioni per IP: la terza è respinta.
+    assert_eq!(
+        s.post("/api/register", None, cred("primo", "password1"))
+            .await
+            .0,
+        200
+    );
+    assert_eq!(
+        s.post("/api/register", None, cred("secondo", "password1"))
+            .await
+            .0,
+        200
+    );
+    assert_eq!(
+        s.post("/api/register", None, cred("terzo", "password1"))
+            .await
+            .0,
+        429
+    );
+    // Dietro il proxy (connessione da localhost) conta l'IP di X-Forwarded-For.
+    let r = s
+        .http
+        .post(format!("{}/api/register", s.base))
+        .header("x-forwarded-for", "203.0.113.7")
+        .json(&cred("terzo", "password1"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status().as_u16(), 200);
+
+    // Password sbagliate: dopo 5 errori l'account è bloccato, anche con la password giusta.
+    for _ in 0..5 {
+        assert_eq!(
+            s.post("/api/login", None, cred("primo", "sbagliata"))
+                .await
+                .0,
+            401
+        );
+    }
+    assert_eq!(
+        s.post("/api/login", None, cred("primo", "password1"))
+            .await
+            .0,
+        429
+    );
+    // Gli altri account non ne risentono, e un accesso riuscito azzera il conteggio.
+    assert_eq!(
+        s.post("/api/login", None, cred("secondo", "sbagliata"))
+            .await
+            .0,
+        401
+    );
+    assert_eq!(
+        s.post("/api/login", None, cred("secondo", "password1"))
+            .await
+            .0,
+        200
+    );
+
+    // Limite al minuto per IP.
+    let s = start_with(|c| c.auth_per_minute = 3).await;
+    for _ in 0..3 {
+        assert_eq!(
+            s.post("/api/login", None, cred("nessuno", "password1"))
+                .await
+                .0,
+            401
+        );
+    }
+    assert_eq!(
+        s.post("/api/login", None, cred("nessuno", "password1"))
+            .await
+            .0,
+        429
+    );
 }

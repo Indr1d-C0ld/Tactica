@@ -22,6 +22,7 @@ var current: Control = null
 func _ready() -> void:
 	_parse_args()
 	theme = _make_theme()
+	_read_default_server()
 	if opts.has("server"):
 		Net.base_url = str(opts["server"])
 	if opts.get("offline", false):
@@ -155,6 +156,19 @@ func autoplay_after_battle(summary: String) -> void:
 func finish(code: int, summary: String) -> void:
 	printerr("AUTOPLAY ", summary)
 	get_tree().quit(code)
+
+
+## Nei pacchetti distribuiti, `server.txt` accanto all'eseguibile indica il
+## server predefinito; `--server=URL` ha comunque la precedenza.
+func _read_default_server() -> void:
+	if not OS.has_feature("template"):
+		return
+	var path := OS.get_executable_path().get_base_dir().path_join("server.txt")
+	if not FileAccess.file_exists(path):
+		return
+	var url := FileAccess.get_file_as_string(path).strip_edges().trim_suffix("/")
+	if url.begins_with("http://") or url.begins_with("https://"):
+		Net.base_url = url
 
 
 func _autoplay_login() -> void:
