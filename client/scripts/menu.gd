@@ -67,6 +67,11 @@ func _ready() -> void:
 	_tourn = _tab("Tornei")
 	_stats = _tab("Statistiche")
 	_craft = _tab("Bottega")
+	# Cambio di scheda: suono e, per Negozio e Bottega, la musica della bottega.
+	_tabs.tab_changed.connect(func(i: int) -> void:
+		Sfx.play("ui_tab")
+		var title := _tabs.get_tab_title(i)
+		Sfx.music("shop" if title in ["Negozio", "Bottega"] else "menu"))
 	_status = UI.label("", 14, UI.MUTED)
 	root.add_child(_status)
 
@@ -88,6 +93,8 @@ func _tab(title: String) -> VBoxContainer:
 
 
 func _say(text: String, bad := false) -> void:
+	if bad:
+		Sfx.play("ui_error")
 	_status.text = text
 	_status.add_theme_color_override("font_color", UI.BAD if bad else UI.MUTED)
 
@@ -395,8 +402,9 @@ func _unit_panel(u: Dictionary) -> Control:
 	return UI.panel(outer, 10)
 
 
-func _result(r: Dictionary, ok_text: String) -> bool:
+func _result(r: Dictionary, ok_text: String, sound := "ui_confirm") -> bool:
 	if int(r.status) == 200:
+		Sfx.play(sound)
 		_say(ok_text)
 		await reload()
 		return true
@@ -405,24 +413,24 @@ func _result(r: Dictionary, ok_text: String) -> bool:
 
 
 func _recruit(name: String, cls: String, people := "human") -> void:
-	await _result(await Net.post_json("/api/roster", {"name": name, "class": cls, "people": people}), "Recluta arruolata")
+	await _result(await Net.post_json("/api/roster", {"name": name, "class": cls, "people": people}), "Recluta arruolata", "recruit")
 
 
 func _equip(id: int, keys: Array) -> void:
-	await _result(await Net.put_json("/api/roster/%d/equipment" % id, {"items": keys}), "Equipaggiamento aggiornato")
+	await _result(await Net.put_json("/api/roster/%d/equipment" % id, {"items": keys}), "Equipaggiamento aggiornato", "equip")
 
 
 func _set_bag(id: int, keys: Array) -> void:
-	await _result(await Net.put_json("/api/roster/%d/bag" % id, {"items": keys}), "Borsa preparata")
+	await _result(await Net.put_json("/api/roster/%d/bag" % id, {"items": keys}), "Borsa preparata", "equip")
 
 
 func _change_class(id: int, cls: String) -> void:
-	await _result(await Net.put_json("/api/roster/%d/class" % id, {"class": cls}), "Classe cambiata")
+	await _result(await Net.put_json("/api/roster/%d/class" % id, {"class": cls}), "Classe cambiata", "class_change")
 
 
 func _dismiss(id: int) -> void:
 	_picked.erase(id)
-	await _result(await Net.delete_json("/api/roster/%d" % id), "Unità congedata")
+	await _result(await Net.delete_json("/api/roster/%d" % id), "Unità congedata", "unequip")
 
 
 # ------------------------------------------------------------------ negozio
@@ -489,7 +497,7 @@ func _build_shop() -> void:
 
 func _trade(kind: String, key: String) -> void:
 	await _result(await Net.post_json("/api/shop/" + kind, {"item": key}),
-		"Acquistato" if kind == "buy" else "Venduto")
+		"Acquistato" if kind == "buy" else "Venduto", "buy" if kind == "buy" else "sell")
 
 
 # ------------------------------------------------------------------ bottega (mestieri)
@@ -568,6 +576,7 @@ func _build_craft() -> void:
 func _craft_op(op: String, key: String) -> void:
 	var r := await Net.post_json("/api/craft/" + op, {"item": key})
 	if int(r.status) == 200:
+		Sfx.play({"salvage": "salvage", "refine": "forge", "enchant": "enchant"}.get(op, "ui_confirm"))
 		var made: Variant = r.data.get("item")
 		_say("Creato: " + str(made["name"]) if made != null else "Smantellato")
 		await reload()
@@ -578,6 +587,7 @@ func _craft_op(op: String, key: String) -> void:
 func _brew(code: String, tier: int) -> void:
 	var r := await Net.post_json("/api/craft/brew", {"recipe": code, "tier": tier})
 	if int(r.status) == 200:
+		Sfx.play("brew")
 		_say("Creato: " + str(r.data["item"]["name"]))
 		await reload()
 	else:

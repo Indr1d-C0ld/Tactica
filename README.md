@@ -12,7 +12,7 @@
 
 Tactica è un gioco originale ispirato ai classici tattici a turni delle console portatili. Si gioca su mappe isometriche con altezze, generate da un seed e ruotabili in 3D. Ogni battaglia ha i suoi **Statuti**, regole estratte a sorte: chi le infrange viene sospeso e poi espulso dal campo. Le unità crescono di livello, cambiano classe e imparano abilità dall'equipaggiamento, fino a padroneggiarle.
 
-Tutto è originale: regole, storia, nomi, grafica, musica ed effetti sonori. Terreni, interfaccia, effetti e audio sono generati da script inclusi nel repository. Personaggi, icone degli oggetti, terreni, cornici dell'interfaccia e mappa della campagna sono fatti con [PixelLab](https://pixellab.ai) e inclusi come immagini ([docs/ARTE.md](docs/ARTE.md)).
+Tutto è originale: regole, storia, nomi, grafica, musica ed effetti sonori. Musiche ed effetti sonori sono sintetizzati da script inclusi nel repository, in stile Sound Blaster (FM) e moduli MIDI anni '90. Personaggi, icone degli oggetti, terreni, cornici dell'interfaccia e mappa della campagna sono fatti con [PixelLab](https://pixellab.ai) e inclusi come immagini ([docs/ARTE.md](docs/ARTE.md)).
 
 *[English summary below](#in-english).*
 
@@ -153,7 +153,7 @@ Il motore è deterministico (SplitMix64 con seed, solo aritmetica intera), quind
 
 ## Compilare ed eseguire
 
-Servono **Rust** (edizione 2024), **Godot 4.7** e **Python 3** con Pillow, quest'ultimo solo per rigenerare grafica e audio.
+Servono **Rust** (edizione 2024), **Godot 4.7** e **Python 3** con Pillow e numpy (più ffmpeg), questi ultimi solo per rigenerare grafica e audio.
 
 ```bash
 cargo test
@@ -186,10 +186,14 @@ python3 tools/pixelart/build.py
 ```
 
 ```bash
-python3 tools/audio/synth.py
+python3 tools/audio/music.py
 ```
 
-In ordine: una battaglia fra IA nel terminale con il seed 12345; 1000 battaglie simulate per verificare il bilanciamento; una schermaglia locale senza server; la rigenerazione di tutta la grafica; la rigenerazione di musiche ed effetti sonori.
+```bash
+python3 tools/audio/sfx.py
+```
+
+In ordine: una battaglia fra IA nel terminale con il seed 12345; 1000 battaglie simulate per verificare il bilanciamento; una schermaglia locale senza server; la rigenerazione di tutta la grafica; la rigenerazione delle musiche (servono numpy e ffmpeg) e degli effetti sonori.
 
 ## Server su Debian
 

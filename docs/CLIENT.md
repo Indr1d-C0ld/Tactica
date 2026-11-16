@@ -34,10 +34,32 @@ Le texture vengono da `tools/pixelart` (vedi il suo README). Tutto è pixel-art 
 - **Campagna:** «Le Terre di Velmara», dal pulsante nella scheda Gioca. Ha una mappa del mondo su pergamena con 5 regioni e 15 tappe; l'ultima tappa di ogni regione è la caccia a un campione. Si sblocca una tappa alla volta e la storia si legge nel pannello laterale. La prima tappa è un tutorial: un riquadro spiega movimento, abilità e anteprime, fine turno e direzione, statuti.
 - **Movimento:** le unità camminano casella per casella lungo il percorso, con i passi animati e un piccolo salto nei cambi di altezza.
 - **Effetti delle abilità:** fendenti, frecce in volo, fiamme, ghiaccio, fulmini, luce, cure, potenziamenti e alterazioni, veleno, risucchio.
-- **Audio:**
-  - musiche chiptune originali per menu, battaglia e mappa del mondo;
-  - fanfare di vittoria e sconfitta;
-  - effetti sonori per colpi, mancati, magie, passi e interfaccia.
+- **Audio:** tutto originale e sintetizzato in codice, in stile anni '90: FM a operatori come la Sound Blaster (OPL3) e strumenti orchestrali con riverbero come i moduli MIDI tipo MT-32.
+  - **Musiche:**
+    - menu (re maggiore, flauto e corno su archi e arpa);
+    - mappa del mondo (6/8, flauto e pizzicati);
+    - battaglia (la minore, ottoni e lead FM);
+    - battaglia fra giocatori e clan (mi minore, FM marcata);
+    - campione (re minore, coro, organo e timpani);
+    - bottega (fa maggiore, swing; per Negozio e Bottega);
+    - fanfare di vittoria e sconfitta.
+
+    Le musiche sono in loop senza giunture e si alternano con una breve dissolvenza.
+  - **Effetti (66):**
+    - **armi:** taglio, colpo pesante, affondo, contundente, freccia, lancio;
+    - **colpi:** normale, fatale, mancato, parata, KO;
+    - **elementi:** fuoco, ghiaccio, fulmine, luce, risucchio, incantesimo;
+    - **status:** un suono per ognuno dei 10;
+    - **oggetti:** pozione, bomba, pergamena, rianimazione, MP;
+    - **bottino:** caduta e raccolta;
+    - **statuti:** gong della violazione, sospensione, espulsione;
+    - **progressi:** livello, padronanza, inizio del proprio turno;
+    - **passi:** diversi per erba, roccia, sabbia, acqua, boscaglia;
+    - **lava:** bruciatura;
+    - **interfaccia:** clic, passaggio del mouse, conferma, annulla, errore, schede;
+    - **gestione:** equipaggiare, togliere, comprare, vendere, forgiare, incantare, smantellare, alchimia, recluta, cambio di classe.
+
+    Taglio, colpi e passi variano un po' di intonazione a ogni uso.
 
   Il pulsante «Audio» nel menu attiva o disattiva tutto; con `--mute` il gioco parte senza audio.
 - **Turni:** il gioco è a turni. Nelle partite in solitaria non c'è limite di tempo; il limite per turno vale solo quando altri giocatori aspettano.

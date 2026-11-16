@@ -30,6 +30,7 @@ var mine := {}
 var allies: Array = []
 var mission: Dictionary = {}
 var war: Dictionary = {}
+var match_mode := ""
 var tutorial_step := -1
 var _tutorial: PanelContainer
 var _tutorial_text: RichTextLabel
@@ -75,6 +76,7 @@ func setup_online(matched: Dictionary, raw: String) -> void:
 	for i in matched.get("mine", []):
 		mine[int(i)] = true
 	allies = matched.get("allies", [])
+	match_mode = str(matched.get("mode", ""))
 	if matched.get("mission") is Dictionary:
 		mission = matched["mission"]
 		if bool(mission.get("tutorial", false)):
@@ -96,7 +98,13 @@ func setup_local(seed: int) -> void:
 
 
 func _ready() -> void:
-	Sfx.music("battle")
+	# Musica: fra giocatori o clan, contro un campione, oppure battaglia normale.
+	if not war.is_empty() or match_mode.to_lower() == "pvp":
+		Sfx.music("battle2")
+	elif bool(mission.get("hunt", false)):
+		Sfx.music("boss")
+	else:
+		Sfx.music("battle")
 	_build_ui()
 	if online:
 		Net.ws_message.connect(_on_ws)
@@ -343,6 +351,25 @@ func _show_card(i: int) -> void:
 		_card.text += "\n[color=#9cf]%s[/color]" % ("Tua unità" if mine.has(i) else "Unità di un alleato")
 	if int(u["penalties"]) > 0:
 		_card.text += "\n[color=#f96]Sanzioni: %d[/color]" % int(u["penalties"])
+
+
+## Terreno di una casella (per il suono dei passi).
+func _terrain_at(p: Vector2i) -> String:
+	if p.x < 0 or p.y < 0 or p.x >= board.w or p.y >= board.h:
+		return "Grass"
+	return str(board.tiles[p.y * board.w + p.x]["terrain"])
+
+
+## Suono di un consumabile: si lancia, si legge o si beve.
+func _item_sound(key: String) -> String:
+	var code := key.get_slice(".", 1)
+	if code in ["bomba", "gelo", "tossina", "sonno", "piombo"]:
+		return "throw"
+	if code.begins_with("p_"):
+		return "scroll"
+	if code == "piuma":
+		return "flight"
+	return "potion"
 
 
 func _delta(now: int, base: int) -> String:
@@ -623,13 +650,27 @@ func _announce(msg: Dictionary, raw: String) -> void:
 			if not fx.is_empty():
 				var t := Vector2i(int(v["target"]["x"]), int(v["target"]["y"]))
 				board.cast(int(v["unit"]), str(fx["fx"]), bool(fx["projectile"]), t, int(fx["aoe"]))
-				Sfx.play_fx(str(fx["fx"]))
+				if fx.has("sound"):
+					Sfx.play(str(fx["sound"]))
+				else:
+					Sfx.play_fx(str(fx["fx"]))
 		elif kind == "Damaged" or kind == "TerrainDamage":
 			board.play(int(v["unit"]), "hurt", 0.3)
 		if kind == "Damaged":
-			Sfx.play("hit")
+			# Colpo che abbatte: più pesante.
+			Sfx.play("hit_heavy" if int(v["hp"]) == 0 else "hit")
+		elif kind == "TerrainDamage":
+			Sfx.play("lava")
 		elif kind == "Moved":
-			Sfx.play("step")
+			Sfx.step(_terrain_at(Vector2i(int(v["to"]["x"]), int(v["to"]["y"]))))
+		elif kind == "TurnStarted" and mine.has(int(v["unit"])):
+			Sfx.play("turn")
+		elif kind == "Suspended":
+			board.add_float(at, "Sospeso!", Color(1, 0.6, 0.2))
+			Sfx.play("suspend")
+		elif kind == "Expelled":
+			board.add_float(at, "Espulso!", UI.BAD)
+			Sfx.play("expel")
 		if ANNOUNCE.has(kind) and int(v.get("amount", 1)) == 0:
 			pass
 		elif ANNOUNCE.has(kind):
@@ -639,6 +680,7 @@ func _announce(msg: Dictionary, raw: String) -> void:
 			Sfx.play("miss")
 		elif kind == "StatuteViolated":
 			board.add_float(at, "Sanzione!", Color(1, 0.55, 0.2))
+			Sfx.play("statute")
 		elif kind == "LevelUp":
 			board.add_float(at, "Livello %d!" % int(v["level"]), UI.ACCENT)
 			Sfx.play("levelup")
@@ -647,18 +689,20 @@ func _announce(msg: Dictionary, raw: String) -> void:
 			Sfx.play("ko")
 		elif kind == "ItemUsed":
 			board.play(int(v["unit"]), "act")
-			Sfx.play("buff")
+			Sfx.play(_item_sound(str(v["item"])))
 		elif kind == "Revived":
 			board.effect("heal", at)
 			board.add_float(at, "In piedi!", UI.GOOD)
-			Sfx.play("levelup")
+			Sfx.play("revive")
 		elif kind == "MpRestored":
 			board.effect("buff", at)
 			board.add_float(at, "+%d MP" % int(v["amount"]), Color(0.5, 0.75, 1.0))
+			Sfx.play("mp")
 		elif kind == "LootDropped":
 			var rar := str(v["rarity"]).to_lower()
 			board.add_float(at, "Bottino!", Items.color(rar))
 			board.effect("buff", at, 0.4)
+			Sfx.play("loot_drop")
 			if main.autoplay() and main.opts.has("shots") and not shots_taken.has("bottino") \
 					and snapshot.get("finished") != true:
 				shots_taken["bottino"] = true
@@ -666,18 +710,21 @@ func _announce(msg: Dictionary, raw: String) -> void:
 		elif kind == "LootPicked":
 			var key := str(v["item"])
 			board.add_float(at, Items.name_of(key), Items.color_of(key))
-			Sfx.play("levelup")
+			Sfx.play("loot_pick")
 		elif kind == "StatusApplied":
-			var neg := str(v["status"]) in ["Poison", "Sleep", "Silence", "Slow", "Root"]
+			var neg := str(v["status"]) in ["Poison", "Sleep", "Silence", "Slow", "Root", "Burden"]
+			Sfx.play(str(v["status"]).to_lower())
 			board.effect("debuff" if neg else "buff", at)
 			board.add_float(at, _status_name(str(v["status"])), Color(0.85, 0.55, 1.0) if neg else Color(0.5, 1.0, 0.85))
 		elif kind == "StatusResisted":
 			board.add_float(at, "resiste", Color(0.8, 0.8, 0.8))
+			Sfx.play("block", -6.0)
 		elif kind == "Asleep":
 			board.add_float(at, "Zzz", Color(0.6, 0.75, 1.0))
 		elif kind == "StatusDamage":
 			board.add_float(at, "-%d" % int(v["amount"]), Color(0.6, 0.95, 0.4))
 			board.effect("poison", at)
+			Sfx.play("poison", -6.0)
 
 
 func _after_change() -> void:
@@ -746,7 +793,7 @@ func _autoplay_tick() -> void:
 
 
 ## Le azioni JSON usano i nomi delle varianti Rust ("AimedShot"); i pulsanti le chiavi ("aimed_shot").
-const STATUS_NAMES := {"Poison": "Veleno", "Sleep": "Sonno", "Silence": "Silenzio", "Slow": "Lentezza",
+const STATUS_NAMES := {"Burden": "Zavorra", "Flight": "Volo", "Poison": "Veleno", "Sleep": "Sonno", "Silence": "Silenzio", "Slow": "Lentezza",
 	"Root": "Radici", "Haste": "Rapidità", "Aegis": "Egida", "Regen": "Rigenerazione"}
 
 

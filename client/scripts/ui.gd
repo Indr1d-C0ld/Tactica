@@ -33,7 +33,11 @@ static func button(text: String, action: Callable) -> Button:
 	b.pressed.connect(func() -> void:
 		var sfx := b.get_node_or_null("/root/Sfx")
 		if sfx != null:
-			sfx.play("click"))
+			sfx.play("ui_click"))
+	b.mouse_entered.connect(func() -> void:
+		var sfx := b.get_node_or_null("/root/Sfx")
+		if sfx != null and not b.disabled:
+			sfx.play("ui_hover"))
 	return b
 
 

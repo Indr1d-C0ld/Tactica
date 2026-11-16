@@ -102,4 +102,11 @@ Lo script scrive `client/assets/override/units.png`. Ho verificato che il foglio
 | `ui_button*.png`, `ui_field.png` | 24×24, cornici a 9 parti con margine 6 |
 | `fonts/tactica.fnt` e `.png` | font BMFont con cella di 11 pixel (righe 0-1 per gli accenti delle maiuscole, linea di base sotto la riga 8) |
 
-Per audio e musica vale lo stesso principio: i file in `client/assets/audio/` si possono sostituire con WAV dallo stesso nome. Il loop delle musiche copre l'intero file.
+## Audio
+
+Musiche ed effetti sono sintetizzati in codice in `tools/audio/`:
+- **`fm.py`:** il motore. Operatori FM in stile OPL3, con forme d'onda del chip, feedback e inviluppi; strumenti orchestrali con coro e vibrato; percussioni sintetiche; riverbero a convoluzione;
+- **`music.py`:** sei brani e due fanfare, con melodie e arrangiamenti scritti nel codice. Esce in OGG Vorbis 32 kHz stereo, con loop senza giunture;
+- **`sfx.py`:** 66 effetti in WAV mono 32 kHz, con code tagliate sotto i -50 dB.
+
+Ogni file in `client/assets/audio/` si può sostituire con uno dallo stesso nome: `music_*.ogg` (o `.wav`) in loop, `jingle_*.ogg`, `sfx_*.wav`.

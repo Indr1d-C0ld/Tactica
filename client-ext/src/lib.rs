@@ -517,7 +517,39 @@ impl TacticaEngine {
             (Kind::Physical, None) => "slash",
             (Kind::Magic, None) => "debuff",
         };
-        gs(json!({ "fx": fx, "projectile": d.ranged, "aoe": d.aoe }).to_string())
+        // Suono: arma (taglio, affondo, contundente, freccia, lancio), elemento,
+        // cura o rianimazione; per i supporti un incantesimo generico (lo status
+        // ha poi il suo suono quando viene applicato).
+        let sound = match (d.kind, d.element) {
+            _ if d.revive => "revive",
+            _ if d.restore_mp => "mp",
+            (Kind::Heal, _) => "heal",
+            (Kind::Support, _) if d.cleanse => "cleanse",
+            (Kind::Support, _) => "magic",
+            (Kind::Physical, _) if d.key == "lob" => "throw",
+            (Kind::Physical, _) if d.ranged => "arrow",
+            (Kind::Physical, _) if d.drain => "drain",
+            (Kind::Physical, Some(Element::Fire)) => "fire",
+            (Kind::Physical, Some(Element::Ice)) => "ice",
+            (Kind::Physical, Some(Element::Thunder)) => "thunder",
+            (Kind::Physical, Some(Element::Holy)) => "blunt",
+            (Kind::Physical, None)
+                if matches!(
+                    d.key,
+                    "charge" | "leap" | "dive_strike" | "dragon_lance" | "backstab"
+                ) =>
+            {
+                "pierce"
+            }
+            (Kind::Physical, None) if d.power >= 160 => "slash_heavy",
+            (Kind::Physical, None) => "slash",
+            (_, Some(Element::Fire)) => "fire",
+            (_, Some(Element::Ice)) => "ice",
+            (_, Some(Element::Thunder)) => "thunder",
+            (_, Some(Element::Holy)) => "holy",
+            (Kind::Magic, None) => "magic",
+        };
+        gs(json!({ "fx": fx, "projectile": d.ranged, "aoe": d.aoe, "sound": sound }).to_string())
     }
 
     #[func]
