@@ -20,6 +20,8 @@ pub enum ToConn {
         seat: usize,
         team: u8,
     },
+    /// Chiude la connessione (sospensione o disconnessione forzata da un admin).
+    Kick,
 }
 
 pub type ConnTx = mpsc::UnboundedSender<ToConn>;

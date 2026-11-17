@@ -67,6 +67,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/seasons/current", get(season_current))
         .route("/api/seasons/{number}", get(season_by_number))
         .route("/ws", get(ws::upgrade))
+        .merge(crate::admin::routes())
+        .merge(crate::history::routes())
 }
 
 #[derive(Serialize)]
@@ -80,6 +82,10 @@ struct Me {
     invites: Vec<String>,
     titles: Vec<String>,
     season: MySeason,
+    is_admin: bool,
+    /// Messaggio per tutti i giocatori (vuoto = nessuno).
+    motd: String,
+    maintenance: bool,
 }
 
 #[derive(Serialize)]
@@ -108,6 +114,10 @@ async fn me(State(s): State<AppState>, user: AuthUser) -> ApiResult<Json<Me>> {
     .fetch_optional(&mut *conn)
     .await?;
     drop(conn);
+    let (motd, maintenance) = {
+        let st = s.settings.read().unwrap();
+        (st.motd.clone(), st.maintenance)
+    };
     Ok(Json(Me {
         id: user.id,
         clan,
@@ -121,6 +131,9 @@ async fn me(State(s): State<AppState>, user: AuthUser) -> ApiResult<Json<Me>> {
             wins: mine.map_or(0, |m| m.1),
             losses: mine.map_or(0, |m| m.2),
         },
+        is_admin: user.is_admin,
+        motd,
+        maintenance,
         username: user.username,
         elo,
         coins,

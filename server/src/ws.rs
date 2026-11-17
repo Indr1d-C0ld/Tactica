@@ -63,6 +63,15 @@ async fn connection(mut socket: WebSocket, state: AppState, user: AuthUser) {
         current: None,
     };
     tracing::debug!(user = %conn.user.username, conn = conn.id, "connesso");
+    state.online.lock().unwrap().insert(
+        conn.id,
+        crate::Online {
+            account_id: conn.user.id,
+            username: conn.user.username.clone(),
+            since: crate::db::now(),
+            tx: conn.tx.clone(),
+        },
+    );
     conn.send(ServerMsg::Welcome {
         username: conn.user.username.clone(),
     });
@@ -87,6 +96,7 @@ async fn connection(mut socket: WebSocket, state: AppState, user: AuthUser) {
                         continue;
                     }
                     ToConn::Msg(m) => m,
+                    ToConn::Kick => break,
                 };
                 if matches!(msg, ServerMsg::Ended { .. }) {
                     conn.current = None;
@@ -99,6 +109,7 @@ async fn connection(mut socket: WebSocket, state: AppState, user: AuthUser) {
         }
     }
 
+    state.online.lock().unwrap().remove(&conn.id);
     leave_lobby(&state, conn.id);
     if let Some((input, seat)) = conn.current.take() {
         let _ = input
@@ -124,6 +135,18 @@ fn leave_lobby(state: &AppState, conn_id: u64) {
 }
 
 async fn handle(state: &AppState, conn: &mut Conn, msg: ClientMsg) {
+    // In manutenzione solo gli admin avviano nuove partite.
+    let starts = matches!(
+        msg,
+        ClientMsg::Queue { .. }
+            | ClientMsg::RoomCreate { .. }
+            | ClientMsg::RoomJoin { .. }
+            | ClientMsg::WarJoin { .. }
+            | ClientMsg::Campaign { .. }
+    );
+    if starts && !conn.user.is_admin && state.settings.read().unwrap().maintenance {
+        return conn.error("server in manutenzione: le partite riprenderanno a breve");
+    }
     match msg {
         ClientMsg::Queue { mode, units } => queue(state, conn, mode, units).await,
         ClientMsg::Cancel => {

@@ -11,6 +11,8 @@ ExecStart=/usr/local/bin/tactica-server
 Environment=TACTICA_ADDR=127.0.0.1:7777
 Environment=TACTICA_DB=sqlite:///var/lib/tactica/tactica.db
 Environment=TACTICA_BACKUP_DIR=/var/lib/tactica/backup
+# Amministratori (nomi utente separati da virgole), es.:
+# Environment=TACTICA_ADMINS=tuonome
 Environment=TACTICA_BACKUP_EVERY_HOURS=24
 Environment=TACTICA_BACKUP_KEEP=14
 Environment=TACTICA_TURN_SECS=60

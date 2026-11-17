@@ -5,6 +5,8 @@ const Items := preload("res://scripts/items.gd")
 const UI := preload("res://scripts/ui.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const MAX_PARTY := 4
+const StatsView := preload("res://scripts/stats_view.gd")
+const AdminView := preload("res://scripts/admin_view.gd")
 
 var main: Node
 var me: Dictionary = {}
@@ -31,6 +33,10 @@ var _wars_box: VBoxContainer
 var _my_clan: Dictionary = {}
 var _my_role := ""
 var _queued := false
+var _stats_view: VBoxContainer
+var _admin_view: VBoxContainer
+## Messaggio del giorno e avviso di manutenzione.
+var _notice: Label
 
 
 func _ready() -> void:
@@ -55,6 +61,10 @@ func _ready() -> void:
 	head.add_child(audio)
 	head.add_child(UI.button("Esci", _logout))
 	root.add_child(head)
+	_notice = UI.label("", 16, UI.ACCENT)
+	_notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_notice.visible = false
+	root.add_child(_notice)
 
 	_tabs = TabContainer.new()
 	_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -66,6 +76,8 @@ func _ready() -> void:
 	_season = _tab("Stagione")
 	_tourn = _tab("Tornei")
 	_stats = _tab("Statistiche")
+	_stats_view = StatsView.new()
+	_stats.add_child(_stats_view)
 	_craft = _tab("Bottega")
 	# Cambio di scheda: suono e, per Negozio e Bottega, la musica della bottega.
 	_tabs.tab_changed.connect(func(i: int) -> void:
@@ -144,6 +156,17 @@ func reload() -> void:
 	var srat := "—" if me["season"]["rating"] == null else str(int(me["season"]["rating"]))
 	_header.text = "%s%s%s · ELO %d · %s: %s · Monete %d" % [tag, me["username"], title, int(me["elo"]),
 		me["season"]["name"], srat, int(me["coins"])]
+	var notes: Array[String] = []
+	if bool(me.get("maintenance", false)):
+		notes.append("Server in manutenzione: le partite online sono sospese per qualche minuto.")
+	if str(me.get("motd", "")) != "":
+		notes.append(str(me["motd"]))
+	_notice.text = "\n".join(notes)
+	_notice.visible = not notes.is_empty()
+	if bool(me.get("is_admin", false)) and _admin_view == null:
+		var adm := _tab("Admin")
+		_admin_view = AdminView.new()
+		adm.add_child(_admin_view)
 	_build_play()
 	_build_roster()
 	_build_shop()
@@ -597,42 +620,9 @@ func _brew(code: String, tier: int) -> void:
 # ------------------------------------------------------------------ statistiche
 
 func _build_stats() -> void:
-	UI.clear(_stats)
-	var p := await Net.get_json("/api/players/" + str(me["username"]).uri_encode())
-	var lb := await Net.get_json("/api/leaderboard?limit=10")
-	var g := await Net.get_json("/api/stats")
-	var t := RichTextLabel.new()
-	t.bbcode_enabled = true
-	t.fit_content = true
-	var s := ""
-	if int(p.status) == 200:
-		var d: Dictionary = p.data
-		var tot: Dictionary = d["totals"]
-		s += "[b]Profilo[/b]\nVittorie %d · Sconfitte %d · Pareggi %d · ELO %d\n" % [int(d["wins"]), int(d["losses"]), int(d["draws"]), int(d["elo"])]
-		s += "Danni inflitti %d · subiti %d · cure %d · KO %d · violazioni %d\n" % [
-			int(tot["damage_dealt"]), int(tot["damage_taken"]), int(tot["healing_done"]), int(tot["kills"]), int(tot["violations"])]
-		for c in d["classes"]:
-			s += "   %s: schierata %d volte, KO %d, sopravvivenza %d%%\n" % [
-				Net.classes.get(c["class"], {}).get("name", c["class"]), int(c["fielded"]), int(c["kills"]), int(float(c["survival_rate"]) * 100)]
-		s += "\n"
-	if int(lb.status) == 200:
-		s += "[b]Classifica[/b]\n"
-		var i := 1
-		for r in lb.data:
-			s += "%d. %s — ELO %d (%d V / %d S)\n" % [i, r["username"], int(r["elo"]), int(r["wins"]), int(r["losses"])]
-			i += 1
-		s += "\n"
-	if int(g.status) == 200:
-		var d: Dictionary = g.data
-		s += "[b]Statistiche globali[/b]\nGiocatori %d · Partite %d (PvP %d) · Pareggi %d\n" % [int(d["accounts"]), int(d["matches"]), int(d["pvp_matches"]), int(d["draws"])]
-		for c in d["classes"]:
-			s += "   %s: %d schieramenti, vittorie %d%%, danni medi %d, cure medie %d\n" % [
-				Net.classes.get(c["class"], {}).get("name", c["class"]), int(c["fielded"]), int(float(c["win_rate"]) * 100),
-				int(c["avg_damage"]), int(c["avg_healing"])]
-		for st in d["statutes"]:
-			s += "   Statuto «%s»: %d partite, %.2f violazioni a partita\n" % [st["statute"], int(st["matches"]), float(st["violations_per_match"])]
-	t.text = s
-	_stats.add_child(t)
+	await _stats_view.refresh()
+	if _admin_view != null:
+		await _admin_view.refresh()
 
 
 # ------------------------------------------------------------------ automatico
@@ -685,6 +675,32 @@ func _autoplay() -> void:
 	_build_play()
 	await main.shot("menu_gioca")
 	_queue(str(main.opts.get("mode", "pve")))
+
+
+## Schermate delle sezioni di statistiche e (per gli admin) del pannello.
+func autoplay_stats_shots() -> void:
+	await get_tree().create_timer(1.0).timeout
+	_tabs.current_tab = 6
+	for s in StatsView.SECTIONS:
+		await _stats_view.show_section(s)
+		await get_tree().create_timer(0.4).timeout
+		await main.shot("statistiche_" + s.to_lower().replace(" ", "_"))
+	var hist: Array = (await Net.get_json("/api/me/matches?limit=1")).data.get("matches", [])
+	if not hist.is_empty():
+		await _stats_view._detail(int(hist[0]["id"]))
+		await get_tree().create_timer(0.4).timeout
+		await main.shot("statistiche_dettaglio")
+	if _admin_view != null:
+		_tabs.current_tab = _tabs.get_tab_count() - 1
+		for s in AdminView.SECTIONS:
+			await _admin_view.show_section(s)
+			await get_tree().create_timer(0.4).timeout
+			await main.shot("admin_" + s.to_lower())
+		var users: Array = (await Net.get_json("/api/admin/users?limit=1")).data.get("users", [])
+		if not users.is_empty():
+			await _admin_view._user(int(users[0]["id"]))
+			await get_tree().create_timer(0.4).timeout
+			await main.shot("admin_utente")
 
 
 # ------------------------------------------------------------------ clan

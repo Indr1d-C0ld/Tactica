@@ -21,6 +21,7 @@ use crate::error::{ApiError, ApiResult};
 pub struct AuthUser {
     pub id: i64,
     pub username: String,
+    pub is_admin: bool,
 }
 
 #[derive(Deserialize)]
@@ -50,15 +51,54 @@ fn valid_username(u: &str) -> bool {
 }
 
 pub async fn user_for_token(db: &SqlitePool, token: &str) -> sqlx::Result<Option<AuthUser>> {
-    let row: Option<(i64, String)> = sqlx::query_as(
-        "SELECT a.id, a.username FROM sessions s JOIN accounts a ON a.id = s.account_id
-         WHERE s.token_hash = ? AND s.expires_at > ?",
+    let t = now();
+    let row: Option<(i64, String, bool)> = sqlx::query_as(
+        "SELECT a.id, a.username, a.is_admin FROM sessions s JOIN accounts a ON a.id = s.account_id
+         WHERE s.token_hash = ? AND s.expires_at > ?
+           AND (a.banned_until IS NULL OR a.banned_until <= ?)",
     )
     .bind(token_hash(token))
-    .bind(now())
+    .bind(t)
+    .bind(t)
     .fetch_optional(db)
     .await?;
-    Ok(row.map(|(id, username)| AuthUser { id, username }))
+    if let Some((id, ..)) = &row {
+        // Ultimo accesso, aggiornato al più una volta al minuto.
+        sqlx::query(
+            "UPDATE accounts SET last_seen = ? WHERE id = ? AND (last_seen IS NULL OR last_seen < ?)",
+        )
+        .bind(t)
+        .bind(id)
+        .bind(t - 60)
+        .execute(db)
+        .await?;
+    }
+    Ok(row.map(|(id, username, is_admin)| AuthUser {
+        id,
+        username,
+        is_admin,
+    }))
+}
+
+/// Hash Argon2 di una password (in un thread a parte: è lento di proposito).
+pub async fn hash_password(password: String) -> ApiResult<String> {
+    tokio::task::spawn_blocking(move || {
+        Argon2::default()
+            .hash_password(password.as_bytes())
+            .map(|h| h.to_string())
+    })
+    .await
+    .map_err(ApiError::internal)?
+    .map_err(ApiError::internal)
+}
+
+/// Le sessioni di un account (tutte, o tutte tranne quella col token dato).
+pub async fn revoke_sessions(db: &SqlitePool, account: i64) -> sqlx::Result<u64> {
+    Ok(sqlx::query("DELETE FROM sessions WHERE account_id = ?")
+        .bind(account)
+        .execute(db)
+        .await?
+        .rows_affected())
 }
 
 impl FromRequestParts<AppState> for AuthUser {
@@ -109,6 +149,16 @@ pub async fn register(
     if !lim.hit(&format!("auth:{ip}"), state.config.auth_per_minute, MINUTE) {
         return Err(too_many());
     }
+    let (open, start_coins) = {
+        let st = state.settings.read().unwrap();
+        (st.registrations_open, st.start_coins)
+    };
+    if !open {
+        return Err(ApiError::new(
+            axum::http::StatusCode::FORBIDDEN,
+            "le registrazioni sono chiuse per ora",
+        ));
+    }
     if !valid_username(&c.username) {
         return Err(ApiError::bad_request(
             "nome utente: 3-20 caratteri, lettere, cifre o _",
@@ -123,23 +173,22 @@ pub async fn register(
     if !lim.hit(&format!("reg:{ip}"), state.config.register_per_hour, HOUR) {
         return Err(too_many());
     }
-    let password = c.password.clone();
-    let hash = tokio::task::spawn_blocking(move || {
-        Argon2::default()
-            .hash_password(password.as_bytes())
-            .map(|h| h.to_string())
-    })
-    .await
-    .map_err(ApiError::internal)?
-    .map_err(ApiError::internal)?;
-
-    let res =
-        sqlx::query("INSERT INTO accounts (username, password_hash, created_at) VALUES (?, ?, ?)")
-            .bind(&c.username)
-            .bind(hash)
-            .bind(now())
-            .execute(&state.db)
-            .await;
+    let hash = hash_password(c.password.clone()).await?;
+    let is_admin = state
+        .config
+        .admins
+        .iter()
+        .any(|a| a.eq_ignore_ascii_case(&c.username));
+    let res = sqlx::query(
+        "INSERT INTO accounts (username, password_hash, created_at, coins, is_admin) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&c.username)
+    .bind(hash)
+    .bind(now())
+    .bind(start_coins)
+    .bind(is_admin)
+    .execute(&state.db)
+    .await;
     let id = match res {
         Ok(r) => r.last_insert_rowid(),
         Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
@@ -151,6 +200,7 @@ pub async fn register(
     issue_session(&state, id, c.username).await
 }
 
+#[allow(clippy::type_complexity)]
 pub async fn login(
     State(state): State<AppState>,
     ClientIp(ip): ClientIp,
@@ -164,18 +214,19 @@ pub async fn login(
     if lim.exceeded(&fail_key, LOGIN_FAILURES, FAILURE_WINDOW) {
         return Err(too_many());
     }
-    let row: Option<(i64, String, String)> =
-        sqlx::query_as("SELECT id, username, password_hash FROM accounts WHERE username = ?")
-            .bind(&c.username)
-            .fetch_optional(&state.db)
-            .await?;
+    let row: Option<(i64, String, String, Option<i64>, Option<String>)> = sqlx::query_as(
+        "SELECT id, username, password_hash, banned_until, ban_reason FROM accounts WHERE username = ?",
+    )
+    .bind(&c.username)
+    .fetch_optional(&state.db)
+    .await?;
     let wrong = || {
         ApiError::new(
             axum::http::StatusCode::UNAUTHORIZED,
             "credenziali non valide",
         )
     };
-    let Some((id, username, hash)) = row else {
+    let Some((id, username, hash, banned_until, ban_reason)) = row else {
         lim.hit(&fail_key, LOGIN_FAILURES, FAILURE_WINDOW);
         return Err(wrong());
     };
@@ -197,6 +248,21 @@ pub async fn login(
         return Err(wrong());
     }
     lim.reset(&fail_key);
+    if let Some(until) = banned_until.filter(|&u| u > now()) {
+        let quando = if until >= crate::admin::PERMANENT {
+            "a tempo indeterminato".to_string()
+        } else {
+            format!("fino a {}", crate::admin::date(until))
+        };
+        let motivo = ban_reason
+            .filter(|r| !r.is_empty())
+            .map(|r| format!(": {r}"))
+            .unwrap_or_default();
+        return Err(ApiError::new(
+            axum::http::StatusCode::FORBIDDEN,
+            format!("account sospeso {quando}{motivo}"),
+        ));
+    }
     issue_session(&state, id, username).await
 }
 

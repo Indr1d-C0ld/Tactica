@@ -158,6 +158,8 @@ func autoplay_after_battle(summary: String) -> void:
 		show_world()
 	await get_tree().create_timer(1.5).timeout
 	await shot("menu_dopo_partita")
+	if opts.has("shots") and current != null and current.has_method("autoplay_stats_shots"):
+		await current.autoplay_stats_shots()
 	finish(0, summary)
 
 

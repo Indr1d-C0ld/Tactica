@@ -550,6 +550,13 @@ async fn run(
         state.config.season_days,
         mission.as_ref(),
         war.as_ref(),
+        {
+            let st = state.settings.read().unwrap();
+            stats::Rewards {
+                coins_pct: st.coins_pct,
+                xp_pct: st.xp_pct,
+            }
+        },
     )
     .await;
     match saved {

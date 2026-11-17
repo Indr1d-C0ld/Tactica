@@ -41,6 +41,7 @@ async fn start_with(tweak: impl FnOnce(&mut Config)) -> Server {
         war_min_players: 1,
         auth_per_minute: 1000,
         register_per_hour: 1000,
+        admins: vec!["boss".into()],
     };
     tweak(&mut config);
     let state = AppState::new(config).await.unwrap();
@@ -1774,4 +1775,242 @@ async fn recruits_choose_their_people() {
         )
         .await;
     assert_eq!(st, 400);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn admin_panel_and_history() {
+    let srv = start().await;
+    // "boss" è in TACTICA_ADMINS (vedi `start_with`): admin dalla registrazione.
+    let (boss, _) = srv.player("boss").await;
+    let (pleb, pleb_units) = srv.player("pleb").await;
+    let (_, me) = srv.get("/api/me", Some(&boss)).await;
+    assert_eq!(me["is_admin"], true);
+    let (_, me) = srv.get("/api/me", Some(&pleb)).await;
+    assert_eq!(me["is_admin"], false);
+    let (st, _) = srv.get("/api/admin/overview", Some(&pleb)).await;
+    assert_eq!(st, 403);
+    let (st, ov) = srv.get("/api/admin/overview", Some(&boss)).await;
+    assert_eq!(st, 200, "{ov}");
+    assert_eq!(ov["accounts"], 2);
+    assert_eq!(ov["admins"], 1);
+
+    // Impostazioni: monete iniziali, messaggio, monete di fine partita raddoppiate.
+    let (st, set) = srv
+        .put(
+            "/api/admin/settings",
+            &boss,
+            json!({"registrations_open": true, "maintenance": false, "motd": "Benvenuti!",
+                   "start_coins": 1000, "coins_pct": 200, "xp_pct": 100}),
+        )
+        .await;
+    assert_eq!(st, 200, "{set}");
+    let (st, s) = srv
+        .post(
+            "/api/register",
+            None,
+            json!({"username": "nuovo", "password": "password-lunga"}),
+        )
+        .await;
+    assert_eq!(st, 200, "{s}");
+    let nuovo = s["token"].as_str().unwrap().to_string();
+    let (_, me) = srv.get("/api/me", Some(&nuovo)).await;
+    assert_eq!(me["coins"], 1000);
+    assert_eq!(me["motd"], "Benvenuti!");
+
+    // Una partita PvE: compare nello storico, nel riepilogo e nelle statistiche.
+    let (_, before) = srv.get("/api/me", Some(&pleb)).await;
+    let ended = play(
+        srv.ws.clone(),
+        pleb.clone(),
+        Mode::Pve,
+        pleb_units.clone(),
+        None,
+    )
+    .await;
+    let ServerMsg::Ended {
+        match_id, coins, ..
+    } = ended
+    else {
+        panic!()
+    };
+    let (_, after) = srv.get("/api/me", Some(&pleb)).await;
+    assert_eq!(
+        after["coins"].as_i64().unwrap() - before["coins"].as_i64().unwrap(),
+        coins
+    );
+    assert!(
+        [80, 140, 240].contains(&coins),
+        "monete raddoppiate: {coins}"
+    );
+    let (st, h) = srv.get("/api/me/matches", Some(&pleb)).await;
+    assert_eq!(st, 200, "{h}");
+    assert_eq!(h["total"], 1);
+    assert_eq!(h["matches"][0]["id"], match_id);
+    assert_eq!(h["matches"][0]["units"].as_array().unwrap().len(), 4);
+    let (st, sm) = srv
+        .get(&format!("/api/matches/{match_id}/summary"), Some(&pleb))
+        .await;
+    assert_eq!(st, 200, "{sm}");
+    assert!(sm["units"].as_array().unwrap().len() >= 8);
+    let (_, ms) = srv.get("/api/me/stats", Some(&pleb)).await;
+    assert_eq!(ms["played"], 1);
+    assert_eq!(ms["elo"].as_array().unwrap().len(), 1);
+    assert_eq!(ms["units"].as_array().unwrap().len(), 4);
+    let (_, tr) = srv.get("/api/stats/trends", None).await;
+    assert_eq!(tr["days"].as_array().unwrap().len(), 30);
+    assert_eq!(tr["days"][29]["matches"], 1);
+
+    // Utenti: ricerca, monete, sospensione e riattivazione.
+    let (_, page) = srv.get("/api/admin/users?q=ple", Some(&boss)).await;
+    assert_eq!(page["total"], 1);
+    let pid = page["users"][0]["id"].as_i64().unwrap();
+    let (st, c) = srv
+        .post(
+            &format!("/api/admin/users/{pid}/coins"),
+            Some(&boss),
+            json!({"delta": 500, "reason": "premio"}),
+        )
+        .await;
+    assert_eq!(st, 200, "{c}");
+    let (_, detail) = srv
+        .get(&format!("/api/admin/users/{pid}"), Some(&boss))
+        .await;
+    assert_eq!(detail["user"]["coins"], c["coins"]);
+    assert_eq!(detail["recent"].as_array().unwrap().len(), 1);
+    let (st, _) = srv
+        .post(
+            &format!("/api/admin/users/{pid}/ban"),
+            Some(&boss),
+            json!({"days": 3, "reason": "linguaggio"}),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let (st, _) = srv.get("/api/me", Some(&pleb)).await;
+    assert_eq!(st, 401, "le sessioni del sospeso sono chiuse");
+    let (st, e) = srv
+        .post(
+            "/api/login",
+            None,
+            json!({"username": "pleb", "password": "password-lunga"}),
+        )
+        .await;
+    assert_eq!(st, 403);
+    assert!(e["error"].as_str().unwrap().contains("linguaggio"), "{e}");
+    let (_, banned) = srv.get("/api/admin/users?filter=banned", Some(&boss)).await;
+    assert_eq!(banned["total"], 1);
+    srv.post(
+        &format!("/api/admin/users/{pid}/unban"),
+        Some(&boss),
+        json!({}),
+    )
+    .await;
+    let (st, s) = srv
+        .post(
+            "/api/login",
+            None,
+            json!({"username": "pleb", "password": "password-lunga"}),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let pleb = s["token"].as_str().unwrap().to_string();
+
+    // Non ci si sospende da soli né ci si toglie il ruolo.
+    let bid = srv.get("/api/me", Some(&boss)).await.1["id"]
+        .as_i64()
+        .unwrap();
+    let (st, _) = srv
+        .post(
+            &format!("/api/admin/users/{bid}/ban"),
+            Some(&boss),
+            json!({}),
+        )
+        .await;
+    assert_eq!(st, 400);
+    let (st, _) = srv
+        .post(
+            &format!("/api/admin/users/{bid}/role"),
+            Some(&boss),
+            json!({"admin": false}),
+        )
+        .await;
+    assert_eq!(st, 400);
+
+    // Manutenzione: le partite non partono; registrazioni chiuse.
+    srv.put(
+        "/api/admin/settings",
+        &boss,
+        json!({"registrations_open": false, "maintenance": true, "motd": "", "start_coins": 400, "coins_pct": 100, "xp_pct": 100}),
+    )
+    .await;
+    let mut ws = connect(&srv.ws, &pleb).await;
+    ws.send(text(ClientMsg::Queue {
+        mode: Mode::Pve,
+        units: pleb_units.clone(),
+    }))
+    .await
+    .unwrap();
+    loop {
+        match next_msg(&mut ws).await {
+            ServerMsg::Error { message } => {
+                assert!(message.contains("manutenzione"), "{message}");
+                break;
+            }
+            ServerMsg::Matched { .. } => panic!("partita avviata in manutenzione"),
+            _ => {}
+        }
+    }
+    let (st, _) = srv
+        .post(
+            "/api/register",
+            None,
+            json!({"username": "tardi", "password": "password-lunga"}),
+        )
+        .await;
+    assert_eq!(st, 403);
+    // Connessioni aperte e chiusura forzata.
+    let (_, online) = srv.get("/api/admin/online", Some(&boss)).await;
+    let conn = online
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["username"] == "pleb")
+        .unwrap()["conn"]
+        .as_u64()
+        .unwrap();
+    let (st, _) = srv
+        .post(
+            &format!("/api/admin/online/{conn}/kick"),
+            Some(&boss),
+            json!({}),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let closed = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match ws.next().await {
+                None | Some(Err(_)) | Some(Ok(Message::Close(_))) => return,
+                _ => {}
+            }
+        }
+    })
+    .await;
+    assert!(closed.is_ok(), "la connessione doveva chiudersi");
+
+    // Registro delle azioni.
+    let (_, log) = srv.get("/api/admin/log", Some(&boss)).await;
+    let actions: Vec<&str> = log
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l["action"].as_str().unwrap())
+        .collect();
+    for a in [
+        "impostazioni",
+        "monete",
+        "sospensione",
+        "riattivazione",
+        "connessione chiusa",
+    ] {
+        assert!(actions.contains(&a), "manca {a} in {actions:?}");
+    }
 }

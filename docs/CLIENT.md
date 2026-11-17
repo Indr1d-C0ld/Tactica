@@ -121,7 +121,18 @@ Il pacchetto Windows è stato provato con Wine, offline e contro un server local
     - storico con l'ELO del clan prima e dopo.
   - **Stagione:** tempo rimanente, premi, il tuo punteggio, classifiche di giocatori e clan, stagioni passate.
   - **Tornei:** organizzazione, iscrizione, avvio; tabellone a colonne per turno con vincitori evidenziati e pulsante «Schierati» per gli incontri del proprio clan.
-  - **Statistiche:** profilo, classifica, statistiche globali.
+  - **Statistiche**, in quattro sezioni:
+    - **Profilo:** partite, vittorie, serie attuale e migliore, miglior ELO, precisione, grafico dell'andamento ELO, risultati per modalità e per ambiente, statistiche di ogni unità del roster;
+    - **Le mie partite:** storico filtrabile per modalità, a pagine, con esito, variazione ELO, monete e avversari; «Dettagli» apre il riepilogo unità per unità (danni inflitti e subiti, cure, KO, colpi a segno, violazioni);
+    - **Classifica:** i primi 50 per ELO;
+    - **Mondo:** grafici delle partite e dei nuovi giocatori negli ultimi 30 giorni, modalità, popoli, classi, ambienti e statuti.
+  - **Admin** (solo amministratori): panoramica del server, utenti (ricerca, sospensione, monete, password, disconnessione, ruolo), connessioni aperte, ultime partite, impostazioni di gioco, chiusura anticipata della stagione, backup e registro delle azioni.
+  - **Avvisi:** sotto l'intestazione compaiono il messaggio del giorno e l'avviso di manutenzione.
+
+![Statistiche](img/statistiche_profilo.png)
+![Riepilogo di una partita](img/statistiche_dettaglio.png)
+![Pannello admin](img/admin_panoramica.png)
+![Gestione di un utente](img/admin_utente.png)
 - **Battaglia:**
   - **Mappa:** isometrica, scalata alla finestra.
   - **Pannello sinistro:** scheda dell'unità attiva (o di quella sotto il mouse) e azioni: muovi, abilità con costo in MP, fine turno con scelta della direzione, suggerimento dell'IA, abbandono.

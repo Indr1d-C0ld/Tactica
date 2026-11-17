@@ -73,7 +73,8 @@ Tutto è originale: regole, storia, nomi, grafica, musica ed effetti sonori. Mus
 
 - **Clan** con capo, ufficiali, inviti e bonus di monete.
 - **Stagioni classificate** con reset morbido, titoli (Campione, Podio, Élite) e premi.
-- **Statistiche personali e globali:** vittorie, classi più usate e percentuali di vittoria, biomi, statuti rispettati e violati.
+- **Statistiche personali e globali:** andamento ELO, serie di vittorie, storico delle partite con il riepilogo unità per unità, statistiche per modalità, ambiente e unità; nel mondo, partite e nuovi giocatori degli ultimi 30 giorni, classi, popoli, biomi e statuti.
+- **Pannello di amministrazione:** per gli account indicati in `TACTICA_ADMINS`: utenti (sospensioni, monete, password, ruoli), connessioni aperte, partite, impostazioni di gioco a caldo (registrazioni, manutenzione, messaggio del giorno, monete ed esperienza per gli eventi), stagioni, backup e registro delle azioni.
 - **Replay verificabili:** seed più azioni, con hash dello stato finale.
 
 ### Server

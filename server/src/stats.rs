@@ -32,6 +32,22 @@ pub struct SeatOutcome {
     pub rewards: Vec<Reward>,
 }
 
+/// Percentuali di monete ed esperienza di fine partita (impostazioni admin).
+#[derive(Clone, Copy, Debug)]
+pub struct Rewards {
+    pub coins_pct: i64,
+    pub xp_pct: i64,
+}
+
+impl Default for Rewards {
+    fn default() -> Self {
+        Rewards {
+            coins_pct: 100,
+            xp_pct: 100,
+        }
+    }
+}
+
 pub struct SavedMatch {
     pub match_id: i64,
     /// Esito per giocatore (stesso ordine dei `players`; `None` per l'IA).
@@ -69,6 +85,7 @@ pub async fn save_match(
     season_days: i64,
     mission: Option<&MissionInfo>,
     war: Option<&WarInfo>,
+    rewards: Rewards,
 ) -> anyhow::Result<SavedMatch> {
     let winner = battle.winner().flatten();
     let result = |team: u8| match winner {
@@ -158,6 +175,7 @@ pub async fn save_match(
         if clan.is_some() {
             coins += coins * clans::COIN_BONUS_PCT / 100;
         }
+        coins = coins * rewards.coins_pct / 100;
         let score = match r {
             "win" => 1.0,
             "loss" => 0.0,
@@ -273,6 +291,17 @@ pub async fn save_match(
             XP_PLAY_BONUS
         };
         progressed.gain_xp(bonus);
+        if rewards.xp_pct != 100 && account.is_some() {
+            // Esperienza in più (o in meno) secondo le impostazioni.
+            let extra = progressed.tally.xp_gained * (rewards.xp_pct - 100) as i32 / 100;
+            if extra > 0 {
+                progressed.gain_xp(extra);
+            } else if extra < 0 {
+                let cut = (-extra).min(progressed.xp);
+                progressed.xp -= cut;
+                progressed.tally.xp_gained -= cut;
+            }
+        }
 
         sqlx::query(
             "INSERT INTO match_units (match_id, unit, team, account_id, roster_id, class,

@@ -32,6 +32,7 @@ La configurazione si fa con variabili d'ambiente:
 | `TACTICA_WAR_MIN_PLAYERS` | `1` | giocatori minimi per lato in una guerra fra clan |
 | `TACTICA_AUTH_PER_MINUTE` | `30` | richieste di accesso o registrazione al minuto per indirizzo IP |
 | `TACTICA_REGISTER_PER_HOUR` | `5` | registrazioni all'ora per indirizzo IP |
+| `TACTICA_ADMINS` | (vuoto) | nomi utente amministratori, separati da virgole: lo diventano all'avvio (o alla registrazione, se l'account non esiste ancora) |
 | `RUST_LOG` | `info,sqlx=warn` | livello dei log |
 
 ## API HTTP
@@ -43,7 +44,7 @@ Le rotte indicate con 🔒 richiedono l'header `Authorization: Bearer <token>`.
 | `POST /api/register` `{username, password}` | crea l'account e restituisce `{token, username}`. Nome: 3-20 caratteri `[A-Za-z0-9_]`; password: almeno 8 caratteri |
 | `POST /api/login` | come sopra |
 | `POST /api/logout` 🔒 | invalida il token |
-| `GET /api/me` 🔒 | profilo, ELO, monete e roster |
+| `GET /api/me` 🔒 | profilo, ELO, monete e roster; `is_admin`, messaggio del giorno (`motd`) e `maintenance` |
 | `GET /api/classes` | classi con requisiti di sblocco, statistiche al livello 1, abilità innate e imparabili (con soglia RP e oggetti che le insegnano) |
 | `GET /api/items` | catalogo degli oggetti: slot, classi, bonus, abilità insegnata, prezzo, disponibilità al negozio |
 | `GET /api/roster` 🔒 | elenco delle unità del roster |
@@ -58,6 +59,10 @@ Le rotte indicate con 🔒 richiedono l'header `Authorization: Bearer <token>`.
 | `GET /api/players/{name}` | statistiche personali: vittorie, sconfitte, totali, classi, roster, ultime partite |
 | `GET /api/leaderboard?limit=20` | classifica ELO |
 | `GET /api/stats` | statistiche globali: classi (uso, % vittorie, medie), biomi, statuti |
+| `GET /api/stats/trends` | ultimi 30 giorni (partite, nuovi account, giocatori attivi al giorno), modalità, popoli (schieramenti e % vittorie), turni e durata medi |
+| `GET /api/me/matches?mode=&offset=&limit=` 🔒 | storico delle proprie partite: esito, ELO prima e dopo, monete, alleati e avversari, le proprie unità con danni, cure, KO ed esperienza |
+| `GET /api/me/stats` 🔒 | statistiche personali: serie di vittorie attuale e migliore, miglior ELO, precisione, andamento ELO (ultime 120 partite), per modalità, per ambiente e per unità del roster |
+| `GET /api/matches/{id}/summary` 🔒 | riepilogo di una partita: statuti, giocatori con esito ed ELO, tutte le unità con danni inflitti e subiti, cure, KO, colpi a segno e violazioni |
 | `GET /api/matches/{id}` | replay: setup con seed, azioni, hash finale e versione delle regole (`rules_version`): il replay si riproduce solo con un motore della stessa versione |
 | `GET /api/clans` | elenco dei clan con membri e punti della stagione |
 | `POST /api/clans` 🔒 `{name, tag, motto?, open?}` | fonda un clan (costa 200 monete; nome di 3-24 caratteri, sigla di 2-5) |
@@ -380,6 +385,36 @@ Lo `snapshot` è lo stato pubblico completo: mappa, unità, statuti, turno, unit
   - **PvE:** l'avversario IA ha le stesse classi e gli stessi livelli della squadra del giocatore;
   - **PvP:** l'ELO si aggiorna con K=32, a somma zero;
   - **esperienza:** a ogni unità del roster va quella guadagnata in battaglia, più 30 se vince o 10 negli altri casi.
+
+## Amministrazione
+
+Gli amministratori si indicano con `TACTICA_ADMINS` (nomi utente separati da virgole); dal pannello un admin può poi dare o togliere il ruolo ad altri, ma non a sé stesso. Nel client compare la scheda **Admin**. Tutte le rotte `/api/admin/*` rispondono 403 a chi non è admin, e ogni modifica finisce nel registro (`admin_log`).
+
+| Rotta | Descrizione |
+|---|---|
+| `GET /api/admin/overview` | account (admin, sospesi, nuovi e attivi in 24 ore e 7 giorni), partite, giocatori online, in partita e in coda, monete e oggetti in circolazione, clan, stagione, impostazioni |
+| `GET /api/admin/users?q=&filter=&offset=` | ricerca utenti; `filter` = `online`, `banned`, `admins` |
+| `GET /api/admin/users/{id}` | scheda dell'utente: dati, sessioni attive, roster, partite recenti, azioni degli admin su di lui |
+| `POST /api/admin/users/{id}/ban` `{days?, reason}` | sospende (senza `days`: a tempo indeterminato), chiude le sessioni e le connessioni; al login l'utente legge durata e motivo |
+| `POST /api/admin/users/{id}/unban` | riattiva |
+| `POST /api/admin/users/{id}/coins` `{delta, reason}` | aggiunge o toglie monete (mai sotto zero) |
+| `POST /api/admin/users/{id}/password` `{password}` | imposta una nuova password e chiude le sessioni |
+| `POST /api/admin/users/{id}/logout` | chiude sessioni e connessioni |
+| `POST /api/admin/users/{id}/role` `{admin}` | dà o toglie il ruolo di admin |
+| `GET /api/admin/online`, `POST /api/admin/online/{conn}/kick` | connessioni WebSocket aperte (chi, da quando, se è in partita) e chiusura forzata |
+| `GET /api/admin/matches?mode=` | ultime partite con i giocatori |
+| `GET` e `PUT /api/admin/settings` | impostazioni di gioco (vedi sotto) |
+| `POST /api/admin/seasons/close` | chiude subito la stagione (premi e titoli come alla scadenza) e apre la successiva |
+| `POST /api/admin/backup` | backup immediato (serve `TACTICA_BACKUP_DIR`) |
+| `GET /api/admin/log` | registro delle azioni degli admin |
+
+**Impostazioni di gioco** (tabella `settings`, valide subito, senza riavvio):
+
+- `registrations_open`: nuove registrazioni consentite;
+- `maintenance`: solo gli admin avviano partite (coda, stanze, guerre, campagna); le partite in corso continuano;
+- `motd`: messaggio mostrato a tutti nel menu;
+- `start_coins`: monete dei nuovi account (400);
+- `coins_pct`, `xp_pct`: percentuale di monete ed esperienza di fine partita (100 = normale; utile per eventi).
 
 ## Deploy su Debian
 
