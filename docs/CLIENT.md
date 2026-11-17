@@ -4,15 +4,17 @@ Il progetto Godot 4.7 è in `client/`; l'estensione Rust (GDExtension) che porta
 
 La battaglia è in **3D ruotabile** con estetica **VGA/SVGA**:
 
-- **Mappa:** colonne di caselle con texture pixel-art a 16×16; acqua e lava animate; cespugli e sassi come sprite.
+- **Mappa:** colonne di caselle con texture pixel-art a 32×32 (PixelLab), con mipmap per le viste lontane e un filo di 1 pixel fra le sommità che rende leggibile la griglia; acqua e lava animate; cespugli e sassi come sprite.
 - **Personaggi:** sprite chibi verticali. A seconda dell'angolo da cui li guardi mostrano la vista frontale o posteriore, specchiata quando serve.
-- **Telecamera:** ortogonale e orbitale, con rotazione libera a 360°, inclinazione tra 20° e 70° e zoom limitato fra un primo piano e la mappa intera.
-- **Resa a bassa risoluzione:**
-  - **VGA:** 1/3 della finestra, circa 426×240, con 6 livelli per canale e retino di Bayer;
-  - **SVGA:** 1/2 della finestra, con 10 livelli;
-  - **Nitido:** senza filtro.
+- **Telecamera:** ortogonale e orbitale, con inclinazione tra 20° e 70° e zoom limitato fra un primo piano e la mappa intera. La rotazione si ferma sempre su una delle quattro viste isometriche (45°, 135°, 225°, 315°): anche dopo l'orbita col tasto centrale la vista torna alla diagonale più vicina, così la mappa non appare mai "dritta" e deformata.
+- **Stili di resa** (F2 o il pulsante dello stile; la scelta resta salvata):
+  - **Nitido** (predefinito): risoluzione piena, la pixel-art dei terreni si vede per intero;
+  - **Pixel:** 1/2 della finestra, pixel più grossi, senza filtro;
+  - **SVGA:** 1/2 della finestra, con 10 livelli per canale e retino;
+  - **VGA:** 1/3 della finestra, con 6 livelli per canale e retino di Bayer.
 
-  L'immagine viene ingrandita senza sfocatura; il tasto F2 o il pulsante dello stile passa da uno stile all'altro.
+  Negli stili ridotti l'immagine viene ingrandita senza sfocatura.
+- **Caselle evidenziate:** all'inizio del proprio turno compaiono subito, in azzurro, le caselle raggiungibili. Scegliendo un'abilità tutta la sua portata si colora di rosso (pieno dove c'è un'unità, tenue altrove); per gli oggetti in verde. Le caselle pulsano e hanno un bordo chiaro, visibili su ogni terreno.
 - **Sopra la scena:** barre degli HP, colore di squadra e numeri fluttuanti, sempre leggibili.
 
 Le texture vengono da `tools/pixelart` (vedi il suo README). Tutto è pixel-art originale:
@@ -130,7 +132,7 @@ Il pacchetto Windows è stato provato con Wine, offline e contro un server local
 Comandi:
 
 - clic sinistro per scegliere la casella, clic destro per annullare;
-- Q/E o i pulsanti ⟲/⟳ ruotano di 45°; R o "Vista" riporta la vista iniziale;
+- Q/E o i pulsanti ⟲/⟳ ruotano di 90°, da una vista isometrica all'altra; R o "Vista" riporta la vista iniziale;
 - rotella per lo zoom;
 - tasto centrale trascinato: orbita e inclinazione (con Maiusc sposta la vista);
 - F2 cambia stile grafico.

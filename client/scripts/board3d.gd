@@ -56,6 +56,9 @@ var zoom_target := 12.0
 var pan := Vector3.ZERO
 var zoom_fit := 12.0
 var zoom_max := 18.0
+## Parte della SubViewport non coperta dai pannelli e dimensione della SubViewport.
+var frame := Rect2()
+var vp_size := Vector2.ZERO
 
 var cam: Camera3D
 var _terrain: MeshInstance3D
@@ -83,6 +86,12 @@ var _loot_nodes: Array = []
 
 func _ready() -> void:
 	C = TEX.get_width() / 5.0
+	# Mipmap generate qui (i file .import non sono nel repository).
+	var img := TEX.get_image()
+	if img != null and not img.has_mipmaps():
+		img.decompress()
+		img.generate_mipmaps()
+		TEX = ImageTexture.create_from_image(img)
 	cam = Camera3D.new()
 	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
 	cam.size = zoom
@@ -98,7 +107,8 @@ func _ready() -> void:
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.vertex_color_use_as_albedo = true
 	mat.albedo_texture = TEX
-	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	# Mipmap: da lontano le texture 32 px non diventano rumore.
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_terrain = MeshInstance3D.new()
 	_terrain.material_override = mat
@@ -155,13 +165,34 @@ func set_map(map: Dictionary) -> void:
 	h = int(map["height"])
 	tiles = map["tiles"]
 	_build_terrain()
-	# Inquadratura iniziale: tutta la mappa; lo zoom indietro non va oltre.
-	zoom_fit = (w + h) * 0.62
-	zoom_max = zoom_fit * 1.3
-	zoom = zoom_fit
-	zoom_target = zoom_fit
+	_fit_zoom(true)
 	_place_camera()
 	_sync_units()
+
+
+## Inquadratura iniziale: tutta la mappa nello spazio libero fra i pannelli;
+## lo zoom indietro non va oltre.
+func _fit_zoom(force: bool) -> void:
+	var was_fit := is_equal_approx(zoom_target, zoom_fit)
+	var fit := (w + h) * 0.62
+	if frame.size.x > 0.0 and vp_size.y > 0.0:
+		# Larghezza del rombo della mappa in vista isometrica, con un po' di margine.
+		var by_w := (w + h) / sqrt(2.0) * 1.05 * vp_size.y / frame.size.x
+		var by_h := (w + h) * 0.5 * vp_size.y / frame.size.y
+		fit = maxf(by_w, by_h)
+	zoom_fit = fit
+	zoom_max = fit * 1.3
+	if force or was_fit:
+		zoom = fit
+		zoom_target = fit
+
+
+func set_frame(r: Rect2, vps: Vector2) -> void:
+	frame = r
+	vp_size = vps
+	if w > 0:
+		_fit_zoom(false)
+		_place_camera()
 
 
 func in_bounds(p: Vector2i) -> bool:
@@ -284,13 +315,26 @@ func _place_camera() -> void:
 	cam.position = target + dir * 60.0
 	cam.look_at(target, Vector3.UP)
 	cam.size = zoom
+	# Il centro della mappa cade al centro dello spazio libero, non della finestra.
+	if frame.size.x > 0.0 and vp_size.y > 0.0:
+		var off := frame.get_center() - vp_size / 2.0
+		var unit := zoom / vp_size.y
+		cam.h_offset = -off.x * unit
+		cam.v_offset = off.y * unit
 
 
-## Rotazione a scatti di 45° (tasti) oppure libera (trascinamento).
+## Rotazione: a scatti di 90° fra le quattro viste isometriche (tasti e
+## pulsanti) oppure libera durante il trascinamento, che al rilascio torna
+## alla vista isometrica più vicina (`snap_iso`).
 func rotate_by(deg: float, smooth := true) -> void:
 	yaw_target += deg
 	if not smooth:
 		yaw = yaw_target
+
+
+## Riporta la rotazione sulla vista isometrica più vicina (45° + multipli di 90°).
+func snap_iso() -> void:
+	yaw_target = round((yaw_target - 45.0) / 90.0) * 90.0 + 45.0
 
 
 func tilt_by(deg: float) -> void:
@@ -637,8 +681,13 @@ func _draw_overlay() -> void:
 		return
 	_overlay_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
 	var any := false
+	# Caselle evidenziate: riempimento che pulsa piano e bordo luminoso, ben
+	# visibili anche sopra le texture e con la resa VGA.
+	var pulse := 0.62 + 0.13 * sin(time * 4.0)
 	for p in highlight:
-		_tile_quad(p, highlight[p] * Color(1, 1, 1, 0.55), 0.0)
+		var col: Color = highlight[p]
+		_tile_quad(p, Color(col.r, col.g, col.b, col.a * pulse), 0.0)
+		_tile_border(p, Color(col.r, col.g, col.b, 0.0).lightened(0.45) + Color(0, 0, 0, col.a * 0.95), 0.07)
 		any = true
 	for p in area:
 		_tile_quad(p, Color(1, 0.62, 0.15, 0.55), 0.0)
@@ -665,9 +714,8 @@ func _tile_quad(p: Vector2i, col: Color, inset: float) -> void:
 		_overlay_mesh.surface_add_vertex(v)
 
 
-func _tile_border(p: Vector2i, col: Color) -> void:
+func _tile_border(p: Vector2i, col: Color, t := 0.09) -> void:
 	var y := top_y(p.x, p.y) + 0.02
-	var t := 0.09
 	var rects := [
 		[Vector2(0, 0), Vector2(1, t)], [Vector2(0, 1 - t), Vector2(1, 1)],
 		[Vector2(0, 0), Vector2(t, 1)], [Vector2(1 - t, 0), Vector2(1, 1)],

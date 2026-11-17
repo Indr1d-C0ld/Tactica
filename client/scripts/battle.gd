@@ -10,9 +10,10 @@ const Items := preload("res://scripts/items.gd")
 const VGA_SHADER := preload("res://shaders/vga.gdshader")
 ## Stili grafici: fattore di ingrandimento della risoluzione interna e livelli di colore.
 const STYLES := [
-	{"name": "VGA", "scale": 3, "levels": 6.0, "dither": 0.5},
+	{"name": "Nitido", "scale": 1, "levels": 0.0, "dither": 0.0},
+	{"name": "Pixel", "scale": 2, "levels": 0.0, "dither": 0.0},
 	{"name": "SVGA", "scale": 2, "levels": 10.0, "dither": 0.8},
-	{"name": "Nitido", "scale": 2, "levels": 0.0, "dither": 0.0},
+	{"name": "VGA", "scale": 3, "levels": 6.0, "dither": 0.5},
 ]
 const DIR_NAMES := [["N", "Nord"], ["E", "Est"], ["S", "Sud"], ["W", "Ovest"]]
 const ANNOUNCE := {
@@ -57,7 +58,10 @@ var shots_taken := {}
 var board: Board3D
 var _vp: SubViewport
 var _view: TextureRect
+## Pannelli che coprono la mappa: l'inquadratura si centra nello spazio libero fra di loro.
+var _panels: Array[Control] = []
 var _hud: Control
+const VIEW_CFG := "user://view.cfg"
 var _style := 0
 var _top: Label
 var _card: RichTextLabel
@@ -98,6 +102,9 @@ func setup_local(seed: int) -> void:
 
 
 func _ready() -> void:
+	var vcfg := ConfigFile.new()
+	if vcfg.load(VIEW_CFG) == OK and not main.autoplay():
+		_style = clampi(int(vcfg.get_value("view", "style", 0)), 0, STYLES.size() - 1)
 	# Musica: fra giocatori o clan, contro un campione, oppure battaglia normale.
 	if not war.is_empty() or match_mode.to_lower() == "pvp":
 		Sfx.music("battle2")
@@ -190,6 +197,7 @@ func _build_ui() -> void:
 	lp.offset_bottom = -8
 	lp.self_modulate = Color(1, 1, 1, 0.9)
 	add_child(lp)
+	lp.resized.connect(_frame_board)
 
 	_log = RichTextLabel.new()
 	_log.bbcode_enabled = true
@@ -216,6 +224,7 @@ func _build_ui() -> void:
 	hp.offset_bottom = -8
 	hp.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(hp)
+	_panels = [top, lp, rp, hp]
 
 
 var _dragging := false
@@ -237,10 +246,33 @@ func _fit_board() -> void:
 	mat.set_shader_parameter("levels", float(st["levels"]))
 	mat.set_shader_parameter("dither", float(st["dither"]))
 	mat.set_shader_parameter("enabled", float(st["levels"]) > 0.0)
+	_frame_board.call_deferred()
+
+
+## Spazio della mappa libero dai pannelli (barra in alto, pannelli laterali,
+## suggerimento in basso), in pixel della SubViewport.
+func _frame_board() -> void:
+	if _vp == null or _panels.size() < 4:
+		return
+	var k := float(STYLES[_style]["scale"])
+	var top: Control = _panels[0]
+	var lp: Control = _panels[1]
+	var rp: Control = _panels[2]
+	var hp: Control = _panels[3]
+	var r := Rect2(Vector2(lp.position.x + lp.size.x, top.position.y + top.size.y), Vector2.ZERO)
+	r.end = Vector2(rp.position.x, hp.position.y)
+	if r.size.x < 120.0 or r.size.y < 120.0:
+		r = Rect2(Vector2.ZERO, size)
+	board.set_frame(Rect2(r.position / k, r.size / k), Vector2(_vp.size))
 
 
 func cycle_style() -> void:
 	_style = (_style + 1) % STYLES.size()
+	# Lo stile scelto vale anche per le battaglie successive.
+	var cfg := ConfigFile.new()
+	cfg.load(VIEW_CFG)
+	cfg.set_value("view", "style", _style)
+	cfg.save(VIEW_CFG)
 	_fit_board()
 	_rebuild_actions()
 
@@ -383,8 +415,8 @@ func _delta(now: int, base: int) -> String:
 func _rebuild_actions() -> void:
 	UI.clear(_actions)
 	var view := UI.hbox(4)
-	view.add_child(UI.button("<", func() -> void: board.rotate_by(-45.0)))
-	view.add_child(UI.button(">", func() -> void: board.rotate_by(45.0)))
+	view.add_child(UI.button("<", func() -> void: board.rotate_by(-90.0)))
+	view.add_child(UI.button(">", func() -> void: board.rotate_by(90.0)))
 	view.add_child(UI.button("Vista", func() -> void: board.reset_view()))
 	view.add_child(UI.button(str(STYLES[_style]["name"]), cycle_style))
 	_actions.add_child(view)
@@ -457,17 +489,18 @@ func _set_mode(m: String, ability := "") -> void:
 		"move":
 			for p in engine.reachable(a):
 				reach[p] = true
-				board.highlight[p] = Color(0.4, 0.7, 1.0, 0.85)
+				board.highlight[p] = Color(0.35, 0.7, 1.0, 0.95)
 			_hint.text = "Scegli dove muovere (clic destro per annullare)"
 		"ability":
+			# Tutta la portata in rosso tenue; dove c'è un'unità, rosso pieno.
 			for p in engine.targets(a, ability):
 				targets[p] = true
-				board.highlight[p] = Color(1.0, 0.35, 0.3, 0.8)
-			_hint.text = "Scegli il bersaglio"
+				board.highlight[p] = Color(1.0, 0.25, 0.2, 1.0) if _unit_at(p) >= 0 else Color(1.0, 0.45, 0.35, 0.7)
+			_hint.text = "Scegli il bersaglio (portata in rosso)"
 		"item":
 			for p in engine.item_targets(a, int(ability)):
 				targets[p] = true
-				board.highlight[p] = Color(0.45, 0.95, 0.55, 0.8)
+				board.highlight[p] = Color(0.45, 0.95, 0.55, 1.0) if _unit_at(p) >= 0 else Color(0.5, 0.95, 0.6, 0.7)
 			_hint.text = "Scegli su chi usare l'oggetto"
 		"facing":
 			_hint.text = "Scegli la direzione: gli attacchi alle spalle colpiscono più facilmente"
@@ -513,9 +546,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_Q:
-				board.rotate_by(-45.0)
+				board.rotate_by(-90.0)
 			KEY_E:
-				board.rotate_by(45.0)
+				board.rotate_by(90.0)
 			KEY_R:
 				board.reset_view()
 			KEY_F2:
@@ -526,6 +559,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_MIDDLE:
 		_dragging = event.pressed
+		if not _dragging:
+			board.snap_iso()
 		return
 	if event is InputEventMouseMotion and _dragging:
 		if event.shift_pressed:
@@ -733,6 +768,10 @@ func _after_change() -> void:
 			_show_end_local()
 		return
 	if my_turn():
+		# All'inizio del proprio turno (e dopo aver agito, se non ci si è mossi)
+		# le caselle raggiungibili compaiono subito.
+		if not main.autoplay() and not bool(snapshot["moved"]) and mode in ["idle", ""]:
+			_set_mode("move")
 		_autoplay_tick()
 	elif not online:
 		await get_tree().create_timer(0.3 if not main.autoplay() else 0.02).timeout
@@ -753,20 +792,30 @@ func _autoplay_tick() -> void:
 		_show_tile(board.hover)
 		await get_tree().process_frame
 		await main.shot("battaglia_inizio")
+		if main.opts.has("shots") and not bool(snapshot["moved"]):
+			_set_mode("move")
+			await get_tree().process_frame
+			await get_tree().process_frame
+			await main.shot("battaglia_movimento")
+			_set_mode("idle")
 		if main.opts.has("shots"):
 			# Dimostrazione della telecamera: rotazione, inclinazione, zoom, stili.
-			board.rotate_by(135.0, false)
+			board.rotate_by(90.0, false)
 			board.tilt_by(18.0)
 			await get_tree().create_timer(0.2).timeout
 			await main.shot("battaglia_ruotata")
 			board.zoom_by(4.0)
 			await get_tree().create_timer(0.6).timeout
 			await main.shot("battaglia_zoom")
+			var keep := _style
+			cycle_style()
 			cycle_style()
 			await get_tree().create_timer(0.2).timeout
 			await main.shot("battaglia_svga")
 			cycle_style()
 			cycle_style()
+			_style = keep
+			_fit_board()
 			board.reset_view()
 			await get_tree().create_timer(0.6).timeout
 	await get_tree().create_timer(0.05).timeout

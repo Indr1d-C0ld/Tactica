@@ -2,7 +2,7 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled;
 
-uniform sampler2D atlas : source_color, filter_nearest;
+uniform sampler2D atlas : source_color, filter_nearest_mipmap;
 uniform float cell_u = 0.25;
 uniform float fps = 2.0;
 

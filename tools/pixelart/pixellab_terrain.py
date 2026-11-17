@@ -115,6 +115,18 @@ def fix_top_edge(im: Image.Image) -> Image.Image:
     return im
 
 
+def edge(im: Image.Image) -> Image.Image:
+    """Filo sottile sui lati destro e basso della sommità: fra caselle vicine
+    resta una linea di 1 pixel, che definisce la griglia senza appesantirla."""
+    im = im.copy()
+    px = im.load()
+    for i in range(C):
+        for x, y, k in ((C - 1, i, 0.72), (i, C - 1, 0.72), (0, i, 1.08), (i, 0, 1.08)):
+            r, g, b, a = px[x, y]
+            px[x, y] = (min(255, int(r * k)), min(255, int(g * k)), min(255, int(b * k)), a)
+    return im
+
+
 def opaque(im: Image.Image) -> Image.Image:
     """Le sommità e i fianchi devono essere pieni (niente trasparenze)."""
     bg = Image.new("RGBA", im.size, im.resize((1, 1), Image.BILINEAR).getpixel((0, 0))[:3] + (255,))
@@ -136,7 +148,9 @@ def main() -> None:
     sheet = Image.new("RGBA", (5 * C, 7 * C), (0, 0, 0, 0))
     for r, (top3, side, side_top) in enumerate(rows):
         for c, im in enumerate(top3):
-            sheet.paste(opaque(no_border(im)), (c * C, r * C))
+            top = opaque(no_border(im))
+            # Acqua e lava scorrono: il filo si muoverebbe con loro.
+            sheet.paste(top if r in (3, 4) else edge(top), (c * C, r * C))
         sheet.paste(opaque(fix_top_edge(side)), (3 * C, r * C))
         sheet.paste(opaque(fix_top_edge(side_top)), (4 * C, r * C))
     for c in range(4):

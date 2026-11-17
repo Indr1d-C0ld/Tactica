@@ -44,7 +44,8 @@ Tutto è originale: regole, storia, nomi, grafica, musica ed effetti sonori. Mus
 - **9 Statuti** estratti a sorte (per esempio «Niente cure» o «Divieto di colpire dall'alto»). Chi li viola viene sospeso e poi espulso.
 - **8 status alterati:** veleno, sonno, silenzio, lentezza, radici, rapidità, egida, rigenerazione.
 - **Anteprima del danno** e **suggerimento dell'IA** per ogni mossa.
-- **Telecamera libera:** rotazione a 360°, inclinazione, zoom. Tre stili di resa: VGA (con retino), SVGA e nitido.
+- **Telecamera:** quattro viste isometriche, inclinazione, zoom. Quattro stili di resa: nitido (predefinito), pixel, SVGA e VGA (con retino).
+- **Caselle evidenziate:** raggiungibili in azzurro a inizio turno, portata di attacchi e incantesimi in rosso, oggetti in verde.
 
 ### Progressione
 
@@ -116,10 +117,10 @@ Le icone degli oggetti: 37 basi, 16 leggendari, 32 consumabili (pozioni, bombe, 
 | Comando | Effetto |
 |---|---|
 | clic sulla mappa | sceglie la casella (movimento o bersaglio) |
-| Q / E | ruota la mappa |
+| Q / E | ruota la mappa fra le quattro viste isometriche |
 | rotella | zoom |
 | tasto centrale | orbita; con Maiusc sposta la vista |
-| F2 | cambia stile: VGA, SVGA, nitido |
+| F2 | cambia stile: nitido, pixel, SVGA, VGA |
 | «Suggerimento IA» | mostra la mossa consigliata |
 
 Ogni unità, nel suo turno, può muoversi e agire una volta. Prima di confermare un attacco vedi danno e probabilità di colpire. Tieni d'occhio gli Statuti in alto: violarli costa caro.
@@ -248,7 +249,7 @@ I pacchetti per i giocatori includono il motore [Godot Engine](https://godotengi
 
 **Tactica** is an original turn-based fantasy tactics game with pixel art, playable solo, co-op or competitively on a self-hosted server. The game text is in Italian.
 
-- **Isometric battles** on seeded procedural maps with height, fully rotatable in 3D. Rendering is styled after the VGA and SVGA era (with Bayer dithering).
+- **Isometric battles** on seeded procedural maps with height, with four isometric views. Crisp full-resolution pixel art by default, plus optional VGA and SVGA era styles (with Bayer dithering). Reachable tiles and attack/spell ranges are highlighted.
 - **Statutes:** random battle rules; breaking one gets a unit suspended, then expelled.
 - **Progression:** 12 classes, 75 class abilities, 32 consumables (potions, bombs, spell scrolls) and procedurally generated gear. Abilities are learned from equipment and mastered with resonance points.
 - **Modes:** single-player campaign with tutorial, PvE, offline skirmish, ELO-matched PvP, 2-6 player co-op clan missions, clan wars (up to 6v6), clan tournaments, ranked seasons.
