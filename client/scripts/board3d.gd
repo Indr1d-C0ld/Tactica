@@ -13,6 +13,10 @@ var TEX: Texture2D = Art.tex("terrain3d")
 var OVERLAY_TEX: Texture2D = Art.tex("terrain")
 const ANIM_SHADER := preload("res://shaders/animated_tile.gdshader")
 var VFX_TEX: Texture2D = Art.tex("vfx")
+## Lato di una cella degli effetti (32 per i generati, 64 per PixelLab) e
+## fotogrammi pieni di ogni riga (calcolati dall'atlante).
+var VFX_CELL := 32.0
+var _vfx_len := {}
 const VFX_ROWS := ["slash", "arrow", "impact", "fire", "ice", "thunder", "holy", "heal", "buff", "debuff", "poison", "drain"]
 const VFX_LEN := {"slash": 4, "arrow": 1, "impact": 4, "fire": 6, "ice": 5, "thunder": 4, "holy": 5, "heal": 6,
 	"buff": 5, "debuff": 5, "poison": 6, "drain": 5}
@@ -86,6 +90,7 @@ var _loot_nodes: Array = []
 
 func _ready() -> void:
 	C = TEX.get_width() / 5.0
+	_measure_vfx()
 	# Mipmap generate qui (i file .import non sono nel repository).
 	var img := TEX.get_image()
 	if img != null and not img.has_mipmaps():
@@ -143,6 +148,23 @@ func _ready() -> void:
 	_arrow = _sprite(OVERLAY_TEX, Rect2(64, 192, 32, 32))
 	_arrow.visible = false
 	add_child(_arrow)
+
+
+## Dimensione delle celle e numero di fotogrammi non vuoti per ogni effetto.
+func _measure_vfx() -> void:
+	VFX_CELL = VFX_TEX.get_height() / float(VFX_ROWS.size())
+	var img := VFX_TEX.get_image()
+	if img == null:
+		return
+	if img.is_compressed():
+		img.decompress()
+	var c := int(VFX_CELL)
+	for r in VFX_ROWS.size():
+		var n := 0
+		for f in int(img.get_width() / c):
+			if not img.get_region(Rect2i(f * c, r * c, c, c)).is_invisible():
+				n = f + 1
+		_vfx_len[VFX_ROWS[r]] = maxi(1, n)
 
 
 func _sprite(tex: Texture2D, region: Rect2) -> Sprite3D:
@@ -414,7 +436,7 @@ func _sync_units() -> void:
 		var visible_unit := bool(u["active"]) or str(u["condition"]) == "Defeated"
 		seen[i] = true
 		if not _nodes.has(i):
-			var s := _sprite(Sprites.UNITS_TEX, Rect2(0, 0, 32, 32))
+			var s := _sprite(Sprites.atlas(), Rect2(0, 0, 32, 32))
 			var sh := MeshInstance3D.new()
 			sh.mesh = _shadow_mesh
 			sh.material_override = _shadow_mat
@@ -500,7 +522,10 @@ func _animate_loot() -> void:
 # ------------------------------------------------------------------ effetti
 
 func _fx_sprite(kind: String) -> Sprite3D:
-	var s := _sprite(VFX_TEX, Rect2(0, VFX_ROWS.find(kind) * 32, 32, 32))
+	var c := VFX_CELL
+	var s := _sprite(VFX_TEX, Rect2(0, VFX_ROWS.find(kind) * c, c, c))
+	# Gli effetti PixelLab sono più fini: stessa ampiezza a schermo, pixel più piccoli.
+	s.pixel_size = PX * (0.6 if c > 32.0 else 1.0)
 	s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	s.render_priority = 2
 	s.no_depth_test = true
@@ -552,11 +577,11 @@ func _update_fx(delta: float) -> void:
 			continue
 		s.visible = true
 		var f := int(float(e["t"]) * float(e["fps"]))
-		var n: int = VFX_LEN[e["kind"]]
+		var n: int = _vfx_len.get(e["kind"], VFX_LEN[e["kind"]])
 		if f >= n:
 			e["done"] = true
 			continue
-		s.region_rect = Rect2(f * 32, VFX_ROWS.find(e["kind"]) * 32, 32, 32)
+		s.region_rect = Rect2(f * VFX_CELL, VFX_ROWS.find(e["kind"]) * VFX_CELL, VFX_CELL, VFX_CELL)
 	for e in _fx:
 		if e.get("done", false):
 			(e["sprite"] as Node).queue_free()
@@ -653,7 +678,7 @@ func _process(delta: float) -> void:
 			frame = ("front_walk" if front else "back_walk") + str(int(time * 8.0) % 2)
 		else:
 			frame = ("front_idle" if front else "back_idle") + str(int(time * 2.2 + i * 0.37) % 2)
-		s.region_rect = Sprites.region(str(u["class"]), int(u["team"]), str(u["name"]), frame)
+		s.region_rect = Sprites.region(str(u["class"]), int(u["team"]), str(u["name"]), frame, str(u.get("people", "human")))
 		s.flip_h = (not ko) and d.dot(right) < 0.0
 		var shake := Vector3.ZERO
 		if _anim_on(i, "hurt"):

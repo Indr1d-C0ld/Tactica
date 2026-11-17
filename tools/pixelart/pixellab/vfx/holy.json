@@ -1,0 +1,235 @@
+{
+ "frames": [
+  {
+   "filename": "tactica-holy 0.png",
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 40,
+    "h": 65
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 40,
+    "h": 65
+   },
+   "sourceSize": {
+    "w": 40,
+    "h": 65
+   },
+   "pivot": {
+    "x": 0.5,
+    "y": 0.8461538461538461
+   },
+   "duration": 125
+  },
+  {
+   "filename": "tactica-holy 1.png",
+   "frame": {
+    "x": 40,
+    "y": 0,
+    "w": 40,
+    "h": 65
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 40,
+    "h": 65
+   },
+   "sourceSize": {
+    "w": 40,
+    "h": 65
+   },
+   "pivot": {
+    "x": 0.5,
+    "y": 0.8461538461538461
+   },
+   "duration": 125
+  },
+  {
+   "filename": "tactica-holy 2.png",
+   "frame": {
+    "x": 80,
+    "y": 0,
+    "w": 40,
+    "h": 65
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 40,
+    "h": 65
+   },
+   "sourceSize": {
+    "w": 40,
+    "h": 65
+   },
+   "pivot": {
+    "x": 0.5,
+    "y": 0.8461538461538461
+   },
+   "duration": 125
+  },
+  {
+   "filename": "tactica-holy 3.png",
+   "frame": {
+    "x": 0,
+    "y": 65,
+    "w": 40,
+    "h": 65
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 40,
+    "h": 65
+   },
+   "sourceSize": {
+    "w": 40,
+    "h": 65
+   },
+   "pivot": {
+    "x": 0.5,
+    "y": 0.8461538461538461
+   },
+   "duration": 125
+  },
+  {
+   "filename": "tactica-holy 4.png",
+   "frame": {
+    "x": 40,
+    "y": 65,
+    "w": 40,
+    "h": 65
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 40,
+    "h": 65
+   },
+   "sourceSize": {
+    "w": 40,
+    "h": 65
+   },
+   "pivot": {
+    "x": 0.5,
+    "y": 0.8461538461538461
+   },
+   "duration": 125
+  },
+  {
+   "filename": "tactica-holy 5.png",
+   "frame": {
+    "x": 80,
+    "y": 65,
+    "w": 40,
+    "h": 65
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 40,
+    "h": 65
+   },
+   "sourceSize": {
+    "w": 40,
+    "h": 65
+   },
+   "pivot": {
+    "x": 0.5,
+    "y": 0.8461538461538461
+   },
+   "duration": 125
+  },
+  {
+   "filename": "tactica-holy 6.png",
+   "frame": {
+    "x": 0,
+    "y": 130,
+    "w": 40,
+    "h": 65
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 40,
+    "h": 65
+   },
+   "sourceSize": {
+    "w": 40,
+    "h": 65
+   },
+   "pivot": {
+    "x": 0.5,
+    "y": 0.8461538461538461
+   },
+   "duration": 125
+  },
+  {
+   "filename": "tactica-holy 7.png",
+   "frame": {
+    "x": 40,
+    "y": 130,
+    "w": 40,
+    "h": 65
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 40,
+    "h": 65
+   },
+   "sourceSize": {
+    "w": 40,
+    "h": 65
+   },
+   "pivot": {
+    "x": 0.5,
+    "y": 0.8461538461538461
+   },
+   "duration": 125
+  }
+ ],
+ "meta": {
+  "app": "PixelLab VFX Creator",
+  "image": "tactica-holy.png",
+  "format": "RGBA8888",
+  "size": {
+   "w": 120,
+   "h": 195
+  },
+  "scale": "1",
+  "anchor": {
+   "kind": "origin",
+   "x": 20,
+   "y": 55
+  },
+  "frameTags": [
+   {
+    "name": "tactica-holy",
+    "from": 0,
+    "to": 7,
+    "direction": "forward"
+   }
+  ]
+ }
+}

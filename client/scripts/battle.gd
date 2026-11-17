@@ -4,6 +4,7 @@ extends Control
 ## Il motore Rust (`TacticaEngine`) fornisce caselle raggiungibili, bersagli,
 ## anteprime e suggerimenti; in locale risolve anche le azioni.
 
+const Sprites := preload("res://scripts/sprites.gd")
 const UI := preload("res://scripts/ui.gd")
 const Board3D := preload("res://scripts/board3d.gd")
 const Items := preload("res://scripts/items.gd")
@@ -65,6 +66,8 @@ const VIEW_CFG := "user://view.cfg"
 var _style := 0
 var _top: Label
 var _card: RichTextLabel
+var _face: TextureRect
+var _card_head: RichTextLabel
 var _actions: VBoxContainer
 var _log: RichTextLabel
 var _hint: RichTextLabel
@@ -187,6 +190,20 @@ func _build_ui() -> void:
 	_card.bbcode_enabled = true
 	_card.fit_content = true
 	_card.custom_minimum_size = Vector2(260, 0)
+	# Ritratto con nome, popolo, classe e livello accanto; statistiche sotto, a tutta larghezza.
+	var card_row := UI.hbox(8)
+	_face = TextureRect.new()
+	_face.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_face.custom_minimum_size = Vector2(64, 64)
+	_face.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	card_row.add_child(_face)
+	_card_head = RichTextLabel.new()
+	_card_head.bbcode_enabled = true
+	_card_head.fit_content = true
+	_card_head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_card_head.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	card_row.add_child(_card_head)
+	left.add_child(card_row)
 	left.add_child(_card)
 	_actions = UI.vbox(4)
 	left.add_child(_actions)
@@ -362,16 +379,21 @@ func _tutorial_events(msg: Dictionary) -> void:
 func _show_card(i: int) -> void:
 	if i < 0 or i >= units.size():
 		_card.text = ""
+		_card_head.text = ""
+		_face.texture = null
 		return
 	var u: Dictionary = units[i]
+	_face.texture = Sprites.face_texture(str(u["class"]), int(u["team"]), str(u.get("people", "human")))
 	var st: Dictionary = u["stats"]
 	var team_col := "#6b9cff" if int(u["team"]) == 0 else "#ff7b6b"
 	# MOV e salto effettivi: in verde se migliorati da status o oggetti, in rosso se ridotti.
 	var mv := _delta(int(st["mov"]), int(st.get("base_mov", st["mov"])))
 	var jp := _delta(int(st["jump"]), int(st.get("base_jump", st["jump"])))
-	_card.text = ("[b][color=%s]%s[/color][/b]\n%s %s · Lv %d\nHP %d/%d   MP %d/%d\n" +
-		"ATK %d DEF %d MAG %d RES %d\nVEL %d MOV %s SALTO %s SCHIVATA %d") % [
-		team_col, u["name"], u.get("people_name", ""), u["class_name"], int(u["level"]), int(u["hp"]), int(u["max_hp"]),
+	_card_head.text = "[b][color=%s]%s[/color][/b]\n%s\n%s · Lv %d" % [
+		team_col, u["name"], u.get("people_name", ""), u["class_name"], int(u["level"])]
+	_card.text = ("HP %d/%d   MP %d/%d\n" +
+		"ATK %d  DEF %d\nMAG %d  RES %d\nVEL %d  MOV %s  SALTO %s\nSCHIVATA %d") % [
+		int(u["hp"]), int(u["max_hp"]),
 		int(u["mp"]), int(u["max_mp"]), int(st["atk"]), int(st["def"]), int(st["mag"]),
 		int(st["res"]), int(st["spd"]), mv, jp, int(st["evade"])]
 	var sts: Array[String] = []

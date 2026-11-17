@@ -1,0 +1,75 @@
+{
+  "group_id": "a0656cd2-e51f-44bc-a6ea-bfdf3fd3d54d",
+  "states": [
+    {
+      "character": {
+        "id": "ce4d7b95-a5fa-4dbf-a259-e2a106b3908f",
+        "name": "Idle",
+        "prompt": "chibi proportions with a big head and short body, retro 16-bit tactics RPG sprite style, forest elf with long pointed ears, light olive-green skin and small leaf ornaments in the hair, fantasy knight, steel helmet with a small crest, steel breastplate over a bright royal blue tabard, brown leather boots and gloves, holding a short sword and a small round shield, retro 16-bit tactics RPG sprite style",
+        "size": {
+          "width": 32,
+          "height": 32
+        },
+        "template_id": "mannequin",
+        "directions": 8,
+        "view": "low top-down",
+        "created_at": "2026-11-17T15:52:48.591078+00:00"
+      },
+      "folder": "Idle",
+      "frames": {
+        "rotations": {
+          "south": "Idle/rotations/south.png",
+          "south-east": "Idle/rotations/south-east.png",
+          "east": "Idle/rotations/east.png",
+          "north-east": "Idle/rotations/north-east.png",
+          "north": "Idle/rotations/north.png",
+          "north-west": "Idle/rotations/north-west.png",
+          "west": "Idle/rotations/west.png",
+          "south-west": "Idle/rotations/south-west.png"
+        },
+        "animations": {
+          "ko": {
+            "south-east": [
+              "Idle/animations/ko/south-east/frame_000.png",
+              "Idle/animations/ko/south-east/frame_001.png",
+              "Idle/animations/ko/south-east/frame_002.png",
+              "Idle/animations/ko/south-east/frame_003.png",
+              "Idle/animations/ko/south-east/frame_004.png",
+              "Idle/animations/ko/south-east/frame_005.png",
+              "Idle/animations/ko/south-east/frame_006.png"
+            ]
+          },
+          "walk": {
+            "north-east": [
+              "Idle/animations/walk/north-east/frame_000.png",
+              "Idle/animations/walk/north-east/frame_001.png",
+              "Idle/animations/walk/north-east/frame_002.png",
+              "Idle/animations/walk/north-east/frame_003.png",
+              "Idle/animations/walk/north-east/frame_004.png",
+              "Idle/animations/walk/north-east/frame_005.png"
+            ],
+            "south-east": [
+              "Idle/animations/walk/south-east/frame_000.png",
+              "Idle/animations/walk/south-east/frame_001.png",
+              "Idle/animations/walk/south-east/frame_002.png",
+              "Idle/animations/walk/south-east/frame_003.png",
+              "Idle/animations/walk/south-east/frame_004.png",
+              "Idle/animations/walk/south-east/frame_005.png"
+            ]
+          },
+          "strike": {
+            "south-east": [
+              "Idle/animations/strike/south-east/frame_000.png",
+              "Idle/animations/strike/south-east/frame_001.png",
+              "Idle/animations/strike/south-east/frame_002.png",
+              "Idle/animations/strike/south-east/frame_003.png",
+              "Idle/animations/strike/south-east/frame_004.png"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "export_version": "3.1",
+  "export_date": "2026-11-17T15:57:33.395914"
+}

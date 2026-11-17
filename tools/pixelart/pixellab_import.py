@@ -13,7 +13,12 @@ Lo script compone la riga della classe nel formato di units_base.png
 colori chiave della squadra, così artkit può ricolorarlo per le due squadre.
 Le classi senza cartella restano quelle generate da units.py.
 
-  python3 tools/pixelart/pixellab_import.py     # scrive client/assets/override/units.png
+Le varianti dei popoli stanno in `pixellab/people/<popolo>/<classe>/pack/` e
+finiscono in `units_people.png`: una riga per classe x popolo x squadra
+(righe ((classe * 5 + popolo) * 2 + squadra), stessi 11 fotogrammi). Dove manca
+la variante si usa la classe umana.
+
+  python3 tools/pixelart/pixellab_import.py     # scrive client/assets/override/units.png e units_people.png
 """
 
 from __future__ import annotations
@@ -134,6 +139,39 @@ def class_row(pack: Path) -> Image.Image:
     return row
 
 
+PEOPLE = ("human", "sylvan", "stonekin", "winged", "undine")
+
+
+def team_only(row: Image.Image, team: int) -> Image.Image:
+    """Solo i colori chiave della squadra (gli sprite PixelLab non hanno chiavi di capelli e pelle)."""
+    mapping = {a[:3]: b for a, b in zip(artkit.key_variants(artkit.KEY_TEAM), artkit.target_variants(artkit.P.TEAM[team]))}
+    out = row.copy()
+    px = out.load()
+    for y in range(out.height):
+        for x in range(out.width):
+            c = px[x, y]
+            if c[3] and c[:3] in mapping:
+                px[x, y] = mapping[c[:3]][:3] + (c[3],)
+    return out
+
+
+def people_sheet() -> tuple[Image.Image, int]:
+    rows, found = [], 0
+    for cls in artkit.CLASS_ORDER:
+        for people in PEOPLE:
+            pack = SRC / cls / "pack" if people == "human" else SRC / "people" / people / cls / "pack"
+            if people != "human" and (pack / "Idle" / "rotations" / "south-east.png").exists():
+                found += 1
+            elif people != "human":
+                pack = SRC / cls / "pack"
+            base = class_row(pack)
+            rows += [team_only(base, 0), team_only(base, 1)]
+    out = Image.new("RGBA", (rows[0].width, CELL * len(rows)), (0, 0, 0, 0))
+    for i, r in enumerate(rows):
+        out.paste(r, (0, i * CELL))
+    return out, found
+
+
 def main() -> None:
     base = artkit.base_sheet()
     done = []
@@ -148,7 +186,10 @@ def main() -> None:
     dest = HERE.parents[1] / "client" / "assets" / "override"
     dest.mkdir(parents=True, exist_ok=True)
     artkit.expand(base).save(dest / "units.png")
+    sheet, found = people_sheet()
+    sheet.save(dest / "units_people.png")
     print("classi da PixelLab:", ", ".join(done) or "nessuna")
+    print("varianti dei popoli:", found, "/", len(artkit.CLASS_ORDER) * (len(PEOPLE) - 1), "->", sheet.size)
     print("client/assets/override/units.png")
 
 

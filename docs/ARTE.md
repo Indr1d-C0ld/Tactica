@@ -1,6 +1,6 @@
 # Grafica: specifiche per il pixel artist
 
-Tutta la grafica del gioco è originale. I terreni, l'interfaccia, gli effetti e il font sono generati da `tools/pixelart` (vedi il suo README). I personaggi e le icone degli oggetti sono fatti con [PixelLab](https://pixellab.ai): le immagini scaricate sono nel repository e il gioco non ha bisogno di PixelLab per funzionare. Questa pagina spiega anche come sostituire la grafica con altra disegnata a mano, senza toccare il codice del client.
+Tutta la grafica del gioco è originale. Il font e la grafica di riserva sono generati da `tools/pixelart` (vedi il suo README). Personaggi (anche per popolo), ritratti, icone, terreni, interfaccia, effetti, fondale e mappa del mondo sono fatti con [PixelLab](https://pixellab.ai): le immagini scaricate sono nel repository e il gioco non ha bisogno di PixelLab per funzionare. Questa pagina spiega anche come sostituire la grafica con altra disegnata a mano, senza toccare il codice del client.
 
 ## Grafica fatta con PixelLab
 
@@ -12,7 +12,11 @@ Secondo i termini di servizio di PixelLab (sezione 3.3), le immagini generate ap
 - animazioni: camminata (fronte e retro), caduta e un'azione propria della classe (fendente, tiro con l'arco, incantesimo...);
 - il blu dei vestiti diventa il colore della squadra.
 
-`python3 tools/pixelart/pixellab_import.py` compone il foglio base e scrive l'atlante completo in `client/assets/override/units.png`. Per ogni classe usa:
+**Popoli** (`tools/pixelart/pixellab/people/<popolo>/<classe>/pack/`): le stesse dodici classi rifatte per Silvani (orecchie a punta, pelle verde oliva), Rocciosi (pelle di pietra screpolata, occhi ambra), Alati (ali piumate) e Ondini (pelle verde mare, pinne), con le stesse animazioni: 48 personaggi in più.
+
+![Popoli](img/popoli.png)
+
+`python3 tools/pixelart/pixellab_import.py` compone il foglio base e scrive `client/assets/override/units.png` (atlante classico) e `units_people.png`: una riga per classe × popolo × squadra, riga `(classe * 5 + popolo) * 2 + squadra`, 11 fotogrammi da 32. Il client usa quest'ultimo quando c'è. Per ogni classe usa:
 
 | Fotogrammi | Da dove |
 |---|---|
@@ -20,6 +24,14 @@ Secondo i termini di servizio di PixelLab (sezione 3.3), le immagini generate ap
 | secondo fotogramma del riposo | si ricava abbassando il busto di un pixel |
 | azione, KO e camminata | da fotogrammi scelti delle animazioni |
 | colore della squadra | il blu saturo dei vestiti va nei colori chiave della squadra; l'acciaio, bluastro ma poco saturo, resta com'è |
+
+**Ritratti** (`tools/pixelart/pixellab/portraits/<popolo>_<classe>.png`): busti 64×64 con lo strumento Pro Flash, tutti nello stile del primo (quello dell'Avanguardia, passato come immagine di stile). Per ora ci sono i dodici ritratti umani; per gli altri popoli il gioco usa quello umano della classe. `python3 tools/pixelart/pixellab_portraits.py` scrive `client/assets/override/portraits.png`: una colonna per classe, riga `popolo * 2 + squadra`; per la squadra 1 il blu (vestiti e sfondo) ruota verso il rosso. Compaiono nella scheda dell'unità in battaglia e nel roster.
+
+![Ritratti](img/ritratti.png)
+
+**Effetti delle abilità** (`tools/pixelart/pixellab/vfx/`): fatti con il laboratorio degli effetti di PixelLab (`vfx_workbench`), che li disegna da parti regolabili senza consumare generazioni: arco della lama, stella d'impatto, esplosione di fuoco, schegge di ghiaccio, saetta, colonna di luce, croci di cura, frecce su e giù, bolle di veleno, energia che converge (risucchio) e la freccia in volo. `python3 tools/pixelart/pixellab_vfx.py` scrive `client/assets/override/vfx.png`: celle 64×64, 8 fotogrammi per riga, centrati sull'origine dell'effetto.
+
+**Fondale e freccia dell'unità attiva** (`tools/pixelart/pixellab/scene/`): cielo al crepuscolo con montagne (256×144, Pro Flash) e freccia dorata (32×32, Pixflux). `python3 tools/pixelart/pixellab_scene.py` li installa in `client/assets/override/` (`backdrop.png` e una copia di `terrain.png` con la nuova freccia).
 
 **Icone degli oggetti** (`tools/pixelart/pixellab/icons/`): una icona 32×32 per ognuna delle 37 basi, dei 16 leggendari e dei 32 consumabili (`use_<codice>`), per stivali e corno (oggetti del catalogo classico) e per il sacchetto del bottino a terra: 88 in tutto.
 
@@ -95,8 +107,10 @@ Lo script scrive `client/assets/override/units.png`. Ho verificato che il foglio
 |---|---|
 | `terrain3d.png` | celle 16×16. Righe per terreno: Erba, Pietra, Sabbia, Acqua, Lava, Boscaglia. Colonne 0-2: sommità (varianti; per acqua e lava, tre fotogrammi d'animazione). Colonna 3: fianco (8 righe per livello). Colonna 4: fianco del livello più alto, con il bordo che ricade. Riga 6: cespuglio A, cespuglio B, sassi, ciuffo d'erba |
 | `terrain.png` | celle 32×32; dalla riga 6 servono la freccia sopra l'unità attiva (colonna 2) |
-| `vfx.png` | celle 32×32, 6 fotogrammi per riga. Righe: slash, arrow (proiettile nel fotogramma 0), impact, fire, ice, thunder, holy, heal, buff, debuff, poison, drain. Le durate sono in `tools/pixelart/vfx.py` (`LENGTHS`) |
-| `backdrop.png` | 480×270, fondale dietro la mappa (riempie lo schermo mantenendo le proporzioni) |
+| `vfx.png` | celle quadrate (32 per il generato, 64 per PixelLab: lato = altezza / 12), fino a 8 fotogrammi per riga. Righe: slash, arrow (proiettile nel fotogramma 0), impact, fire, ice, thunder, holy, heal, buff, debuff, poison, drain. Il client conta da solo i fotogrammi non vuoti |
+| `backdrop.png` | fondale dietro la mappa, di qualsiasi misura 16:9 (riempie lo schermo mantenendo le proporzioni) |
+| `portraits.png` | ritratti 64×64: colonna = classe, riga = popolo * 2 + squadra |
+| `units_people.png` | 11 fotogrammi da 32 per riga, riga = (classe * 5 + popolo) * 2 + squadra |
 | `worldmap.png` | 480×270, pergamena della mappa del mondo; le tappe sono in coordinate 0..1 (`server/src/campaign.rs`) |
 | `ui_window.png` | 32×32, cornice a 9 parti con margine 8 |
 | `ui_button*.png`, `ui_field.png` | 24×24, cornici a 9 parti con margine 6 |

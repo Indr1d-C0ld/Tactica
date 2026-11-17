@@ -1,0 +1,339 @@
+{
+ "frames": [
+  {
+   "filename": "tactica-arrow 0.png",
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 71,
+    "h": 16
+   },
+   "pivot": {
+    "x": 0.15492957746478872,
+    "y": 0.3125
+   },
+   "duration": 83
+  },
+  {
+   "filename": "tactica-arrow 1.png",
+   "frame": {
+    "x": 71,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 71,
+    "h": 16
+   },
+   "pivot": {
+    "x": 0.15492957746478872,
+    "y": 0.3125
+   },
+   "duration": 83
+  },
+  {
+   "filename": "tactica-arrow 2.png",
+   "frame": {
+    "x": 142,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 71,
+    "h": 16
+   },
+   "pivot": {
+    "x": 0.15492957746478872,
+    "y": 0.3125
+   },
+   "duration": 83
+  },
+  {
+   "filename": "tactica-arrow 3.png",
+   "frame": {
+    "x": 213,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 71,
+    "h": 16
+   },
+   "pivot": {
+    "x": 0.15492957746478872,
+    "y": 0.3125
+   },
+   "duration": 83
+  },
+  {
+   "filename": "tactica-arrow 4.png",
+   "frame": {
+    "x": 0,
+    "y": 16,
+    "w": 71,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 71,
+    "h": 16
+   },
+   "pivot": {
+    "x": 0.15492957746478872,
+    "y": 0.3125
+   },
+   "duration": 83
+  },
+  {
+   "filename": "tactica-arrow 5.png",
+   "frame": {
+    "x": 71,
+    "y": 16,
+    "w": 71,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 71,
+    "h": 16
+   },
+   "pivot": {
+    "x": 0.15492957746478872,
+    "y": 0.3125
+   },
+   "duration": 83
+  },
+  {
+   "filename": "tactica-arrow 6.png",
+   "frame": {
+    "x": 142,
+    "y": 16,
+    "w": 71,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 71,
+    "h": 16
+   },
+   "pivot": {
+    "x": 0.15492957746478872,
+    "y": 0.3125
+   },
+   "duration": 83
+  },
+  {
+   "filename": "tactica-arrow 7.png",
+   "frame": {
+    "x": 213,
+    "y": 16,
+    "w": 71,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 71,
+    "h": 16
+   },
+   "pivot": {
+    "x": 0.15492957746478872,
+    "y": 0.3125
+   },
+   "duration": 83
+  },
+  {
+   "filename": "tactica-arrow 8.png",
+   "frame": {
+    "x": 0,
+    "y": 32,
+    "w": 71,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 71,
+    "h": 16
+   },
+   "pivot": {
+    "x": 0.15492957746478872,
+    "y": 0.3125
+   },
+   "duration": 83
+  },
+  {
+   "filename": "tactica-arrow 9.png",
+   "frame": {
+    "x": 71,
+    "y": 32,
+    "w": 71,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 71,
+    "h": 16
+   },
+   "pivot": {
+    "x": 0.15492957746478872,
+    "y": 0.3125
+   },
+   "duration": 83
+  },
+  {
+   "filename": "tactica-arrow 10.png",
+   "frame": {
+    "x": 142,
+    "y": 32,
+    "w": 71,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 71,
+    "h": 16
+   },
+   "pivot": {
+    "x": 0.15492957746478872,
+    "y": 0.3125
+   },
+   "duration": 83
+  },
+  {
+   "filename": "tactica-arrow 11.png",
+   "frame": {
+    "x": 213,
+    "y": 32,
+    "w": 71,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 71,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 71,
+    "h": 16
+   },
+   "pivot": {
+    "x": 0.15492957746478872,
+    "y": 0.3125
+   },
+   "duration": 83
+  }
+ ],
+ "meta": {
+  "app": "PixelLab VFX Creator",
+  "image": "tactica-arrow.png",
+  "format": "RGBA8888",
+  "size": {
+   "w": 284,
+   "h": 48
+  },
+  "scale": "1",
+  "anchor": {
+   "kind": "origin",
+   "x": 11,
+   "y": 5
+  },
+  "frameTags": [
+   {
+    "name": "tactica-arrow",
+    "from": 0,
+    "to": 11,
+    "direction": "forward"
+   }
+  ]
+ }
+}

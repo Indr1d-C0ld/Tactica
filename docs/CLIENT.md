@@ -22,8 +22,9 @@ Le texture vengono da `tools/pixelart` (vedi il suo README). Tutto è pixel-art 
 - **Font:** bitmap disegnato a pixel (Tactica Pixel), ingrandito solo per multipli interi.
 - **Finestre:** cornici con angoli arrotondati e bordo crema.
 - **Terreni:** lastre e placche irregolari, erba che ricade sui fianchi, ciuffi e cespugli.
-- **Fondale:** cielo a bande con nuvole e colline.
-- **Sprite:** ombreggiatura di volume con passaggi a retino e contorni morbidi sul lato in luce.
+- **Fondale:** cielo al crepuscolo con nuvole e montagne (PixelLab).
+- **Personaggi:** sprite PixelLab diversi per classe e popolo; ritratti 64×64 nella scheda dell'unità e nel roster.
+- **Effetti:** animazioni PixelLab a 64×64, disegnate con pixel più fini degli sprite per restare ampie circa una casella e mezza.
 
 ![Battaglia](img/battaglia.png)
 ![Battaglia ruotata](img/battaglia_ruotata.png)

@@ -280,7 +280,7 @@ func _build_roster() -> void:
 func _unit_panel(u: Dictionary) -> Control:
 	var id := int(u["id"])
 	var outer := UI.hbox(14)
-	outer.add_child(Sprites.portrait(str(u["class"]), 0, str(u["name"])))
+	outer.add_child(Sprites.portrait(str(u["class"]), 0, str(u["name"]), 3, str(u.get("people", "human"))))
 	var box := UI.vbox(4)
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	outer.add_child(box)

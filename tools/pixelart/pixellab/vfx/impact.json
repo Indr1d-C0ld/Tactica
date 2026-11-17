@@ -1,0 +1,235 @@
+{
+ "frames": [
+  {
+   "filename": "tactica-impact 0.png",
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 48,
+    "h": 45
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 48,
+    "h": 45
+   },
+   "sourceSize": {
+    "w": 48,
+    "h": 45
+   },
+   "pivot": {
+    "x": 0.4791666666666667,
+    "y": 0.5111111111111111
+   },
+   "duration": 48
+  },
+  {
+   "filename": "tactica-impact 1.png",
+   "frame": {
+    "x": 48,
+    "y": 0,
+    "w": 48,
+    "h": 45
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 48,
+    "h": 45
+   },
+   "sourceSize": {
+    "w": 48,
+    "h": 45
+   },
+   "pivot": {
+    "x": 0.4791666666666667,
+    "y": 0.5111111111111111
+   },
+   "duration": 48
+  },
+  {
+   "filename": "tactica-impact 2.png",
+   "frame": {
+    "x": 96,
+    "y": 0,
+    "w": 48,
+    "h": 45
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 48,
+    "h": 45
+   },
+   "sourceSize": {
+    "w": 48,
+    "h": 45
+   },
+   "pivot": {
+    "x": 0.4791666666666667,
+    "y": 0.5111111111111111
+   },
+   "duration": 48
+  },
+  {
+   "filename": "tactica-impact 3.png",
+   "frame": {
+    "x": 0,
+    "y": 45,
+    "w": 48,
+    "h": 45
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 48,
+    "h": 45
+   },
+   "sourceSize": {
+    "w": 48,
+    "h": 45
+   },
+   "pivot": {
+    "x": 0.4791666666666667,
+    "y": 0.5111111111111111
+   },
+   "duration": 48
+  },
+  {
+   "filename": "tactica-impact 4.png",
+   "frame": {
+    "x": 48,
+    "y": 45,
+    "w": 48,
+    "h": 45
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 48,
+    "h": 45
+   },
+   "sourceSize": {
+    "w": 48,
+    "h": 45
+   },
+   "pivot": {
+    "x": 0.4791666666666667,
+    "y": 0.5111111111111111
+   },
+   "duration": 48
+  },
+  {
+   "filename": "tactica-impact 5.png",
+   "frame": {
+    "x": 96,
+    "y": 45,
+    "w": 48,
+    "h": 45
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 48,
+    "h": 45
+   },
+   "sourceSize": {
+    "w": 48,
+    "h": 45
+   },
+   "pivot": {
+    "x": 0.4791666666666667,
+    "y": 0.5111111111111111
+   },
+   "duration": 48
+  },
+  {
+   "filename": "tactica-impact 6.png",
+   "frame": {
+    "x": 0,
+    "y": 90,
+    "w": 48,
+    "h": 45
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 48,
+    "h": 45
+   },
+   "sourceSize": {
+    "w": 48,
+    "h": 45
+   },
+   "pivot": {
+    "x": 0.4791666666666667,
+    "y": 0.5111111111111111
+   },
+   "duration": 48
+  },
+  {
+   "filename": "tactica-impact 7.png",
+   "frame": {
+    "x": 48,
+    "y": 90,
+    "w": 48,
+    "h": 45
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 48,
+    "h": 45
+   },
+   "sourceSize": {
+    "w": 48,
+    "h": 45
+   },
+   "pivot": {
+    "x": 0.4791666666666667,
+    "y": 0.5111111111111111
+   },
+   "duration": 48
+  }
+ ],
+ "meta": {
+  "app": "PixelLab VFX Creator",
+  "image": "tactica-impact.png",
+  "format": "RGBA8888",
+  "size": {
+   "w": 144,
+   "h": 135
+  },
+  "scale": "1",
+  "anchor": {
+   "kind": "origin",
+   "x": 23,
+   "y": 23
+  },
+  "frameTags": [
+   {
+    "name": "tactica-impact",
+    "from": 0,
+    "to": 7,
+    "direction": "forward"
+   }
+  ]
+ }
+}

@@ -12,7 +12,7 @@
 
 Tactica è un gioco originale ispirato ai classici tattici a turni delle console portatili. Si gioca su mappe isometriche con altezze, generate da un seed e ruotabili in 3D. Ogni battaglia ha i suoi **Statuti**, regole estratte a sorte: chi le infrange viene sospeso e poi espulso dal campo. Le unità crescono di livello, cambiano classe e imparano abilità dall'equipaggiamento, fino a padroneggiarle.
 
-Tutto è originale: regole, storia, nomi, grafica, musica ed effetti sonori. Musiche ed effetti sonori sono sintetizzati da script inclusi nel repository, in stile Sound Blaster (FM) e moduli MIDI anni '90. Personaggi, icone degli oggetti, terreni, cornici dell'interfaccia e mappa della campagna sono fatti con [PixelLab](https://pixellab.ai) e inclusi come immagini ([docs/ARTE.md](docs/ARTE.md)).
+Tutto è originale: regole, storia, nomi, grafica, musica ed effetti sonori. Musiche ed effetti sonori sono sintetizzati da script inclusi nel repository, in stile Sound Blaster (FM) e moduli MIDI anni '90. Personaggi (per classe e popolo), ritratti, icone degli oggetti, terreni, effetti delle abilità, cornici dell'interfaccia, fondale e mappa della campagna sono fatti con [PixelLab](https://pixellab.ai) e inclusi come immagini ([docs/ARTE.md](docs/ARTE.md)).
 
 *[English summary below](#in-english).*
 
@@ -107,6 +107,12 @@ La telecamera ruota, si inclina e cambia stile di resa:
 I personaggi delle dodici classi, fatti con PixelLab (riposo, azione, KO e camminata; il blu diventa il colore della squadra):
 
 ![Personaggi](docs/img/sprite_sheet.png)
+
+Le stesse classi per i cinque popoli (umani, silvani, rocciosi, alati, ondini) e i ritratti delle classi:
+
+![Popoli](docs/img/popoli.png)
+
+![Ritratti](docs/img/ritratti.png)
 
 Le icone degli oggetti: 37 basi, 16 leggendari, 32 consumabili (pozioni, bombe, pergamene), gli oggetti classici e il sacchetto del bottino:
 
