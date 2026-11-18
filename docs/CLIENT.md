@@ -126,6 +126,7 @@ Il pacchetto Windows è stato provato con Wine, offline e contro un server local
     - **Le mie partite:** storico filtrabile per modalità, a pagine, con esito, variazione ELO, monete e avversari; «Dettagli» apre il riepilogo unità per unità (danni inflitti e subiti, cure, KO, colpi a segno, violazioni);
     - **Classifica:** i primi 50 per ELO;
     - **Mondo:** grafici delle partite e dei nuovi giocatori negli ultimi 30 giorni, modalità, popoli, classi, ambienti e statuti.
+  - **Traguardi:** riepilogo, filtri per categoria (con il conteggio di ognuna) e per stato, e per ogni traguardo icona della categoria, medaglia del grado, progresso, data di sblocco e percentuale di giocatori che ce l'hanno. Le icone sono di PixelLab (`client/assets/achievements/`). Quando se ne sblocca uno compare un avviso con la medaglia e le monete guadagnate.
   - **Admin** (solo amministratori): panoramica del server, utenti (ricerca, sospensione, monete, password, disconnessione, ruolo), connessioni aperte, ultime partite, tornei (annullamento, assegnazione di un incontro, proroga e applicazione delle scadenze), impostazioni di gioco, chiusura anticipata della stagione, backup e registro delle azioni.
   - **Avvisi:** sotto l'intestazione compaiono il messaggio del giorno e l'avviso di manutenzione.
   - **Account** (pulsante in alto): cambio della password (le altre sessioni si chiudono) e cancellazione dell'account, con password e conferma.

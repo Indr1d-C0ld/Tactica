@@ -186,6 +186,7 @@ pub async fn salvage(
     }
     add_materials(&mut tx, user.id, &gained).await?;
     tx.commit().await?;
+    crate::achievements::record(&s.db, user.id, &[("craft:salvage", 1)]).await;
     Ok(Json(Crafted {
         item: None,
         gained: cost_view(&Cost {
@@ -233,7 +234,7 @@ pub async fn refine(
     Json(r): Json<ItemReq>,
 ) -> ApiResult<Json<Crafted>> {
     let item = parse(&r.item)?;
-    upgrade(
+    let done = upgrade(
         &s,
         user.id,
         item,
@@ -241,7 +242,9 @@ pub async fn refine(
         craft::refine(item),
         "raffinare",
     )
-    .await
+    .await?;
+    crate::achievements::record(&s.db, user.id, &[("craft:refine", 1)]).await;
+    Ok(done)
 }
 
 /// Forgia: rarità +1 con un affisso in più.
@@ -253,7 +256,7 @@ pub async fn enchant(
     let item = parse(&r.item)?;
     let mut rng = Rng::new(crate::game::random_seed());
     let result = craft::enchant(item, &mut rng);
-    upgrade(
+    let done = upgrade(
         &s,
         user.id,
         item,
@@ -261,7 +264,9 @@ pub async fn enchant(
         result,
         "incantare",
     )
-    .await
+    .await?;
+    crate::achievements::record(&s.db, user.id, &[("craft:enchant", 1)]).await;
+    Ok(done)
 }
 
 #[derive(Deserialize)]
@@ -292,6 +297,7 @@ pub async fn brew(
     }
     db::add_item(&mut tx, user.id, product, 1).await?;
     tx.commit().await?;
+    crate::achievements::record(&s.db, user.id, &[("craft:brew", 1)]).await;
     Ok(Json(Crafted {
         item: Some(item_info(product)),
         gained: Vec::new(),

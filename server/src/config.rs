@@ -28,6 +28,9 @@ pub struct Config {
     pub register_per_hour: u32,
     /// Ore a disposizione per giocare un incontro di torneo.
     pub tournament_match_hours: i64,
+    /// Monete in premio per i traguardi: `TACTICA_ACHIEVEMENT_COINS=0` le spegne
+    /// all'avvio (poi si cambiano dal pannello admin).
+    pub achievement_coins: bool,
     /// Nomi utente che all'avvio diventano amministratori (`TACTICA_ADMINS`, separati da virgole).
     pub admins: Vec<String>,
 }
@@ -53,6 +56,7 @@ impl Config {
             register_per_hour: num("TACTICA_REGISTER_PER_HOUR", 5).max(1) as u32,
             tournament_match_hours: num("TACTICA_TOURNAMENT_MATCH_HOURS", 72).clamp(1, 24 * 60)
                 as i64,
+            achievement_coins: num("TACTICA_ACHIEVEMENT_COINS", 1) != 0,
             admins: env::var("TACTICA_ADMINS")
                 .unwrap_or_default()
                 .split(',')

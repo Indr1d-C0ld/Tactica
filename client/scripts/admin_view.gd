@@ -317,6 +317,9 @@ func _settings() -> void:
 	var maint := CheckBox.new()
 	maint.text = "Manutenzione (solo gli admin avviano partite)"
 	maint.button_pressed = bool(s["maintenance"])
+	var ach := CheckBox.new()
+	ach.text = "Monete in premio per i traguardi"
+	ach.button_pressed = bool(s.get("achievement_coins", true))
 	var motd := UI.line_edit("Messaggio per tutti i giocatori (vuoto = nessuno)", str(s["motd"]))
 	motd.custom_minimum_size = Vector2(700, 0)
 	var start := SpinBox.new()
@@ -335,6 +338,7 @@ func _settings() -> void:
 	xp.value = int(s["xp_pct"])
 	_body.add_child(reg)
 	_body.add_child(maint)
+	_body.add_child(ach)
 	_body.add_child(UI.label("Messaggio del giorno", 16, UI.ACCENT))
 	_body.add_child(motd)
 	var grid := GridContainer.new()
@@ -349,7 +353,8 @@ func _settings() -> void:
 	_body.add_child(save)
 	save.add_child(UI.button("Salva impostazioni", func() -> void:
 		var body := {"registrations_open": reg.button_pressed, "maintenance": maint.button_pressed, "motd": motd.text,
-			"start_coins": int(start.value), "coins_pct": int(coins.value), "xp_pct": int(xp.value)}
+			"start_coins": int(start.value), "coins_pct": int(coins.value), "xp_pct": int(xp.value),
+			"achievement_coins": ach.button_pressed}
 		_say(await Net.put_json("/api/admin/settings", body), "Impostazioni salvate")))
 
 

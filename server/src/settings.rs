@@ -19,6 +19,8 @@ pub struct Settings {
     pub coins_pct: i64,
     /// Percentuale dell'esperienza di fine partita (100 = normale).
     pub xp_pct: i64,
+    /// Monete in premio per i traguardi.
+    pub achievement_coins: bool,
 }
 
 impl Default for Settings {
@@ -30,6 +32,7 @@ impl Default for Settings {
             start_coins: 400,
             coins_pct: 100,
             xp_pct: 100,
+            achievement_coins: true,
         }
     }
 }

@@ -70,6 +70,7 @@ pub fn routes() -> Router<AppState> {
         .route("/ws", get(ws::upgrade))
         .merge(crate::admin::routes())
         .merge(crate::account::routes())
+        .merge(crate::achievements::routes())
         .merge(crate::history::routes())
 }
 
@@ -88,6 +89,9 @@ struct Me {
     /// Messaggio per tutti i giocatori (vuoto = nessuno).
     motd: String,
     maintenance: bool,
+    /// Traguardi sbloccati e non ancora mostrati (POST /api/me/achievements/seen).
+    new_achievements: Vec<crate::achievements::Unlocked>,
+    achievements: i64,
 }
 
 #[derive(Serialize)]
@@ -101,6 +105,18 @@ struct MySeason {
 }
 
 async fn me(State(s): State<AppState>, user: AuthUser) -> ApiResult<Json<Me>> {
+    // Prima i traguardi: possono dare monete.
+    let (new_achievements, achievements) = {
+        let mut tx = s.db.begin().await?;
+        crate::achievements::check(&mut tx, user.id).await?;
+        let new = crate::achievements::unseen(&mut tx, user.id).await?;
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM achievements WHERE account_id = ?")
+            .bind(user.id)
+            .fetch_one(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        (new, n)
+    };
     let (elo, coins): (i64, i64) = sqlx::query_as("SELECT elo, coins FROM accounts WHERE id = ?")
         .bind(user.id)
         .fetch_one(&s.db)
@@ -136,6 +152,8 @@ async fn me(State(s): State<AppState>, user: AuthUser) -> ApiResult<Json<Me>> {
         is_admin: user.is_admin,
         motd,
         maintenance,
+        new_achievements,
+        achievements,
         username: user.username,
         elo,
         coins,
@@ -198,6 +216,7 @@ async fn recruit(
     .execute(&s.db)
     .await?
     .last_insert_rowid();
+    crate::achievements::record(&s.db, user.id, &[("recruits", 1)]).await;
     db::roster_unit(&s.db, user.id, id)
         .await?
         .map(Json)

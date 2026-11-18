@@ -7,6 +7,7 @@ const Sprites := preload("res://scripts/sprites.gd")
 const MAX_PARTY := 4
 const StatsView := preload("res://scripts/stats_view.gd")
 const AdminView := preload("res://scripts/admin_view.gd")
+const AchievementsView := preload("res://scripts/achievements_view.gd")
 
 var main: Node
 var me: Dictionary = {}
@@ -34,6 +35,7 @@ var _my_clan: Dictionary = {}
 var _my_role := ""
 var _queued := false
 var _stats_view: VBoxContainer
+var _ach_view: VBoxContainer
 var _admin_view: VBoxContainer
 ## Messaggio del giorno e avviso di manutenzione.
 var _notice: Label
@@ -79,6 +81,9 @@ func _ready() -> void:
 	_stats = _tab("Statistiche")
 	_stats_view = StatsView.new()
 	_stats.add_child(_stats_view)
+	var ach := _tab("Traguardi")
+	_ach_view = AchievementsView.new()
+	ach.add_child(_ach_view)
 	_craft = _tab("Bottega")
 	# Cambio di scheda: suono e, per Negozio e Bottega, la musica della bottega.
 	_tabs.tab_changed.connect(func(i: int) -> void:
@@ -164,6 +169,7 @@ func reload() -> void:
 		notes.append(str(me["motd"]))
 	_notice.text = "\n".join(notes)
 	_notice.visible = not notes.is_empty()
+	AchievementsView.toast(self, me.get("new_achievements", []))
 	if bool(me.get("is_admin", false)) and _admin_view == null:
 		var adm := _tab("Admin")
 		_admin_view = AdminView.new()
@@ -682,6 +688,7 @@ func _brew(code: String, tier: int) -> void:
 
 func _build_stats() -> void:
 	await _stats_view.refresh()
+	await _ach_view.refresh()
 	if _admin_view != null:
 		await _admin_view.refresh()
 
@@ -714,7 +721,7 @@ func _autoplay() -> void:
 		await Net.post_json("/api/shop/buy", {"item": "c.bomba.0"})
 		await Net.put_json("/api/roster/%d/bag" % int(first["id"]), {"items": ["c.pozione.0", "c.bomba.0"]})
 		await reload()
-	for tab in [[1, "menu_roster"], [2, "menu_negozio"], [3, "menu_clan"], [4, "menu_stagione"], [5, "menu_tornei"], [6, "menu_statistiche"], [7, "menu_bottega"]]:
+	for tab in [[1, "menu_roster"], [2, "menu_negozio"], [3, "menu_clan"], [4, "menu_stagione"], [5, "menu_tornei"], [6, "menu_statistiche"], [7, "menu_traguardi"], [8, "menu_bottega"]]:
 		_tabs.current_tab = tab[0]
 		await get_tree().create_timer(0.3).timeout
 		await main.shot(tab[1])
@@ -747,6 +754,10 @@ func autoplay_stats_shots() -> void:
 	for c in get_children():
 		if c is AcceptDialog:
 			c.hide()
+	_tabs.current_tab = 7
+	await _ach_view.refresh()
+	await get_tree().create_timer(0.5).timeout
+	await main.shot("traguardi")
 	_tabs.current_tab = 6
 	for s in StatsView.SECTIONS:
 		await _stats_view.show_section(s)

@@ -261,6 +261,11 @@ pub static REGIONS: [RegionDef; 5] = [
     },
 ];
 
+/// Numero totale di tappe della campagna.
+pub fn total_nodes() -> usize {
+    REGIONS.iter().map(|r| r.nodes.len()).sum()
+}
+
 pub fn find(key: &str) -> Option<(usize, usize)> {
     REGIONS
         .iter()

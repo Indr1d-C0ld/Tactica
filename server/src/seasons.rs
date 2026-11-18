@@ -264,6 +264,17 @@ pub async fn rollover_if_due(db: &SqlitePool, days: i64, at: i64) -> sqlx::Resul
         for (k, t) in titles.iter().enumerate() {
             award(&mut tx, *acc, t, season.id, if k == 0 { coins } else { 0 }).await?;
         }
+        // Traguardi di piazzamento.
+        for (limit, key) in [
+            (10, "season_top10"),
+            (3, "season_top3"),
+            (1, "season_first"),
+        ] {
+            if rank <= limit {
+                crate::achievements::peak(&mut tx, *acc, key, 1).await?;
+            }
+        }
+        crate::achievements::check(&mut tx, *acc).await?;
     }
 
     // Classifica clan e premio ai membri del clan vincitore.

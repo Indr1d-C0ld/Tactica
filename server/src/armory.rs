@@ -232,6 +232,12 @@ pub async fn buy(
     }
     db::add_item(&mut tx, user.id, item, 1).await?;
     tx.commit().await?;
+    crate::achievements::record(
+        &s.db,
+        user.id,
+        &[("bought", 1), ("coins_spent", item.price() as i64)],
+    )
+    .await;
     Ok(Json(load_inventory(&s, user.id).await?))
 }
 
@@ -251,6 +257,7 @@ pub async fn sell(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    crate::achievements::record(&s.db, user.id, &[("sold", 1)]).await;
     Ok(Json(load_inventory(&s, user.id).await?))
 }
 
@@ -352,6 +359,7 @@ pub async fn change_class(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
+    crate::achievements::record(&s.db, user.id, &[]).await;
     Ok(Json(owned_unit(&s, user.id, id).await?))
 }
 

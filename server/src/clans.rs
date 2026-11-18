@@ -279,6 +279,7 @@ pub async fn create(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    crate::achievements::record(&s.db, user.id, &[("clan_founded", 1)]).await;
     tracing::info!(clan = %name, by = %user.username, "clan fondato");
     detail(State(s), Path(c.tag.to_uppercase())).await
 }
@@ -323,6 +324,7 @@ pub async fn join(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    crate::achievements::record(&s.db, user.id, &[]).await;
     detail(State(s), Path(tag)).await
 }
 

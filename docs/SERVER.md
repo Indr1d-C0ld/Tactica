@@ -32,6 +32,7 @@ La configurazione si fa con variabili d'ambiente:
 | `TACTICA_WAR_MIN_PLAYERS` | `1` | giocatori minimi per lato in una guerra fra clan |
 | `TACTICA_AUTH_PER_MINUTE` | `30` | richieste di accesso o registrazione al minuto per indirizzo IP |
 | `TACTICA_REGISTER_PER_HOUR` | `5` | registrazioni all'ora per indirizzo IP |
+| `TACTICA_ACHIEVEMENT_COINS` | `1` | `0` spegne all'avvio le monete in premio per i traguardi (poi si riaccendono dal pannello admin) |
 | `TACTICA_TOURNAMENT_MATCH_HOURS` | `72` | ore per giocare un incontro di torneo prima che vada a tavolino |
 | `TACTICA_ADMINS` | (vuoto) | nomi utente amministratori, separati da virgole: lo diventano all'avvio (o alla registrazione, se l'account non esiste ancora) |
 | `RUST_LOG` | `info,sqlx=warn` | livello dei log |
@@ -399,6 +400,24 @@ Lo `snapshot` è lo stato pubblico completo: mappa, unità, statuti, turno, unit
   - **PvP:** l'ELO si aggiorna con K=32, a somma zero;
   - **esperienza:** a ogni unità del roster va quella guadagnata in battaglia, più 30 se vince o 10 negli altri casi.
 
+## Traguardi
+
+Oltre 200 traguardi in 15 categorie: battaglia, classi, popoli, crescita, abilità e status, bottino, economia, bottega, campagna, classificata e stagioni, clan (guerre e tornei), statuti, ambienti e viaggi, fedeltà e segreti. Il catalogo è in `server/src/achievements.rs`.
+
+- **Gradi e premi:** bronzo 25 monete, argento 75, oro 200, platino 500 più il titolo con il nome del traguardo.
+- **Segreti:** nome e descrizione restano «???» finché non si sbloccano.
+- **Come funzionano:** ogni traguardo è una soglia su un contatore dell'account (tabella `counters`). I contatori si aggiornano a fine partita, al negozio, alla bottega, alle reclute, nei clan, a fine torneo e a fine stagione; alcuni (monete, oggetti, livelli, padronanze, classi raggiunte, popoli, clan, campagna, ELO) si ricalcolano dal database a ogni controllo. I fatti di una partita (colpo più forte, status inflitti, rianimazioni, bottino per rarità, KO con una sola azione, danni della lava...) si ricavano rigiocando le azioni salvate.
+- **Rarità:** per ogni traguardo la percentuale di giocatori che l'hanno sbloccato.
+
+| Rotta | Descrizione |
+|---|---|
+| `GET /api/achievements` | catalogo con la rarità (segreti nascosti) |
+| `GET /api/me/achievements` 🔒 | il proprio libro: progressi, date di sblocco, monete guadagnate |
+| `POST /api/me/achievements/seen` 🔒 | segna come visti gli avvisi |
+| `GET /api/players/{name}/achievements` | i traguardi di un giocatore |
+
+`GET /api/me` riporta in `new_achievements` quelli sbloccati e non ancora mostrati, e in `achievements` quanti se ne hanno.
+
 ## Amministrazione
 
 Gli amministratori si indicano con `TACTICA_ADMINS` (nomi utente separati da virgole); dal pannello un admin può poi dare o togliere il ruolo ad altri, ma non a sé stesso. Nel client compare la scheda **Admin**. Tutte le rotte `/api/admin/*` rispondono 403 a chi non è admin, e ogni modifica finisce nel registro (`admin_log`).
@@ -432,7 +451,8 @@ Gli amministratori si indicano con `TACTICA_ADMINS` (nomi utente separati da vir
 - `maintenance`: solo gli admin avviano partite (coda, stanze, guerre, campagna); le partite in corso continuano;
 - `motd`: messaggio mostrato a tutti nel menu;
 - `start_coins`: monete dei nuovi account (400);
-- `coins_pct`, `xp_pct`: percentuale di monete ed esperienza di fine partita (100 = normale; utile per eventi).
+- `coins_pct`, `xp_pct`: percentuale di monete ed esperienza di fine partita (100 = normale; utile per eventi);
+- `achievement_coins`: monete in premio per i traguardi.
 
 ## Deploy su Debian
 

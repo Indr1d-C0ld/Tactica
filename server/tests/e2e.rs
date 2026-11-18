@@ -43,6 +43,9 @@ async fn start_with(tweak: impl FnOnce(&mut Config)) -> Server {
         register_per_hour: 1000,
         admins: vec!["boss".into()],
         tournament_match_hours: 72,
+        // I test sulle monete contano al centesimo: premi dei traguardi spenti,
+        // tranne nel test dei traguardi.
+        achievement_coins: false,
     };
     tweak(&mut config);
     let state = AppState::new(config).await.unwrap();
@@ -1821,7 +1824,7 @@ async fn admin_panel_and_history() {
             "/api/admin/settings",
             &boss,
             json!({"registrations_open": true, "maintenance": false, "motd": "Benvenuti!",
-                   "start_coins": 1000, "coins_pct": 200, "xp_pct": 100}),
+                   "start_coins": 1000, "coins_pct": 200, "xp_pct": 100, "achievement_coins": false}),
         )
         .await;
     assert_eq!(st, 200, "{set}");
@@ -1960,7 +1963,7 @@ async fn admin_panel_and_history() {
     srv.put(
         "/api/admin/settings",
         &boss,
-        json!({"registrations_open": false, "maintenance": true, "motd": "", "start_coins": 400, "coins_pct": 100, "xp_pct": 100}),
+        json!({"registrations_open": false, "maintenance": true, "motd": "", "start_coins": 400, "coins_pct": 100, "xp_pct": 100, "achievement_coins": false}),
     )
     .await;
     let mut ws = connect(&srv.ws, &pleb).await;
@@ -2394,4 +2397,91 @@ async fn tournament_deadlines_and_admin() {
     let (_, t) = srv.get(&format!("/api/tournaments/{t2}"), None).await;
     assert_eq!(t["status"], "done");
     assert_eq!(t["winner"], "DAIN");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn achievements_unlock_and_notify() {
+    let srv = start_with(|c| c.achievement_coins = true).await;
+    let (tok, units) = srv.player("cacciatore").await;
+    // Catalogo pubblico: ampio, con i segreti nascosti.
+    let (st, cat) = srv.get("/api/achievements", None).await;
+    assert_eq!(st, 200);
+    assert!(cat["total"].as_u64().unwrap() >= 120, "{}", cat["total"]);
+    let secret = cat["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["secret"] == true)
+        .unwrap();
+    assert_eq!(secret["name"], "???");
+
+    // Le 4 reclute di `player`: squadra di 4, alleanza con gli umani.
+    let (_, me) = srv.get("/api/me", Some(&tok)).await;
+    let new: Vec<String> = me["new_achievements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a["id"].as_str().unwrap().to_string())
+        .collect();
+    for id in ["squadra_4", "recluta_human"] {
+        assert!(new.contains(&id.to_string()), "manca {id} in {new:?}");
+    }
+    // Segnati come visti, non tornano.
+    assert_eq!(
+        srv.post("/api/me/achievements/seen", Some(&tok), json!({}))
+            .await
+            .0,
+        200
+    );
+    let (_, me) = srv.get("/api/me", Some(&tok)).await;
+    assert!(me["new_achievements"].as_array().unwrap().is_empty());
+
+    // Negozio: primo acquisto (con le monete del traguardo).
+    let coins_before = me["coins"].as_i64().unwrap();
+    let (st, _) = srv
+        .post("/api/shop/buy", Some(&tok), json!({"item": "c.pozione.0"}))
+        .await;
+    assert_eq!(st, 200);
+    let (_, me) = srv.get("/api/me", Some(&tok)).await;
+    assert!(
+        me["new_achievements"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["id"] == "compra_1")
+    );
+    assert!(
+        me["coins"].as_i64().unwrap() > coins_before - 40,
+        "premio in monete del traguardo"
+    );
+
+    // Una partita: «Primo sangue» e il libro dei traguardi con i progressi.
+    let ended = play(srv.ws.clone(), tok.clone(), Mode::Pve, units.clone(), None).await;
+    let ServerMsg::Ended { .. } = ended else {
+        panic!()
+    };
+    let (st, book) = srv.get("/api/me/achievements", Some(&tok)).await;
+    assert_eq!(st, 200, "{book}");
+    let entry = |id: &str| {
+        book["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == id)
+            .unwrap()
+            .clone()
+    };
+    assert!(entry("partite_1")["unlocked_at"].is_i64());
+    assert_eq!(entry("partite_10")["progress"], 1);
+    assert!(
+        entry("passi_100")["progress"].as_i64().unwrap() > 0,
+        "mosse contate dalla rigiocata"
+    );
+    assert!(book["unlocked"].as_u64().unwrap() >= 4);
+    let rare = entry("partite_1")["rarity"].as_f64().unwrap();
+    assert!(rare > 0.0);
+    // Il profilo pubblico mostra i traguardi di un giocatore.
+    let (st, other) = srv.get("/api/players/cacciatore/achievements", None).await;
+    assert_eq!(st, 200);
+    assert_eq!(other["unlocked"], book["unlocked"]);
 }

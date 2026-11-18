@@ -572,6 +572,7 @@ async fn finish(
         CHAMPION_COINS,
     )
     .await?;
+    achievements_for(conn, champion, &["tournament_final", "tournament_won"]).await?;
     if let Some(r) = runner_up {
         award_members(
             conn,
@@ -580,10 +581,31 @@ async fn finish(
             FINALIST_COINS,
         )
         .await?;
+        achievements_for(conn, r, &["tournament_final"]).await?;
     }
     let season = seasons::current(conn, 28).await?;
     seasons::add_clan_points(conn, &season, champion, CHAMPION_POINTS, true).await?;
     tracing::info!(tournament = tid, champion, "torneo concluso");
+    Ok(())
+}
+
+/// Traguardi di torneo per tutti i membri di un clan.
+async fn achievements_for(
+    conn: &mut SqliteConnection,
+    clan: i64,
+    keys: &[&str],
+) -> sqlx::Result<()> {
+    let members: Vec<i64> =
+        sqlx::query_scalar("SELECT account_id FROM clan_members WHERE clan_id = ?")
+            .bind(clan)
+            .fetch_all(&mut *conn)
+            .await?;
+    for acc in members {
+        for k in keys {
+            crate::achievements::peak(conn, acc, k, 1).await?;
+        }
+        crate::achievements::check(conn, acc).await?;
+    }
     Ok(())
 }
 

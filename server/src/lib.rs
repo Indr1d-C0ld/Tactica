@@ -2,6 +2,7 @@
 //! WebSocket, replay e statistiche personali/globali su SQLite (WAL).
 
 pub mod account;
+pub mod achievements;
 pub mod admin;
 pub mod api;
 pub mod armory;
@@ -72,7 +73,11 @@ impl AppState {
                 tracing::warn!(user = %name, "TACTICA_ADMINS: account non trovato (diventerà admin alla registrazione)");
             }
         }
-        let settings = settings::Settings::load(&db).await?;
+        let mut settings = settings::Settings::load(&db).await?;
+        if !config.achievement_coins && settings.achievement_coins {
+            settings.achievement_coins = false;
+            settings.save(&db).await?;
+        }
         let state = AppState {
             db,
             config: Arc::new(config),

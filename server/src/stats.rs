@@ -399,6 +399,41 @@ pub async fn save_match(
             crate::campaign::record_clear(&mut tx, acc, node, battle.turn() as i64).await?;
         }
     }
+    // Traguardi: fatti della partita (rigiocata) e controllo degli sblocchi.
+    for &i in &humans {
+        let Some(o) = &out[i] else { continue };
+        let acc = players[i].human().unwrap().account_id;
+        let level_ups: i64 = o
+            .rewards
+            .iter()
+            .map(|r| (r.level_after - r.level_before).max(0))
+            .sum();
+        crate::achievements::after_match(
+            &mut tx,
+            setup,
+            actions,
+            battle,
+            crate::achievements::Seat {
+                account: acc,
+                team: players[i].team,
+                units: &players[i].units,
+                result: o.result,
+                mode: mode.key(),
+                coins: o.coins,
+                elo_before: o.elo_before,
+                opponent_elo: opponent(i).map(|j| elo[j]),
+                ranked,
+                level_ups,
+                hunt: mission.is_some_and(|m| m.hunt),
+                difficulty: mission.map_or(0, |m| m.difficulty),
+            },
+        )
+        .await?;
+        if war.is_some_and(|w| w.tournament.is_some()) {
+            crate::achievements::bump(&mut tx, acc, "tournament_played", 1).await?;
+        }
+        crate::achievements::check(&mut tx, acc).await?;
+    }
     tx.commit().await?;
     Ok(SavedMatch {
         match_id,
