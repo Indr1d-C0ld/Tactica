@@ -99,7 +99,9 @@ Password: hash Argon2id. Token: nel database si salva solo il loro SHA-256.
 - per indirizzo IP, richieste di accesso o registrazione al minuto e registrazioni all'ora (variabili nella tabella sopra);
 - per nome utente, dopo 5 password sbagliate in 5 minuti l'accesso resta bloccato fino allo scadere dei 5 minuti, anche con la password giusta. Un accesso riuscito azzera il conteggio.
 
-L'indirizzo è quello della connessione. Se la connessione arriva da localhost, cioè da Caddy, conta il primo indirizzo di `X-Forwarded-For`. Caddy scarta quello inviato dal client e lo riscrive, quindi non si può falsificare.
+L'indirizzo è quello della connessione. Se la connessione arriva da localhost, cioè dal reverse proxy, conta l'**ultimo** indirizzo di `X-Forwarded-For`, quello aggiunto dal proxy: Caddy riscrive l'intestazione, Apache accoda il vero indirizzo a quello mandato dal client, quindi le voci precedenti (falsificabili) non contano.
+
+**Connessioni WebSocket:** il server manda un ping ogni 30 secondi, così i proxy (Apache chiude i tunnel inattivi dopo `Timeout`, 300 secondi di base) non chiudono chi resta nel menu.
 
 **Messaggi WebSocket:** al massimo 16 KB l'uno (oltre, la connessione si chiude). Ogni connessione ha 10 messaggi al secondo in media, con una scorta di 30 per i picchi (le mosse in partita non contano: la partita le elabora una per volta e valgono solo nel proprio turno); quelli in eccesso vengono scartati con l'avviso «troppi messaggi», e dopo 100 scarti la connessione si chiude.
 

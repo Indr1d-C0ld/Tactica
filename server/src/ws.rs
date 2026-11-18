@@ -26,6 +26,8 @@ pub struct WsQuery {
     pub v: Option<String>,
 }
 
+/// Ogni quanti secondi il server manda un ping sul WebSocket.
+const PING_SECS: u64 = 30;
 /// Dimensione massima di un messaggio dal client (i suoi sono di poche centinaia di byte).
 const MAX_MESSAGE: usize = 16 * 1024;
 /// Messaggi al secondo concessi in media a una connessione, e scorta per i picchi.
@@ -95,8 +97,16 @@ async fn connection(mut socket: WebSocket, state: AppState, user: AuthUser) {
     let mut tokens = MSG_BURST;
     let mut last = std::time::Instant::now();
     let mut dropped = 0u32;
+    // Ping periodico: i proxy (Apache: Timeout 300 s) chiudono i tunnel inattivi.
+    let mut ping = tokio::time::interval(std::time::Duration::from_secs(PING_SECS));
+    ping.tick().await;
     loop {
         tokio::select! {
+            _ = ping.tick() => {
+                if socket.send(Message::Ping(Vec::new().into())).await.is_err() {
+                    break;
+                }
+            }
             incoming = socket.recv() => {
                 let text = match incoming {
                     Some(Ok(Message::Text(t))) => t,

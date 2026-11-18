@@ -1475,6 +1475,26 @@ async fn auth_rate_limits() {
         .await
         .unwrap();
     assert_eq!(r.status().as_u16(), 200);
+    // Apache accoda il vero indirizzo a quello mandato dal client: conta l'ultimo,
+    // quindi cambiare l'indirizzo inventato davanti non aggira il limite (2 all'ora).
+    for (spoof, name, expect) in [
+        ("198.51.100.1", "quarto", 200),
+        ("198.51.100.2", "quinto", 429),
+    ] {
+        let r = s
+            .http
+            .post(format!("{}/api/register", s.base))
+            .header("x-forwarded-for", format!("{spoof}, 203.0.113.7"))
+            .json(&cred(name, "password1"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            r.status().as_u16(),
+            expect,
+            "il primo indirizzo non deve contare"
+        );
+    }
 
     // Password sbagliate: dopo 5 errori l'account è bloccato, anche con la password giusta.
     for _ in 0..5 {

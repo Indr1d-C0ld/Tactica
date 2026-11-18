@@ -28,7 +28,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ ${#TARGETS[@]} -gt 0 ] || TARGETS=(linux windows)
-[[ "$SERVER" =~ ^https?://[A-Za-z0-9.:-]+$ ]] || { echo "URL del server non valido: $SERVER" >&2; exit 1; }
+[[ "$SERVER" =~ ^https?://[A-Za-z0-9.:-]+(/[A-Za-z0-9._~/-]*)?$ ]] || { echo "URL del server non valido: $SERVER" >&2; exit 1; }
 [ -x "$GODOT_BIN" ] || { echo "motore Godot non trovato: $GODOT_BIN (imposta GODOT_BIN)" >&2; exit 1; }
 [ -f "$TEMPLATES/version.txt" ] || { echo "modelli di esportazione mancanti in $TEMPLATES" >&2; exit 1; }
 

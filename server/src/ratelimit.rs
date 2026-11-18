@@ -8,7 +8,10 @@
 //!   fino allo scadere della finestra (anche con la password giusta).
 //!
 //! L'IP è quello della connessione; se la connessione arriva da localhost
-//! (il reverse proxy Caddy) si usa il primo indirizzo di `X-Forwarded-For`.
+//! (il reverse proxy) si usa l'ULTIMO indirizzo di `X-Forwarded-For`: è quello
+//! aggiunto dal proxy. Caddy riscrive l'intestazione (un solo indirizzo),
+//! Apache invece accoda il suo a quello mandato dal client, che quindi non
+//! conta: le voci precedenti si possono falsificare.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -64,7 +67,7 @@ pub fn too_many() -> ApiError {
     )
 }
 
-/// Indirizzo del client, con fiducia in `X-Forwarded-For` solo da localhost.
+/// Indirizzo del client, con fiducia in `X-Forwarded-For` (ultima voce) solo da localhost.
 pub struct ClientIp(pub String);
 
 impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
@@ -79,7 +82,7 @@ impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
             .headers
             .get("x-forwarded-for")
             .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.split(',').next())
+            .and_then(|v| v.rsplit(',').next())
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty());
         let ip = match (peer, forwarded) {
