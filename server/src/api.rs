@@ -19,6 +19,7 @@ use crate::{clans, seasons, tournaments, wars};
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/health", get(|| async { "ok" }))
+        .route("/api/version", get(crate::version::info))
         .route("/api/register", post(auth::register))
         .route("/api/login", post(auth::login))
         .route("/api/logout", post(auth::logout))
@@ -68,6 +69,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/seasons/{number}", get(season_by_number))
         .route("/ws", get(ws::upgrade))
         .merge(crate::admin::routes())
+        .merge(crate::account::routes())
         .merge(crate::history::routes())
 }
 

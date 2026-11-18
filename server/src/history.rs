@@ -400,14 +400,14 @@ async fn personal(db: &SqlitePool, id: i64) -> sqlx::Result<MyStats> {
     .fetch_one(db)
     .await?;
     let accuracy: f64 = sqlx::query_scalar(
-        "SELECT COALESCE(1.0 - CAST(SUM(misses) AS REAL) / NULLIF(SUM(actions), 0), 0) FROM match_units WHERE account_id = ?",
+        "SELECT COALESCE(1.0 - CAST(SUM(misses) AS REAL) / NULLIF(SUM(actions), 0), 0.0) FROM match_units WHERE account_id = ?",
     )
     .bind(id)
     .fetch_one(db)
     .await?;
     let modes = sqlx::query_as::<_, (String, i64, i64, i64, i64, f64, i64)>(
         "SELECT m.mode, COUNT(*), SUM(p.result = 'win'), SUM(p.result = 'loss'), SUM(p.result = 'draw'),
-                AVG(m.turns), SUM(p.coins)
+                COALESCE(AVG(m.turns), 0.0), SUM(p.coins)
          FROM match_players p JOIN matches m ON m.id = p.match_id
          WHERE p.account_id = ? GROUP BY m.mode ORDER BY COUNT(*) DESC",
     )
@@ -443,7 +443,7 @@ async fn personal(db: &SqlitePool, id: i64) -> sqlx::Result<MyStats> {
     let units = sqlx::query_as::<_, (String, String, String, i64, i64, i64, i64, i64, f64, i64)>(
         "SELECT r.name, r.class, r.people, r.level, COUNT(u.match_id), COALESCE(SUM(u.kills), 0),
                 COALESCE(SUM(u.damage_dealt), 0), COALESCE(SUM(u.healing_done), 0),
-                COALESCE(AVG(u.survived), 0), COALESCE(SUM(u.xp_gained), 0)
+                COALESCE(AVG(u.survived), 0.0), COALESCE(SUM(u.xp_gained), 0)
          FROM roster r LEFT JOIN match_units u ON u.roster_id = r.id
          WHERE r.account_id = ? GROUP BY r.id ORDER BY COUNT(u.match_id) DESC, r.id",
     )
@@ -538,7 +538,7 @@ async fn trends(State(s): State<AppState>) -> ApiResult<Json<Trends>> {
         });
     }
     let modes = sqlx::query_as::<_, (String, i64, f64)>(
-        "SELECT m.mode, COUNT(DISTINCT m.id), AVG(p.result = 'win')
+        "SELECT m.mode, COUNT(DISTINCT m.id), COALESCE(AVG(p.result = 'win'), 0.0)
          FROM matches m LEFT JOIN match_players p ON p.match_id = m.id GROUP BY m.mode ORDER BY 2 DESC",
     )
     .fetch_all(db)
@@ -551,7 +551,7 @@ async fn trends(State(s): State<AppState>) -> ApiResult<Json<Trends>> {
     })
     .collect();
     let peoples = sqlx::query_as::<_, (String, i64, f64)>(
-        "SELECT r.people, COUNT(*), AVG(m.winner_team IS NOT NULL AND m.winner_team = u.team)
+        "SELECT r.people, COUNT(*), COALESCE(AVG(m.winner_team IS NOT NULL AND m.winner_team = u.team), 0.0)
          FROM match_units u JOIN roster r ON r.id = u.roster_id JOIN matches m ON m.id = u.match_id
          GROUP BY r.people ORDER BY 2 DESC",
     )
@@ -565,7 +565,7 @@ async fn trends(State(s): State<AppState>) -> ApiResult<Json<Trends>> {
     })
     .collect();
     let (avg_turns, avg_secs): (f64, f64) = sqlx::query_as(
-        "SELECT COALESCE(AVG(turns), 0), COALESCE(AVG(ended_at - started_at), 0) FROM matches",
+        "SELECT COALESCE(AVG(turns), 0.0), COALESCE(AVG(ended_at - started_at), 0.0) FROM matches",
     )
     .fetch_one(db)
     .await?;

@@ -10,6 +10,8 @@
 //! - Alla finale: titoli e monete ai membri di campioni e finalisti, punti
 //!   stagionali al clan campione.
 
+#![allow(clippy::type_complexity)]
+
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -111,6 +113,10 @@ pub struct BracketMatch {
     war_status: Option<String>,
     winner: Option<String>,
     bye: bool,
+    /// Scadenza per giocare l'incontro (secondi Unix).
+    deadline: Option<i64>,
+    /// "forfeit" (a tavolino per scadenza) o "admin"; assente se giocato.
+    decided_by: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -145,8 +151,10 @@ pub async fn detail(State(s): State<AppState>, Path(id): Path<i64>) -> ApiResult
     .into_iter()
     .map(|(tag, name, rating, seed)| Entry { tag, name, rating, seed })
     .collect();
-    let matches: Vec<BracketMatch> = sqlx::query_as::<_, (i64, i64, Option<String>, Option<String>, Option<i64>, Option<String>, Option<String>, bool)>(
-        "SELECT m.round, m.slot, a.tag, b.tag, m.war_id, w.status, x.tag, m.clan_b IS NULL AND m.clan_a IS NOT NULL
+    #[allow(clippy::type_complexity)]
+    let matches: Vec<BracketMatch> = sqlx::query_as::<_, (i64, i64, Option<String>, Option<String>, Option<i64>, Option<String>, Option<String>, bool, Option<i64>, Option<String>)>(
+        "SELECT m.round, m.slot, a.tag, b.tag, m.war_id, w.status, x.tag, m.clan_b IS NULL AND m.clan_a IS NOT NULL,
+                m.deadline, m.decided_by
          FROM tournament_matches m
          LEFT JOIN clans a ON a.id = m.clan_a LEFT JOIN clans b ON b.id = m.clan_b
          LEFT JOIN clans x ON x.id = m.winner_clan LEFT JOIN clan_wars w ON w.id = m.war_id
@@ -156,16 +164,20 @@ pub async fn detail(State(s): State<AppState>, Path(id): Path<i64>) -> ApiResult
     .fetch_all(&s.db)
     .await?
     .into_iter()
-    .map(|(round, slot, a, b, war_id, war_status, winner, bye)| BracketMatch {
-        round,
-        slot,
-        a,
-        b,
-        war_id,
-        war_status,
-        winner,
-        bye,
-    })
+    .map(
+        |(round, slot, a, b, war_id, war_status, winner, bye, deadline, decided_by)| BracketMatch {
+            round,
+            slot,
+            a,
+            b,
+            war_id,
+            war_status,
+            winner,
+            bye,
+            deadline,
+            decided_by,
+        },
+    )
     .collect();
     let rounds = matches.iter().map(|m| m.round).max().unwrap_or(0);
     let size: i64 =
@@ -225,14 +237,15 @@ pub async fn create(
     }
     let mut tx = s.db.begin().await?;
     let id = sqlx::query(
-        "INSERT INTO tournaments (name, creator_clan, max_clans, status, created_at, updated_at)
-         VALUES (?, ?, ?, 'signup', ?, ?)",
+        "INSERT INTO tournaments (name, creator_clan, max_clans, status, created_at, updated_at, match_hours)
+         VALUES (?, ?, ?, 'signup', ?, ?, ?)",
     )
     .bind(&name)
     .bind(me.clan_id)
     .bind(c.max_clans)
     .bind(now())
     .bind(now())
+    .bind(s.config.tournament_match_hours)
     .execute(&mut *tx)
     .await?
     .last_insert_rowid();
@@ -424,9 +437,14 @@ async fn create_match(
         (None, Some(b)) => (None, Some(b)),
         (None, None) => (None, None),
     };
+    let hours: i64 = sqlx::query_scalar("SELECT match_hours FROM tournaments WHERE id = ?")
+        .bind(tid)
+        .fetch_one(&mut *conn)
+        .await?;
+    let deadline = war.map(|_| now() + hours * 3600);
     sqlx::query(
-        "INSERT INTO tournament_matches (tournament_id, round, slot, clan_a, clan_b, war_id, winner_clan)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO tournament_matches (tournament_id, round, slot, clan_a, clan_b, war_id, winner_clan, deadline)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(tid)
     .bind(round)
@@ -435,6 +453,7 @@ async fn create_match(
     .bind(b)
     .bind(war)
     .bind(winner)
+    .bind(deadline)
     .execute(conn)
     .await?;
     Ok(())
@@ -449,6 +468,14 @@ pub async fn on_war_done(
     clans: [i64; 2],
     ratings_before: [i64; 2],
 ) -> sqlx::Result<()> {
+    // Torneo annullato nel frattempo (da un admin): la guerra conta, il tabellone no.
+    let status: Option<String> = sqlx::query_scalar("SELECT status FROM tournaments WHERE id = ?")
+        .bind(tid)
+        .fetch_optional(&mut *conn)
+        .await?;
+    if status.as_deref() != Some("running") {
+        return Ok(());
+    }
     // Pareggio: passa il clan con ELO più alto prima della guerra (a parità, lo sfidante).
     let advancing = winner.unwrap_or(if ratings_before[1] > ratings_before[0] {
         clans[1]
@@ -585,6 +612,137 @@ async fn award_members(
             .await?;
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------- scadenze e decisioni
+
+/// Assegna un incontro non ancora deciso: chiude la guerra (senza partita) e
+/// fa avanzare il vincitore. `how` = "forfeit" o "admin".
+pub async fn decide(
+    conn: &mut SqliteConnection,
+    tid: i64,
+    round: i64,
+    slot: i64,
+    winner: i64,
+    how: &str,
+) -> sqlx::Result<bool> {
+    let row: Option<(Option<i64>, Option<i64>, Option<i64>, Option<i64>)> = sqlx::query_as(
+        "SELECT clan_a, clan_b, war_id, winner_clan FROM tournament_matches
+         WHERE tournament_id = ? AND round = ? AND slot = ?",
+    )
+    .bind(tid)
+    .bind(round)
+    .bind(slot)
+    .fetch_optional(&mut *conn)
+    .await?;
+    let Some((a, b, war, done)) = row else {
+        return Ok(false);
+    };
+    if done.is_some() || (Some(winner) != a && Some(winner) != b) {
+        return Ok(false);
+    }
+    if let Some(w) = war {
+        sqlx::query(
+            "UPDATE clan_wars SET status = 'cancelled', updated_at = ? WHERE id = ? AND status IN ('pending', 'accepted')",
+        )
+        .bind(now())
+        .bind(w)
+        .execute(&mut *conn)
+        .await?;
+    }
+    sqlx::query(
+        "UPDATE tournament_matches SET winner_clan = ?, decided_by = ?
+         WHERE tournament_id = ? AND round = ? AND slot = ?",
+    )
+    .bind(winner)
+    .bind(how)
+    .bind(tid)
+    .bind(round)
+    .bind(slot)
+    .execute(&mut *conn)
+    .await?;
+    advance(conn, tid).await?;
+    Ok(true)
+}
+
+/// Incontri scaduti: vince il clan che si è presentato allo schieramento; se
+/// non c'è nessuno o ci sono entrambi, passa il clan con l'ELO più alto (a
+/// parità, il primo). Una guerra in corso non scade; con entrambi i clan
+/// schierati la scadenza slitta di un'ora. Restituisce gli incontri decisi.
+pub async fn expire_due(s: &AppState) -> anyhow::Result<usize> {
+    let t = now();
+    // Incontri creati prima delle scadenze: ne ricevono una da adesso.
+    sqlx::query(
+        "UPDATE tournament_matches SET deadline = ? + 3600 * (SELECT match_hours FROM tournaments t WHERE t.id = tournament_id)
+         WHERE deadline IS NULL AND winner_clan IS NULL AND war_id IS NOT NULL",
+    )
+    .bind(t)
+    .execute(&s.db)
+    .await?;
+    let due: Vec<(i64, i64, i64, i64, i64, i64, String, i64, i64)> = sqlx::query_as(
+        "SELECT m.tournament_id, m.round, m.slot, m.clan_a, m.clan_b, m.war_id, w.status, ca.rating, cb.rating
+         FROM tournament_matches m
+         JOIN tournaments t ON t.id = m.tournament_id AND t.status = 'running'
+         JOIN clan_wars w ON w.id = m.war_id
+         JOIN clans ca ON ca.id = m.clan_a JOIN clans cb ON cb.id = m.clan_b
+         WHERE m.winner_clan IS NULL AND m.deadline IS NOT NULL AND m.deadline <= ?",
+    )
+    .bind(t)
+    .fetch_all(&s.db)
+    .await?;
+    let mut decided = 0;
+    for (tid, round, slot, a, b, war, status, ra, rb) in due {
+        if status == "live" {
+            continue;
+        }
+        let present = {
+            let lobby = s.lobby.lock().unwrap();
+            lobby
+                .war_room(war)
+                .map(|r| [!r.sides[0].is_empty(), !r.sides[1].is_empty()])
+                .unwrap_or([false, false])
+        };
+        if present == [true, true] {
+            sqlx::query(
+                "UPDATE tournament_matches SET deadline = ? WHERE tournament_id = ? AND round = ? AND slot = ?",
+            )
+            .bind(t + 3600)
+            .bind(tid)
+            .bind(round)
+            .bind(slot)
+            .execute(&s.db)
+            .await?;
+            continue;
+        }
+        let winner = match present {
+            [true, false] => a,
+            [false, true] => b,
+            _ if rb > ra => b,
+            _ => a,
+        };
+        let mut tx = s.db.begin().await?;
+        if decide(&mut tx, tid, round, slot, winner, "forfeit").await? {
+            decided += 1;
+            tracing::info!(
+                tournament = tid,
+                round,
+                slot,
+                winner,
+                "incontro di torneo assegnato a tavolino"
+            );
+        }
+        tx.commit().await?;
+        if let Some(room) = s.lobby.lock().unwrap().close_war_room(war) {
+            for side in &room.sides {
+                for m in side {
+                    m.send(crate::protocol::ServerMsg::Error {
+                        message: "incontro di torneo scaduto: assegnato a tavolino".into(),
+                    });
+                }
+            }
+        }
+    }
+    Ok(decided)
 }
 
 #[cfg(test)]

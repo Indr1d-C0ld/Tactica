@@ -448,6 +448,12 @@ impl TacticaEngine {
             .map_or(GString::new(), |b| gs(b.map.biome.name()))
     }
 
+    /// Versione di compatibilità con il server (regole.protocollo).
+    #[func]
+    fn compat_version() -> GString {
+        gs(tactica_core::compat_version())
+    }
+
     /// Popoli giocabili: `[{"key","name","traits"}]`.
     #[func]
     fn peoples_json() -> GString {

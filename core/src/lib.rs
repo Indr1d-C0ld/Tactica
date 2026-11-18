@@ -26,6 +26,16 @@ pub mod unit;
 /// 4: bottino dalle unità sconfitte, effetti degli oggetti generati, mappe più grandi con forme del terreno.
 pub const RULES_VERSION: u32 = 4;
 
+/// Versione del protocollo client-server (messaggi, snapshot, rotte usate
+/// dal client): cambia quando un client vecchio non funzionerebbe più.
+pub const PROTOCOL_VERSION: u32 = 1;
+
+/// Versione di compatibilità che client e server devono condividere:
+/// `regole.protocollo` (es. "4.1").
+pub fn compat_version() -> String {
+    format!("{RULES_VERSION}.{PROTOCOL_VERSION}")
+}
+
 pub use battle::{
     Action, ActionError, Battle, BattleSetup, Event, LootDrop, LootRules, Objective, Snapshot,
 };

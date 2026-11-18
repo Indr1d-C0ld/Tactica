@@ -126,8 +126,10 @@ Il pacchetto Windows è stato provato con Wine, offline e contro un server local
     - **Le mie partite:** storico filtrabile per modalità, a pagine, con esito, variazione ELO, monete e avversari; «Dettagli» apre il riepilogo unità per unità (danni inflitti e subiti, cure, KO, colpi a segno, violazioni);
     - **Classifica:** i primi 50 per ELO;
     - **Mondo:** grafici delle partite e dei nuovi giocatori negli ultimi 30 giorni, modalità, popoli, classi, ambienti e statuti.
-  - **Admin** (solo amministratori): panoramica del server, utenti (ricerca, sospensione, monete, password, disconnessione, ruolo), connessioni aperte, ultime partite, impostazioni di gioco, chiusura anticipata della stagione, backup e registro delle azioni.
+  - **Admin** (solo amministratori): panoramica del server, utenti (ricerca, sospensione, monete, password, disconnessione, ruolo), connessioni aperte, ultime partite, tornei (annullamento, assegnazione di un incontro, proroga e applicazione delle scadenze), impostazioni di gioco, chiusura anticipata della stagione, backup e registro delle azioni.
   - **Avvisi:** sotto l'intestazione compaiono il messaggio del giorno e l'avviso di manutenzione.
+  - **Account** (pulsante in alto): cambio della password (le altre sessioni si chiudono) e cancellazione dell'account, con password e conferma.
+- **Versione:** il client manda al server la sua versione di compatibilità (mostrata nella schermata d'accesso); se il server ne richiede un'altra, l'accesso spiega di scaricare l'ultima versione.
 
 ![Statistiche](img/statistiche_profilo.png)
 ![Riepilogo di una partita](img/statistiche_dettaglio.png)

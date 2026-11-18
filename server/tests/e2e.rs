@@ -42,6 +42,7 @@ async fn start_with(tweak: impl FnOnce(&mut Config)) -> Server {
         auth_per_minute: 1000,
         register_per_hour: 1000,
         admins: vec!["boss".into()],
+        tournament_match_hours: 72,
     };
     tweak(&mut config);
     let state = AppState::new(config).await.unwrap();
@@ -2013,4 +2014,364 @@ async fn admin_panel_and_history() {
     ] {
         assert!(actions.contains(&a), "manca {a} in {actions:?}");
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn version_account_and_ws_limits() {
+    let srv = start().await;
+    // Versione: quella giusta passa, una diversa riceve 426.
+    let (st, v) = srv.get("/api/version", None).await;
+    assert_eq!(st, 200);
+    let version = v["version"].as_str().unwrap().to_string();
+    assert_eq!(version, tactica_core::compat_version());
+    let ok = srv
+        .http
+        .get(format!("{}/api/leaderboard", srv.base))
+        .header("X-Tactica-Version", &version)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ok.status().as_u16(), 200);
+    let old = srv
+        .http
+        .get(format!("{}/api/leaderboard", srv.base))
+        .header("X-Tactica-Version", "0.0")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(old.status().as_u16(), 426);
+    let body: Value = old.json().await.unwrap();
+    assert!(
+        body["error"].as_str().unwrap().contains("ultima versione"),
+        "{body}"
+    );
+
+    let (token, units) = srv.player("conto").await;
+    // Statistiche di chi non ha ancora giocato: vuote, non un errore.
+    let (st, ms) = srv.get("/api/me/stats", Some(&token)).await;
+    assert_eq!(st, 200, "{ms}");
+    assert_eq!(ms["played"], 0);
+    assert_eq!(ms["units"].as_array().unwrap().len(), 4);
+    let (st, h) = srv.get("/api/me/matches", Some(&token)).await;
+    assert_eq!(st, 200, "{h}");
+    let (st, tr) = srv.get("/api/stats/trends", None).await;
+    assert_eq!(st, 200, "{tr}");
+    assert!(
+        connect_async(format!("{}?token={token}&v=0.0", srv.ws))
+            .await
+            .is_err(),
+        "un client vecchio non deve aprire il WebSocket"
+    );
+
+    // Cambio della password: serve quella attuale; le vecchie sessioni si chiudono.
+    let res = srv
+        .http
+        .put(format!("{}/api/me/password", srv.base))
+        .bearer_auth(&token)
+        .json(&json!({"old": "sbagliata", "new": "nuova-password"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status().as_u16(), 403);
+    let (st, s) = srv
+        .put(
+            "/api/me/password",
+            &token,
+            json!({"old": "password-lunga", "new": "nuova-password"}),
+        )
+        .await;
+    assert_eq!(st, 200, "{s}");
+    let token2 = s["token"].as_str().unwrap().to_string();
+    assert_eq!(srv.get("/api/me", Some(&token)).await.0, 401);
+    assert_eq!(srv.get("/api/me", Some(&token2)).await.0, 200);
+    let (st, _) = srv
+        .post(
+            "/api/login",
+            None,
+            json!({"username": "conto", "password": "nuova-password"}),
+        )
+        .await;
+    assert_eq!(st, 200);
+
+    // Troppi messaggi: avviso e poi chiusura della connessione.
+    let mut ws = connect(&srv.ws, &token2).await;
+    for _ in 0..200 {
+        if ws.send(text(ClientMsg::Cancel)).await.is_err() {
+            break;
+        }
+    }
+    let mut warned = false;
+    let closed = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match ws.next().await {
+                None | Some(Err(_)) | Some(Ok(Message::Close(_))) => return,
+                Some(Ok(Message::Text(t))) => {
+                    if t.as_str().contains("troppi messaggi") {
+                        warned = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+    })
+    .await;
+    assert!(closed.is_ok() && warned, "avviso e chiusura attesi");
+    // Un messaggio enorme chiude la connessione.
+    let mut ws = connect(&srv.ws, &token2).await;
+    let _ = ws.send(Message::text("x".repeat(40_000))).await;
+    let closed = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match ws.next().await {
+                None | Some(Err(_)) | Some(Ok(Message::Close(_))) => return,
+                _ => {}
+            }
+        }
+    })
+    .await;
+    assert!(
+        closed.is_ok(),
+        "messaggio troppo grande: connessione chiusa"
+    );
+
+    // Cancellazione dell'account: il clan rimasto vuoto si scioglie.
+    let (st, c) = srv
+        .post(
+            "/api/clans",
+            Some(&token2),
+            json!({"name": "Solitari", "tag": "SOLO", "motto": ""}),
+        )
+        .await;
+    assert_eq!(st, 200, "{c}");
+    let res = srv
+        .http
+        .delete(format!("{}/api/me", srv.base))
+        .bearer_auth(&token2)
+        .json(&json!({"password": "sbagliata"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status().as_u16(), 403);
+    let res = srv
+        .http
+        .delete(format!("{}/api/me", srv.base))
+        .bearer_auth(&token2)
+        .json(&json!({"password": "nuova-password"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status().as_u16(), 200);
+    let (st, _) = srv
+        .post(
+            "/api/login",
+            None,
+            json!({"username": "conto", "password": "nuova-password"}),
+        )
+        .await;
+    assert_eq!(st, 401);
+    let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM roster WHERE id = ?")
+        .bind(units[0])
+        .fetch_one(&srv.db)
+        .await
+        .unwrap();
+    assert_eq!(left, 0);
+    let (st, _) = srv.get("/api/clans/SOLO", None).await;
+    assert_eq!(st, 404);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn tournament_deadlines_and_admin() {
+    let srv = start().await;
+    let (boss, _) = srv.player("boss").await;
+    let mut players = Vec::new();
+    for (name, clan, tag) in [
+        ("anna", "Aironi", "AIRO"),
+        ("bruno", "Bufali", "BUFA"),
+        ("ciro", "Cigni", "CIGN"),
+        ("dora", "Daini", "DAIN"),
+    ] {
+        let (tok, units) = srv.player(name).await;
+        assert_eq!(
+            srv.post("/api/clans", Some(&tok), json!({"name": clan, "tag": tag}))
+                .await
+                .0,
+            200
+        );
+        players.push((tok, units, tag));
+    }
+    let (st, t) = srv
+        .post(
+            "/api/tournaments",
+            Some(&players[0].0),
+            json!({"name": "Coppa delle Scadenze", "max_clans": 4}),
+        )
+        .await;
+    assert_eq!(st, 200, "{t}");
+    let tid = t["id"].as_i64().unwrap();
+    for p in &players[1..] {
+        assert_eq!(
+            srv.post(
+                &format!("/api/tournaments/{tid}/join"),
+                Some(&p.0),
+                json!({})
+            )
+            .await
+            .0,
+            200
+        );
+    }
+    let (st, t) = srv
+        .post(
+            &format!("/api/tournaments/{tid}/start"),
+            Some(&players[0].0),
+            json!({}),
+        )
+        .await;
+    assert_eq!(st, 200, "{t}");
+    let m0 = t["matches"][0].clone();
+    assert!(m0["deadline"].as_i64().unwrap() > tactica_server::db::now() + 71 * 3600);
+
+    // Incontro 0 scaduto: si presenta solo il clan B dell'incontro, che vince a tavolino.
+    let tag_b = m0["b"].as_str().unwrap().to_string();
+    let p_b = players.iter().find(|p| p.2 == tag_b).unwrap();
+    let war = m0["war_id"].as_i64().unwrap();
+    let mut ws = connect(&srv.ws, &p_b.0).await;
+    ws.send(text(ClientMsg::WarJoin {
+        war,
+        units: p_b.1.clone(),
+    }))
+    .await
+    .unwrap();
+    loop {
+        if let ServerMsg::WarRoom { .. } = next_msg(&mut ws).await {
+            break;
+        }
+    }
+    sqlx::query("UPDATE tournament_matches SET deadline = 1 WHERE tournament_id = ? AND round = 1 AND slot = 0")
+        .bind(tid)
+        .execute(&srv.db)
+        .await
+        .unwrap();
+    let (st, _) = srv
+        .post(
+            "/api/admin/tournaments/expire",
+            Some(&players[0].0),
+            json!({}),
+        )
+        .await;
+    assert_eq!(st, 403, "solo gli admin");
+    let (st, e) = srv
+        .post("/api/admin/tournaments/expire", Some(&boss), json!({}))
+        .await;
+    assert_eq!(st, 200, "{e}");
+    assert_eq!(e["decided"], 1);
+    let (_, t) = srv.get(&format!("/api/tournaments/{tid}"), None).await;
+    assert_eq!(t["matches"][0]["winner"].as_str(), Some(tag_b.as_str()));
+    assert_eq!(t["matches"][0]["decided_by"], "forfeit");
+    assert_eq!(t["matches"][0]["war_status"], "cancelled");
+
+    // Incontro 1 assegnato dall'admin: si crea la finale.
+    let m1 = t["matches"][1].clone();
+    let tag_a1 = m1["a"].as_str().unwrap().to_string();
+    let (st, r) = srv
+        .post(
+            &format!("/api/admin/tournaments/{tid}/matches/1/1/winner"),
+            Some(&boss),
+            json!({"tag": "XXXX"}),
+        )
+        .await;
+    assert_eq!(st, 400, "{r}");
+    let (st, r) = srv
+        .post(
+            &format!("/api/admin/tournaments/{tid}/matches/1/1/winner"),
+            Some(&boss),
+            json!({"tag": tag_a1}),
+        )
+        .await;
+    assert_eq!(st, 200, "{r}");
+    let (_, t) = srv.get(&format!("/api/tournaments/{tid}"), None).await;
+    let fin = t["matches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["round"] == 2)
+        .unwrap()
+        .clone();
+    assert_eq!(t["matches"][1]["decided_by"], "admin");
+    let before = fin["deadline"].as_i64().unwrap();
+
+    // Proroga e annullamento.
+    let (st, _) = srv
+        .post(
+            &format!("/api/admin/tournaments/{tid}/extend"),
+            Some(&boss),
+            json!({"hours": 24}),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let (_, t) = srv.get(&format!("/api/tournaments/{tid}"), None).await;
+    let fin = t["matches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["round"] == 2)
+        .unwrap()
+        .clone();
+    assert_eq!(fin["deadline"].as_i64().unwrap(), before + 24 * 3600);
+    let (_, list) = srv.get("/api/admin/tournaments", Some(&boss)).await;
+    assert_eq!(list[0]["pending"].as_array().unwrap().len(), 1);
+    let (st, _) = srv
+        .post(
+            &format!("/api/admin/tournaments/{tid}/cancel"),
+            Some(&boss),
+            json!({}),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let (_, t) = srv.get(&format!("/api/tournaments/{tid}"), None).await;
+    assert_eq!(t["status"], "cancelled");
+    let fin_war = fin["war_id"].as_i64().unwrap();
+    let st: String = sqlx::query_scalar("SELECT status FROM clan_wars WHERE id = ?")
+        .bind(fin_war)
+        .fetch_one(&srv.db)
+        .await
+        .unwrap();
+    assert_eq!(st, "cancelled");
+
+    // Torneo a due senza nessuno schierato: passa il clan con l'ELO più alto e il torneo si chiude.
+    sqlx::query("UPDATE clans SET rating = 1200 WHERE tag = 'DAIN'")
+        .execute(&srv.db)
+        .await
+        .unwrap();
+    let (_, t2) = srv
+        .post(
+            "/api/tournaments",
+            Some(&players[2].0),
+            json!({"name": "Sfida a due", "max_clans": 2}),
+        )
+        .await;
+    let t2 = t2["id"].as_i64().unwrap();
+    srv.post(
+        &format!("/api/tournaments/{t2}/join"),
+        Some(&players[3].0),
+        json!({}),
+    )
+    .await;
+    let (st, _) = srv
+        .post(
+            &format!("/api/tournaments/{t2}/start"),
+            Some(&players[2].0),
+            json!({}),
+        )
+        .await;
+    assert_eq!(st, 200);
+    sqlx::query("UPDATE tournament_matches SET deadline = 1 WHERE tournament_id = ?")
+        .bind(t2)
+        .execute(&srv.db)
+        .await
+        .unwrap();
+    srv.post("/api/admin/tournaments/expire", Some(&boss), json!({}))
+        .await;
+    let (_, t) = srv.get(&format!("/api/tournaments/{t2}"), None).await;
+    assert_eq!(t["status"], "done");
+    assert_eq!(t["winner"], "DAIN");
 }

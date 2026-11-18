@@ -21,17 +21,32 @@ pub const MAX_PARTY: usize = 4;
 #[derive(Deserialize)]
 pub struct WsQuery {
     pub token: String,
+    /// Versione del client (vedi `version::check`); assente per strumenti e test.
+    #[serde(default)]
+    pub v: Option<String>,
 }
+
+/// Dimensione massima di un messaggio dal client (i suoi sono di poche centinaia di byte).
+const MAX_MESSAGE: usize = 16 * 1024;
+/// Messaggi al secondo concessi in media a una connessione, e scorta per i picchi.
+const MSG_PER_SEC: f64 = 10.0;
+const MSG_BURST: f64 = 30.0;
+/// Messaggi scartati per eccesso oltre i quali la connessione viene chiusa.
+const MAX_DROPPED: u32 = 100;
 
 pub async fn upgrade(
     ws: WebSocketUpgrade,
     Query(q): Query<WsQuery>,
     State(state): State<AppState>,
 ) -> ApiResult<Response> {
+    crate::version::check(q.v.as_deref())?;
     let user = user_for_token(&state.db, &q.token)
         .await?
         .ok_or_else(ApiError::unauthorized)?;
-    Ok(ws.on_upgrade(move |socket| connection(socket, state, user)))
+    Ok(ws
+        .max_message_size(MAX_MESSAGE)
+        .max_frame_size(MAX_MESSAGE)
+        .on_upgrade(move |socket| connection(socket, state, user)))
 }
 
 struct Conn {
@@ -76,6 +91,10 @@ async fn connection(mut socket: WebSocket, state: AppState, user: AuthUser) {
         username: conn.user.username.clone(),
     });
 
+    // Secchio di gettoni: ogni messaggio ne consuma uno, si ricaricano col tempo.
+    let mut tokens = MSG_BURST;
+    let mut last = std::time::Instant::now();
+    let mut dropped = 0u32;
     loop {
         tokio::select! {
             incoming = socket.recv() => {
@@ -84,7 +103,27 @@ async fn connection(mut socket: WebSocket, state: AppState, user: AuthUser) {
                     Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
                     Some(Ok(_)) => continue,
                 };
-                match serde_json::from_str::<ClientMsg>(text.as_str()) {
+                let parsed = serde_json::from_str::<ClientMsg>(text.as_str());
+                // Le mosse in partita non contano: la partita le elabora una
+                // per volta (canale limitato) e valgono solo nel proprio turno.
+                if !matches!(parsed, Ok(ClientMsg::Action { .. })) {
+                    let now = std::time::Instant::now();
+                    tokens = (tokens + now.duration_since(last).as_secs_f64() * MSG_PER_SEC).min(MSG_BURST);
+                    last = now;
+                    if tokens < 1.0 {
+                        dropped += 1;
+                        if dropped == 1 || dropped.is_multiple_of(20) {
+                            conn.error("troppi messaggi: rallenta");
+                        }
+                        if dropped >= MAX_DROPPED {
+                            tracing::warn!(user = %conn.user.username, "connessione chiusa: troppi messaggi");
+                            break;
+                        }
+                        continue;
+                    }
+                    tokens -= 1.0;
+                }
+                match parsed {
                     Ok(msg) => handle(&state, &mut conn, msg).await,
                     Err(e) => conn.error(format!("messaggio non valido: {e}")),
                 }

@@ -6,7 +6,7 @@ extends VBoxContainer
 const UI := preload("res://scripts/ui.gd")
 const Stats := preload("res://scripts/stats_view.gd")
 
-const SECTIONS := ["Panoramica", "Utenti", "Connessioni", "Partite", "Impostazioni", "Registro"]
+const SECTIONS := ["Panoramica", "Utenti", "Connessioni", "Partite", "Tornei", "Impostazioni", "Registro"]
 const FILTERS := [["Tutti", ""], ["Online", "online"], ["Sospesi", "banned"], ["Admin", "admins"]]
 
 var _section := "Panoramica"
@@ -57,6 +57,8 @@ func show_section(s: String) -> void:
 			await _online()
 		"Partite":
 			await _matches()
+		"Tornei":
+			await _tournaments()
 		"Impostazioni":
 			await _settings()
 		"Registro":
@@ -370,3 +372,68 @@ func _log() -> void:
 		_body.add_child(UI.label("Nessuna azione registrata.", 16, UI.MUTED))
 		return
 	_body.add_child(_log_table(r.data))
+
+
+# ------------------------------------------------------------------ tornei
+
+const T_STATUS := {"signup": "iscrizioni", "running": "in corso", "done": "concluso", "cancelled": "annullato"}
+
+
+func _tournaments() -> void:
+	var top := UI.hbox(10)
+	top.add_child(UI.button("Applica le scadenze ora", func() -> void:
+		var rr := await Net.post_json("/api/admin/tournaments/expire")
+		if _say(rr, "Incontri assegnati a tavolino: %d" % int(rr.data.get("decided", 0)) if rr.data is Dictionary else ""):
+			await show_section("Tornei")))
+	_body.add_child(top)
+	_body.add_child(UI.label("Alla scadenza un incontro non giocato va a tavolino: vince il clan che si è schierato; se non c'è nessuno, o ci sono entrambi, passa il clan con l'ELO più alto. Le guerre in corso non scadono.", 16, UI.MUTED))
+	var r := await Net.get_json("/api/admin/tournaments")
+	if int(r.status) != 200:
+		_say(r, "")
+		return
+	if (r.data as Array).is_empty():
+		_body.add_child(UI.label("Nessun torneo.", 16, UI.MUTED))
+		return
+	for t in r.data:
+		var tid := int(t["id"])
+		var box := UI.vbox(6)
+		var head := "%s · %s · %d clan · incontri da %d ore" % [t["name"], T_STATUS.get(t["status"], t["status"]), int(t["clans"]), int(t["match_hours"])]
+		if t["creator"] != null:
+			head += " · organizza [%s]" % t["creator"]
+		if t["winner"] != null:
+			head += " · campioni [%s]" % t["winner"]
+		box.add_child(UI.label(head, 16, UI.ACCENT))
+		var open := str(t["status"]) in ["signup", "running"]
+		if str(t["status"]) == "running":
+			for m in t["pending"]:
+				var row := UI.hbox(8)
+				var a := "—" if m["a"] == null else str(m["a"])
+				var b := "—" if m["b"] == null else str(m["b"])
+				var when := "senza scadenza" if m["deadline"] == null else "scade il " + Stats.date(int(m["deadline"]))
+				var war := "" if m["war_status"] == null else " (guerra: %s)" % m["war_status"]
+				row.add_child(UI.label("Turno %d · [%s] contro [%s] · %s%s" % [int(m["round"]), a, b, when, war], 16))
+				for tag in [m["a"], m["b"]]:
+					if tag == null:
+						continue
+					var tg := str(tag)
+					var rnd := int(m["round"])
+					var slot := int(m["slot"])
+					row.add_child(UI.button("Vince [%s]" % tg, func() -> void:
+						_confirm("Assegnare l'incontro a [%s] senza giocarlo?" % tg, func() -> void:
+							if _say(await Net.post_json("/api/admin/tournaments/%d/matches/%d/%d/winner" % [tid, rnd, slot], {"tag": tg}), "Incontro assegnato a [%s]" % tg):
+								await show_section("Tornei"))))
+				box.add_child(row)
+			var ext := UI.hbox(8)
+			ext.add_child(UI.button("Proroga di 24 ore", func() -> void:
+				if _say(await Net.post_json("/api/admin/tournaments/%d/extend" % tid, {"hours": 24}), "Scadenze prorogate di 24 ore"):
+					await show_section("Tornei")))
+			box.add_child(ext)
+		if open:
+			var row2 := UI.hbox(8)
+			var tname := str(t["name"])
+			row2.add_child(UI.button("Annulla il torneo", func() -> void:
+				_confirm("Annullare «%s»? Nessun premio verrà assegnato." % tname, func() -> void:
+					if _say(await Net.post_json("/api/admin/tournaments/%d/cancel" % tid), "Torneo annullato"):
+						await show_section("Tornei"))))
+			box.add_child(row2)
+		_body.add_child(UI.panel(box, 10))

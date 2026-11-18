@@ -32,6 +32,7 @@ La configurazione si fa con variabili d'ambiente:
 | `TACTICA_WAR_MIN_PLAYERS` | `1` | giocatori minimi per lato in una guerra fra clan |
 | `TACTICA_AUTH_PER_MINUTE` | `30` | richieste di accesso o registrazione al minuto per indirizzo IP |
 | `TACTICA_REGISTER_PER_HOUR` | `5` | registrazioni all'ora per indirizzo IP |
+| `TACTICA_TOURNAMENT_MATCH_HOURS` | `72` | ore per giocare un incontro di torneo prima che vada a tavolino |
 | `TACTICA_ADMINS` | (vuoto) | nomi utente amministratori, separati da virgole: lo diventano all'avvio (o alla registrazione, se l'account non esiste ancora) |
 | `RUST_LOG` | `info,sqlx=warn` | livello dei log |
 
@@ -87,6 +88,9 @@ Le rotte indicate con 🔒 richiedono l'header `Authorization: Bearer <token>`.
 | `GET /api/seasons` | tutte le stagioni |
 | `GET /api/seasons/{number}` | classifica finale di una stagione |
 | `GET /health` | `ok` |
+| `GET /api/version` | versione richiesta ai client (`regole.protocollo`) |
+| `PUT /api/me/password` 🔒 `{old, new}` | cambia la propria password: chiude tutte le sessioni e restituisce un nuovo `{token, username}` |
+| `DELETE /api/me` 🔒 `{password}` | cancella il proprio account con roster, inventario e statistiche personali (non durante una partita); dal clan si esce come con «Lascia» |
 
 Password: hash Argon2id. Token: nel database si salva solo il loro SHA-256.
 
@@ -96,6 +100,12 @@ Password: hash Argon2id. Token: nel database si salva solo il loro SHA-256.
 - per nome utente, dopo 5 password sbagliate in 5 minuti l'accesso resta bloccato fino allo scadere dei 5 minuti, anche con la password giusta. Un accesso riuscito azzera il conteggio.
 
 L'indirizzo è quello della connessione. Se la connessione arriva da localhost, cioè da Caddy, conta il primo indirizzo di `X-Forwarded-For`. Caddy scarta quello inviato dal client e lo riscrive, quindi non si può falsificare.
+
+**Messaggi WebSocket:** al massimo 16 KB l'uno (oltre, la connessione si chiude). Ogni connessione ha 10 messaggi al secondo in media, con una scorta di 30 per i picchi (le mosse in partita non contano: la partita le elabora una per volta e valgono solo nel proprio turno); quelli in eccesso vengono scartati con l'avviso «troppi messaggi», e dopo 100 scarti la connessione si chiude.
+
+**Versione del client:** il client manda la sua versione (`regole.protocollo`, es. `4.1`) nell'header `X-Tactica-Version` e nel parametro `v` del WebSocket. Se non coincide con quella del server, la risposta è `426` con l'invito a scaricare l'ultima versione; le richieste senza versione (curl, strumenti, test) passano. La versione unisce `RULES_VERSION` e `PROTOCOL_VERSION` di `tactica-core`: quando un aggiornamento rende inservibili i client vecchi (messaggi, snapshot o rotte cambiate) si incrementa `PROTOCOL_VERSION`, si pubblicano i nuovi pacchetti e si aggiorna il server.
+
+**Password dimenticate:** non si raccolgono indirizzi email, quindi non c'è un recupero automatico; un amministratore la reimposta dal pannello. La schermata d'accesso lo spiega.
 
 **Coda PvP per ELO:** chi entra in coda accetta avversari con uno scarto di ELO fino a 100 punti. Lo scarto cresce di 50 ogni 10 secondi d'attesa, e dopo 90 secondi si accetta chiunque, perché su un server con pochi giocatori nessuno resti in coda per sempre. A parità di condizioni si sceglie l'avversario con l'ELO più vicino. La coda si riesamina ogni 2 secondi.
 
@@ -343,6 +353,7 @@ In `matched` il campo `war` riporta id, sigle e nomi dei due clan.
   - **campioni:** titolo «Campioni del torneo "nome"», 500 monete a ogni membro e 15 punti stagionali al clan;
   - **finalisti:** titolo e 200 monete a ogni membro.
 - **Intestazione:** in battaglia il campo `war.tournament` riporta il nome del torneo.
+- **Scadenze:** ogni incontro va giocato entro `TACTICA_TOURNAMENT_MATCH_HOURS` ore (72 di base; il valore si fissa alla creazione del torneo). Il server controlla ogni minuto; alla scadenza l'incontro va a tavolino: vince il clan che si è presentato allo schieramento; se non c'è nessuno, passa il clan con l'ELO più alto (a parità, il primo del tabellone). Una guerra in corso non scade mai; se entrambi i clan sono già schierati, la scadenza slitta di un'ora. Nel tabellone ogni incontro mostra il tempo rimasto, oppure «a tavolino» o «assegnato da un admin».
 
 ## Campagna
 
@@ -407,6 +418,11 @@ Gli amministratori si indicano con `TACTICA_ADMINS` (nomi utente separati da vir
 | `POST /api/admin/seasons/close` | chiude subito la stagione (premi e titoli come alla scadenza) e apre la successiva |
 | `POST /api/admin/backup` | backup immediato (serve `TACTICA_BACKUP_DIR`) |
 | `GET /api/admin/log` | registro delle azioni degli admin |
+| `GET /api/admin/tournaments` | tornei (prima quelli in corso) con gli incontri non ancora decisi e le loro scadenze |
+| `POST /api/admin/tournaments/{id}/cancel` | annulla un torneo in iscrizione o in corso, senza premi; le guerre non ancora iniziate si chiudono |
+| `POST /api/admin/tournaments/{id}/extend` `{hours}` | proroga le scadenze degli incontri non decisi |
+| `POST /api/admin/tournaments/{id}/matches/{round}/{slot}/winner` `{tag}` | assegna un incontro (non durante la guerra) e fa avanzare il tabellone |
+| `POST /api/admin/tournaments/expire` | applica subito le scadenze |
 
 **Impostazioni di gioco** (tabella `settings`, valide subito, senza riavvio):
 
@@ -453,4 +469,4 @@ Note sul deploy:
 ## Limiti attuali, prossimi passi
 
 - **Livelli in PvP:** il PvP usa i livelli reali del roster; si valuta una modalità classificata con livelli normalizzati.
-- **Contenuti mancanti:** seconda scuola equipaggiabile, scadenze per gli incontri di torneo (oggi un incontro resta aperto finché non si gioca).
+- **Contenuti mancanti:** seconda scuola equipaggiabile.

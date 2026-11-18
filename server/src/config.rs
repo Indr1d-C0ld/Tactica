@@ -26,6 +26,8 @@ pub struct Config {
     pub auth_per_minute: u32,
     /// Registrazioni all'ora per indirizzo IP.
     pub register_per_hour: u32,
+    /// Ore a disposizione per giocare un incontro di torneo.
+    pub tournament_match_hours: i64,
     /// Nomi utente che all'avvio diventano amministratori (`TACTICA_ADMINS`, separati da virgole).
     pub admins: Vec<String>,
 }
@@ -49,6 +51,8 @@ impl Config {
             war_min_players: num("TACTICA_WAR_MIN_PLAYERS", 1).clamp(1, 6) as usize,
             auth_per_minute: num("TACTICA_AUTH_PER_MINUTE", 30).max(1) as u32,
             register_per_hour: num("TACTICA_REGISTER_PER_HOUR", 5).max(1) as u32,
+            tournament_match_hours: num("TACTICA_TOURNAMENT_MATCH_HOURS", 72).clamp(1, 24 * 60)
+                as i64,
             admins: env::var("TACTICA_ADMINS")
                 .unwrap_or_default()
                 .split(',')

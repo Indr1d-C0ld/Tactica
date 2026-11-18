@@ -30,8 +30,12 @@ func _ready() -> void:
 	box.add_child(row)
 	box.add_child(HSeparator.new())
 	box.add_child(UI.button("Schermaglia offline contro l'IA", func() -> void: main.start_local_battle()))
+	box.add_child(UI.label("Password dimenticata? Chiedi a un amministratore del server di reimpostarla.", 14, UI.MUTED))
 	_status = UI.label("", 14, UI.BAD)
+	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_status.custom_minimum_size = Vector2(560, 0)
 	box.add_child(_status)
+	box.add_child(UI.label("Versione %s" % Net.VERSION, 14, UI.MUTED))
 	center.add_child(UI.panel(box, 24))
 
 

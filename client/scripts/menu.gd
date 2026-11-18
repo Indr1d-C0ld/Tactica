@@ -59,6 +59,7 @@ func _ready() -> void:
 		Sfx.set_enabled(not Sfx.enabled)
 		audio.text = "Audio: sì" if Sfx.enabled else "Audio: no")
 	head.add_child(audio)
+	head.add_child(UI.button("Account", _account_dialog))
 	head.add_child(UI.button("Esci", _logout))
 	root.add_child(head)
 	_notice = UI.label("", 16, UI.ACCENT)
@@ -175,6 +176,66 @@ func reload() -> void:
 	await _build_tournaments()
 	await _build_stats()
 	await _build_craft()
+
+
+## Finestra dell'account: cambio della password e cancellazione dell'account.
+func _account_dialog() -> void:
+	var win := AcceptDialog.new()
+	win.title = "Account di " + str(me.get("username", ""))
+	win.ok_button_text = "Chiudi"
+	var box := UI.vbox(8)
+	box.add_child(UI.label("Cambia password", 16, UI.ACCENT))
+	var old := UI.line_edit("Password attuale", "", true)
+	var new1 := UI.line_edit("Nuova password (almeno 8 caratteri)", "", true)
+	var new2 := UI.line_edit("Ripeti la nuova password", "", true)
+	var msg := UI.label("", 14, UI.MUTED)
+	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	msg.custom_minimum_size = Vector2(520, 0)
+	for e in [old, new1, new2]:
+		box.add_child(e)
+	var row := UI.hbox()
+	row.add_child(UI.button("Cambia password", func() -> void:
+		if new1.text != new2.text:
+			msg.text = "Le due password nuove non coincidono"
+			return
+		var r := await Net.put_json("/api/me/password", {"old": old.text, "new": new1.text})
+		if int(r.status) == 200:
+			Net.token = str(r.data["token"])
+			msg.text = "Password cambiata. Le altre sessioni sono state chiuse."
+			for e in [old, new1, new2]:
+				e.text = ""
+		else:
+			msg.text = Net.error_text(r)))
+	box.add_child(row)
+	box.add_child(HSeparator.new())
+	box.add_child(UI.label("Cancella l'account", 16, UI.BAD))
+	box.add_child(UI.label("Cancella per sempre account, roster, inventario e statistiche personali. Dal clan esci come con «Lascia».", 14, UI.MUTED))
+	var pw := UI.line_edit("Password per confermare", "", true)
+	var sure := CheckBox.new()
+	sure.text = "Ho capito che non si può annullare"
+	box.add_child(pw)
+	box.add_child(sure)
+	var row2 := UI.hbox()
+	row2.add_child(UI.button("Cancella l'account", func() -> void:
+		if not sure.button_pressed:
+			msg.text = "Spunta la conferma prima di cancellare"
+			return
+		var r := await Net.request(HTTPClient.METHOD_DELETE, "/api/me", {"password": pw.text})
+		if int(r.status) == 200:
+			win.hide()
+			Net.token = ""
+			Net.ws_close()
+			main.show_login()
+		else:
+			msg.text = Net.error_text(r)))
+	box.add_child(row2)
+	box.add_child(msg)
+	win.add_child(box)
+	win.visibility_changed.connect(func() -> void:
+		if not win.visible:
+			win.queue_free())
+	add_child(win)
+	win.popup_centered()
 
 
 func _logout() -> void:
@@ -680,6 +741,12 @@ func _autoplay() -> void:
 ## Schermate delle sezioni di statistiche e (per gli admin) del pannello.
 func autoplay_stats_shots() -> void:
 	await get_tree().create_timer(1.0).timeout
+	_account_dialog()
+	await get_tree().create_timer(0.4).timeout
+	await main.shot("account")
+	for c in get_children():
+		if c is AcceptDialog:
+			c.hide()
 	_tabs.current_tab = 6
 	for s in StatsView.SECTIONS:
 		await _stats_view.show_section(s)
@@ -1151,6 +1218,15 @@ func _render_bracket(id: int) -> void:
 			for side in [[a, m["a"]], [b, m["b"]]]:
 				var won: bool = m["winner"] != null and side[1] != null and str(side[1]) == str(m["winner"])
 				box.add_child(UI.label(str(side[0]), 0, UI.GOOD if won else Color.WHITE))
+			# Scadenza dell'incontro, o come si è deciso se non si è giocato.
+			if m["winner"] == null and m.get("deadline") != null:
+				var left := int(m["deadline"]) - int(Time.get_unix_time_from_system())
+				var txt := "scaduto" if left <= 0 else ("scade fra %d h" % (left / 3600) if left >= 3600 else "scade fra %d min" % maxi(1, left / 60))
+				box.add_child(UI.label(txt, 14, UI.BAD if left < 6 * 3600 else UI.MUTED))
+			elif str(m.get("decided_by", "")) == "forfeit":
+				box.add_child(UI.label("a tavolino", 14, UI.MUTED))
+			elif str(m.get("decided_by", "")) == "admin":
+				box.add_child(UI.label("assegnato da un admin", 14, UI.MUTED))
 			if m["war_status"] != null and str(m["war_status"]) == "accepted" and my_tag in [str(m["a"]), str(m["b"])]:
 				var war_id := int(m["war_id"])
 				box.add_child(UI.button("Schierati", func() -> void: Net.ws_send({"type": "war_join", "war": war_id, "units": _picked_ids()})))

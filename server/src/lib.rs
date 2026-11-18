@@ -1,6 +1,7 @@
 //! Server autoritativo: account, roster persistente, partite PvE/PvP via
 //! WebSocket, replay e statistiche personali/globali su SQLite (WAL).
 
+pub mod account;
 pub mod admin;
 pub mod api;
 pub mod armory;
@@ -20,6 +21,7 @@ pub mod seasons;
 pub mod settings;
 pub mod stats;
 pub mod tournaments;
+pub mod version;
 pub mod wars;
 pub mod ws;
 
@@ -82,7 +84,44 @@ impl AppState {
             online: Arc::default(),
         };
         state.spawn_matchmaker();
+        state.spawn_tournament_deadlines();
         Ok(state)
+    }
+
+    /// Ogni minuto assegna a tavolino gli incontri di torneo scaduti.
+    fn spawn_tournament_deadlines(&self) {
+        let weak = Arc::downgrade(&self.lobby);
+        let state = self.clone();
+        let AppState {
+            db,
+            config,
+            busy,
+            next_conn,
+            limiter,
+            settings,
+            online,
+            ..
+        } = state;
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                tick.tick().await;
+                let Some(lobby) = weak.upgrade() else { break };
+                let st = AppState {
+                    db: db.clone(),
+                    config: config.clone(),
+                    lobby,
+                    busy: busy.clone(),
+                    next_conn: next_conn.clone(),
+                    limiter: limiter.clone(),
+                    settings: settings.clone(),
+                    online: online.clone(),
+                };
+                if let Err(e) = tournaments::expire_due(&st).await {
+                    tracing::error!("scadenze dei tornei: {e}");
+                }
+            }
+        });
     }
 
     /// Ogni 2 secondi riesamina la coda PvP: lo scarto di ELO accettato cresce
@@ -135,5 +174,7 @@ impl AppState {
 }
 
 pub fn router(state: AppState) -> Router {
-    api::routes().with_state(state)
+    api::routes()
+        .layer(axum::middleware::from_fn(version::layer))
+        .with_state(state)
 }

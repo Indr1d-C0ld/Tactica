@@ -61,6 +61,20 @@ pub fn routes() -> Router<AppState> {
         .route("/api/admin/seasons/close", post(close_season))
         .route("/api/admin/backup", post(backup))
         .route("/api/admin/log", get(log_list))
+        .route("/api/admin/tournaments", get(tournaments))
+        .route("/api/admin/tournaments/expire", post(tournament_expire))
+        .route(
+            "/api/admin/tournaments/{id}/cancel",
+            post(tournament_cancel),
+        )
+        .route(
+            "/api/admin/tournaments/{id}/extend",
+            post(tournament_extend),
+        )
+        .route(
+            "/api/admin/tournaments/{id}/matches/{round}/{slot}/winner",
+            post(tournament_winner),
+        )
 }
 
 /// Utente autenticato con ruolo di amministratore.
@@ -817,4 +831,273 @@ async fn log_list(
     Query(p): Query<Page>,
 ) -> ApiResult<Json<Vec<LogRow>>> {
     Ok(Json(log_rows(&s.db, None, p.offset, 100).await?))
+}
+
+// ------------------------------------------------------------------ tornei
+
+#[derive(Serialize)]
+struct PendingMatch {
+    round: i64,
+    slot: i64,
+    a: Option<String>,
+    b: Option<String>,
+    war_status: Option<String>,
+    deadline: Option<i64>,
+}
+
+#[derive(Serialize)]
+struct AdminTournament {
+    id: i64,
+    name: String,
+    status: String,
+    creator: Option<String>,
+    winner: Option<String>,
+    clans: i64,
+    match_hours: i64,
+    created_at: i64,
+    pending: Vec<PendingMatch>,
+}
+
+async fn tournaments(
+    State(s): State<AppState>,
+    _a: AdminUser,
+) -> ApiResult<Json<Vec<AdminTournament>>> {
+    let rows: Vec<(i64, String, String, Option<String>, Option<String>, i64, i64, i64)> = sqlx::query_as(
+        "SELECT t.id, t.name, t.status, c.tag, w.tag,
+                (SELECT COUNT(*) FROM tournament_entries e WHERE e.tournament_id = t.id),
+                t.match_hours, t.created_at
+         FROM tournaments t LEFT JOIN clans c ON c.id = t.creator_clan LEFT JOIN clans w ON w.id = t.winner_clan
+         ORDER BY CASE t.status WHEN 'running' THEN 0 WHEN 'signup' THEN 1 ELSE 2 END, t.id DESC LIMIT 100",
+    )
+    .fetch_all(&s.db)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        let pending = sqlx::query_as::<
+            _,
+            (
+                i64,
+                i64,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<i64>,
+            ),
+        >(
+            "SELECT m.round, m.slot, a.tag, b.tag, w.status, m.deadline FROM tournament_matches m
+             LEFT JOIN clans a ON a.id = m.clan_a LEFT JOIN clans b ON b.id = m.clan_b
+             LEFT JOIN clan_wars w ON w.id = m.war_id
+             WHERE m.tournament_id = ? AND m.winner_clan IS NULL ORDER BY m.round, m.slot",
+        )
+        .bind(r.0)
+        .fetch_all(&s.db)
+        .await?
+        .into_iter()
+        .map(|p| PendingMatch {
+            round: p.0,
+            slot: p.1,
+            a: p.2,
+            b: p.3,
+            war_status: p.4,
+            deadline: p.5,
+        })
+        .collect();
+        out.push(AdminTournament {
+            id: r.0,
+            name: r.1,
+            status: r.2,
+            creator: r.3,
+            winner: r.4,
+            clans: r.5,
+            match_hours: r.6,
+            created_at: r.7,
+            pending,
+        });
+    }
+    Ok(Json(out))
+}
+
+async fn tournament_name(db: &SqlitePool, id: i64) -> ApiResult<(String, String)> {
+    sqlx::query_as("SELECT name, status FROM tournaments WHERE id = ?")
+        .bind(id)
+        .fetch_optional(db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("torneo inesistente"))
+}
+
+/// Annulla un torneo in iscrizione o in corso: niente premi; le guerre non
+/// ancora iniziate si chiudono (quelle in corso finiscono senza effetto sul tabellone).
+async fn tournament_cancel(
+    State(s): State<AppState>,
+    AdminUser(a): AdminUser,
+    Path(id): Path<i64>,
+) -> ApiResult<()> {
+    let (name, status) = tournament_name(&s.db, id).await?;
+    if !matches!(status.as_str(), "signup" | "running") {
+        return Err(ApiError::conflict("il torneo è già concluso o annullato"));
+    }
+    let mut tx = s.db.begin().await?;
+    sqlx::query("UPDATE tournaments SET status = 'cancelled', updated_at = ? WHERE id = ?")
+        .bind(now())
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    let wars: Vec<i64> = sqlx::query_scalar(
+        "UPDATE clan_wars SET status = 'cancelled', updated_at = ?
+         WHERE tournament_id = ? AND status IN ('pending', 'accepted') RETURNING id",
+    )
+    .bind(now())
+    .bind(id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    {
+        let mut lobby = s.lobby.lock().unwrap();
+        for w in &wars {
+            if let Some(room) = lobby.close_war_room(*w) {
+                for side in &room.sides {
+                    for m in side {
+                        m.send(crate::protocol::ServerMsg::Error {
+                            message: "torneo annullato da un amministratore".into(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    record(
+        &s.db,
+        &a,
+        "torneo annullato",
+        Some(&name),
+        &format!("{} guerre chiuse", wars.len()),
+    )
+    .await?;
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct Extend {
+    hours: i64,
+}
+
+/// Sposta in avanti la scadenza di tutti gli incontri non ancora decisi.
+async fn tournament_extend(
+    State(s): State<AppState>,
+    AdminUser(a): AdminUser,
+    Path(id): Path<i64>,
+    Json(e): Json<Extend>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let (name, status) = tournament_name(&s.db, id).await?;
+    if status != "running" {
+        return Err(ApiError::conflict("il torneo non è in corso"));
+    }
+    if !(1..=24 * 30).contains(&e.hours) {
+        return Err(ApiError::bad_request("ore fra 1 e 720"));
+    }
+    let n = sqlx::query(
+        "UPDATE tournament_matches SET deadline = MAX(COALESCE(deadline, ?1), ?1) + ?2 * 3600
+         WHERE tournament_id = ?3 AND winner_clan IS NULL AND war_id IS NOT NULL",
+    )
+    .bind(now())
+    .bind(e.hours)
+    .bind(id)
+    .execute(&s.db)
+    .await?
+    .rows_affected();
+    record(
+        &s.db,
+        &a,
+        "scadenze prorogate",
+        Some(&name),
+        &format!("+{} ore su {n} incontri", e.hours),
+    )
+    .await?;
+    Ok(Json(serde_json::json!({"matches": n})))
+}
+
+#[derive(Deserialize)]
+struct Winner {
+    /// Sigla del clan vincitore.
+    tag: String,
+}
+
+async fn tournament_winner(
+    State(s): State<AppState>,
+    AdminUser(a): AdminUser,
+    Path((id, round, slot)): Path<(i64, i64, i64)>,
+    Json(w): Json<Winner>,
+) -> ApiResult<()> {
+    let (name, status) = tournament_name(&s.db, id).await?;
+    if status != "running" {
+        return Err(ApiError::conflict("il torneo non è in corso"));
+    }
+    let (clan, war): (i64, Option<i64>) = sqlx::query_as(
+        "SELECT c.id, m.war_id FROM tournament_matches m JOIN clans c ON c.tag = ? AND c.id IN (m.clan_a, m.clan_b)
+         WHERE m.tournament_id = ? AND m.round = ? AND m.slot = ?",
+    )
+    .bind(&w.tag)
+    .bind(id)
+    .bind(round)
+    .bind(slot)
+    .fetch_optional(&s.db)
+    .await?
+    .ok_or_else(|| ApiError::bad_request("quel clan non gioca questo incontro"))?;
+    if let Some(war) = war {
+        let live: bool = sqlx::query_scalar("SELECT status = 'live' FROM clan_wars WHERE id = ?")
+            .bind(war)
+            .fetch_one(&s.db)
+            .await?;
+        if live {
+            return Err(ApiError::conflict(
+                "la guerra è in corso: attendi che finisca",
+            ));
+        }
+    }
+    let mut tx = s.db.begin().await?;
+    if !crate::tournaments::decide(&mut tx, id, round, slot, clan, "admin").await? {
+        return Err(ApiError::conflict("incontro già deciso"));
+    }
+    tx.commit().await?;
+    if let Some(war) = war
+        && let Some(room) = s.lobby.lock().unwrap().close_war_room(war)
+    {
+        for side in &room.sides {
+            for m in side {
+                m.send(crate::protocol::ServerMsg::Error {
+                    message: "incontro di torneo assegnato da un amministratore".into(),
+                });
+            }
+        }
+    }
+    record(
+        &s.db,
+        &a,
+        "incontro di torneo assegnato",
+        Some(&name),
+        &format!("turno {round}, incontro {slot}: vince [{}]", w.tag),
+    )
+    .await?;
+    Ok(())
+}
+
+/// Applica subito le scadenze (normalmente lo fa il server ogni minuto).
+async fn tournament_expire(
+    State(s): State<AppState>,
+    AdminUser(a): AdminUser,
+) -> ApiResult<Json<serde_json::Value>> {
+    let n = crate::tournaments::expire_due(&s)
+        .await
+        .map_err(ApiError::internal)?;
+    if n > 0 {
+        record(
+            &s.db,
+            &a,
+            "scadenze applicate",
+            None,
+            &format!("{n} incontri a tavolino"),
+        )
+        .await?;
+    }
+    Ok(Json(serde_json::json!({"decided": n})))
 }

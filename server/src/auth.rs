@@ -120,6 +120,15 @@ impl FromRequestParts<AppState> for AuthUser {
     }
 }
 
+/// Nuova sessione per un account (dopo il cambio di password).
+pub async fn new_session(
+    state: &AppState,
+    account: i64,
+    username: String,
+) -> ApiResult<Json<Session>> {
+    issue_session(state, account, username).await
+}
+
 async fn issue_session(
     state: &AppState,
     account: i64,

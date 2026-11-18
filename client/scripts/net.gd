@@ -5,6 +5,8 @@ signal ws_message(msg: Dictionary, raw: String)
 signal ws_closed()
 
 var base_url := "http://127.0.0.1:7777"
+## Versione di compatibilità con il server (regole.protocollo), dal motore.
+var VERSION: String = str(TacticaEngine.compat_version())
 var token := ""
 var username := ""
 ## Cataloghi in cache (chiave -> dati), caricati dal menu.
@@ -18,7 +20,7 @@ var _pending: Array[String] = []
 func request(method: int, path: String, body: Variant = null) -> Dictionary:
 	var http := HTTPRequest.new()
 	add_child(http)
-	var headers := PackedStringArray(["Content-Type: application/json"])
+	var headers := PackedStringArray(["Content-Type: application/json", "X-Tactica-Version: " + VERSION])
 	if token != "":
 		headers.append("Authorization: Bearer " + token)
 	var data := "" if body == null else JSON.stringify(body)
@@ -86,7 +88,7 @@ func ws_connect() -> void:
 	_ws.inbound_buffer_size = 1 << 22
 	_ws.outbound_buffer_size = 1 << 20
 	_ws.max_queued_packets = 4096
-	_ws.connect_to_url(url + "/ws?token=" + token.uri_encode())
+	_ws.connect_to_url(url + "/ws?token=" + token.uri_encode() + "&v=" + VERSION.uri_encode())
 
 
 func ws_close() -> void:
