@@ -8,6 +8,8 @@ extends Control
 ##   --user=NOME --pass=PW credenziali (registra l'account se non esiste)
 ##   --mode=pve|pvp        modalità della partita automatica
 ##   --shots=CARTELLA      salva schermate PNG dei momenti salienti
+##   --test-mouse          con --autoplay: prova passaggio e clic del mouse su una
+##                         casella (esce con 0 se il gioco li vede, 1 altrimenti)
 
 const UI := preload("res://scripts/ui.gd")
 const LoginScreen := preload("res://scripts/login.gd")
@@ -20,6 +22,9 @@ var current: Control = null
 
 
 func _ready() -> void:
+	# La radice contiene solo le schermate: non deve trattenere il mouse,
+	# altrimenti i clic sulla mappa della battaglia non arrivano mai.
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_parse_args()
 	theme = _make_theme()
 	_read_default_server()

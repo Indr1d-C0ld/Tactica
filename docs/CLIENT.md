@@ -172,6 +172,7 @@ Argomenti dopo `--`:
 | `--role=host` oppure `--role=guest`, `--clan=SIGLA` | solo in cooperativa: chi fonda il clan e apre la stanza, e chi entra |
 | `--mode=war --role=host` oppure `--role=guest`, `--clan=SIGLA --enemy=SIGLA` | guerra fra clan: ognuno fonda il proprio clan; l'host dichiara guerra e il guest accetta |
 | `--shots=CARTELLA` | salva schermate dei momenti salienti |
+| `--test-mouse` | con `--autoplay`: spinge nella finestra un passaggio e un clic del mouse su una casella raggiungibile e visibile, ed esce con 0 se la casella si evidenzia e l'unità ci va (1 altrimenti). Funziona anche senza schermo (`--headless`) |
 
 In modalità online, se il roster è vuoto il client:
 

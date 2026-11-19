@@ -143,6 +143,10 @@ func _ready() -> void:
 # ------------------------------------------------------------------ interfaccia
 
 func _build_ui() -> void:
+	# Lo schermo intero non deve trattenere il mouse: gli eventi sopra la mappa
+	# devono arrivare a _unhandled_input (passaggio e clic sulle caselle). I
+	# pannelli restano a bloccarli dove servono i loro pulsanti.
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var bg := ColorRect.new()
 	bg.color = Color(0.09, 0.1, 0.13)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -296,6 +300,11 @@ func cycle_style() -> void:
 
 func _vp_mouse() -> Vector2:
 	return get_local_mouse_position() / float(STYLES[_style]["scale"])
+
+
+## Posizione di un evento del mouse in coordinate della SubViewport.
+func _event_vp(event: InputEventMouse) -> Vector2:
+	return (get_global_transform().affine_inverse() * event.global_position) / float(STYLES[_style]["scale"])
 
 
 func _process(_delta: float) -> void:
@@ -592,7 +601,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			board.tilt_by(event.relative.y * 0.3)
 		return
 	if event is InputEventMouseMotion:
-		var t := board.pick(_vp_mouse())
+		var t := board.pick(_event_vp(event))
 		if t != board.hover:
 			board.hover = t
 			var under := _unit_at(t)
@@ -611,7 +620,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if event.button_index != MOUSE_BUTTON_LEFT or not my_turn() or busy:
 			return
-		var t := board.pick(_vp_mouse())
+		var t := board.pick(_event_vp(event))
 		if mode == "move" and reach.has(t):
 			_send(TacticaEngine.make_move(t.x, t.y))
 		elif mode == "ability" and targets.has(t):
@@ -806,6 +815,12 @@ func _after_change() -> void:
 func _autoplay_tick() -> void:
 	if not main.autoplay() or ended:
 		return
+	if main.opts.has("test-mouse"):
+		# Durante la prova del mouse la partita automatica resta ferma.
+		if not shots_taken.has("mouse"):
+			shots_taken["mouse"] = true
+			await _test_mouse()
+		return
 	if not shots_taken.has("inizio"):
 		shots_taken["inizio"] = true
 		await get_tree().create_timer(0.3).timeout
@@ -989,3 +1004,40 @@ func _show_overlay(bbcode: String, buttons: Array) -> void:
 	box.add_child(row)
 	center.add_child(UI.panel(box, 20))
 	_overlay = center
+
+
+## Prova del mouse (`--test-mouse`): passa sopra una casella raggiungibile e
+## clicca, con eventi veri spinti nella finestra, e controlla che il gioco li veda.
+func _test_mouse() -> void:
+	await get_tree().create_timer(0.5).timeout
+	_set_mode("move")
+	var a := _active()
+	var dest := Vector2i(-1, -1)
+	var k := float(STYLES[_style]["scale"])
+	# Una casella raggiungibile e visibile (non coperta da colonne più alte).
+	for p in reach:
+		if p != Vector2i(int(units[a]["x"]), int(units[a]["y"])) \
+				and board.pick(board.screen_of(board.tile_top(p))) == p:
+			dest = p
+			break
+	var local := board.screen_of(board.tile_top(dest)) * k
+	var global := get_global_transform() * local
+	var mv := InputEventMouseMotion.new()
+	mv.position = global
+	mv.global_position = global
+	get_viewport().push_input(mv, true)
+	await get_tree().process_frame
+	var hover_ok := board.hover == dest
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.position = global
+	click.global_position = global
+	get_viewport().push_input(click, true)
+	for _i in 30:
+		await get_tree().create_timer(0.1).timeout
+		if bool(snapshot["moved"]):
+			break
+	var moved := bool(snapshot["moved"]) and Vector2i(int(units[a]["x"]), int(units[a]["y"])) == dest
+	main.finish(0 if hover_ok and moved else 1, "MOUSE casella=%s passaggio=%s clic=%s (raggiungibili %d, mio turno %s, occupato %s, modo %s, attiva %d)" % [
+		dest, hover_ok, moved, reach.size(), my_turn(), busy, mode, _active()])
